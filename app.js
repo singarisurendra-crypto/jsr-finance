@@ -269,6 +269,11 @@ function switchTab(tabName) {
     view.classList.toggle('active', view.id === `view-${tabName}`);
   });
 
+  const sidebar = document.getElementById('app-sidebar');
+  if (sidebar) {
+    sidebar.classList.add('force-collapsed');
+  }
+
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   if (tabName === 'summary') renderDashboard();
@@ -1230,6 +1235,14 @@ function setupEventListeners() {
       inputEl.addEventListener('input', updateCustomerModalProfitCalc);
     }
   });
+
+  // Left Menu Hover-to-Open & Click-to-Close behavior
+  const sidebar = document.getElementById('app-sidebar');
+  if (sidebar) {
+    sidebar.addEventListener('mouseleave', () => {
+      sidebar.classList.remove('force-collapsed');
+    });
+  }
 }
 
 // Start application when DOM is ready
