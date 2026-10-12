@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
 
@@ -46,23 +46,46 @@
     <!-- Sidebar Navigation -->
     <aside class="sidebar">
       <a class="nav-link active" data-tab="summary">
-        <span class="icon">📊</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="7" height="9" x="3" y="3" rx="1.5"/>
+          <rect width="7" height="5" x="14" y="3" rx="1.5"/>
+          <rect width="7" height="9" x="14" y="12" rx="1.5"/>
+          <rect width="7" height="5" x="3" y="16" rx="1.5"/>
+        </svg>
         <span>Summary Dashboard</span>
       </a>
       <a class="nav-link" data-tab="collections">
-        <span class="icon">📋</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="3" rx="2"/>
+          <path d="M3 9h18"/>
+          <path d="M3 15h18"/>
+          <path d="M9 3v18"/>
+          <path d="M15 3v18"/>
+        </svg>
         <span>52-Instalment Sheet</span>
       </a>
       <a class="nav-link" data-tab="customers">
-        <span class="icon">👥</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
         <span>Customer Master</span>
       </a>
       <a class="nav-link" data-tab="schemes">
-        <span class="icon">⚙️</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+          <polyline points="2 17 12 22 22 17"/>
+          <polyline points="2 12 12 17 22 12"/>
+        </svg>
         <span>Schemes Master</span>
       </a>
       <a class="nav-link" data-tab="settings">
-        <span class="icon">🛠️</span>
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
         <span>Settings & Config</span>
       </a>
     </aside>
@@ -370,16 +393,16 @@
 
             <div style="display: flex; flex-direction: column; gap: 12px;">
               <button class="btn btn-outline" onclick="exportDataBackup()" style="width: 100%; justify-content: flex-start;">
-                💾 Download Complete Backup (.json)
+                Download Complete Backup (.json)
               </button>
 
               <label class="btn btn-outline" style="width: 100%; justify-content: flex-start; cursor: pointer;">
-                📂 Restore Backup from File
+                Restore Backup from File
                 <input type="file" accept=".json" onchange="importDataBackup(event)" style="display: none;">
               </label>
 
               <button class="btn btn-outline" onclick="clearAllData()" style="width: 100%; justify-content: flex-start; color: #b91c1c;">
-                🧹 Clear Demo Data (Start Clean for Live Use)
+                Reset Demo Data (Start Clean)
               </button>
             </div>
           </div>
@@ -513,8 +536,8 @@
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" id="passbook-whatsapp-btn" class="btn btn-success">📲 Share on WhatsApp</button>
-        <button type="button" class="btn btn-outline" onclick="window.print()">🖨️ Print Passbook</button>
+        <button type="button" id="passbook-whatsapp-btn" class="btn btn-success">Share on WhatsApp</button>
+        <button type="button" class="btn btn-outline" onclick="window.print()">Print Passbook</button>
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-passbook')">Close</button>
       </div>
     </div>
@@ -526,23 +549,46 @@
   <!-- Mobile Bottom Navigation Bar (High-Tech Mobile Experience) -->
   <nav class="mobile-nav" id="mobile-nav">
     <button class="mobile-nav-item active" data-tab="summary">
-      <span class="icon">📊</span>
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect width="7" height="9" x="3" y="3" rx="1.5"/>
+        <rect width="7" height="5" x="14" y="3" rx="1.5"/>
+        <rect width="7" height="9" x="14" y="12" rx="1.5"/>
+        <rect width="7" height="5" x="3" y="16" rx="1.5"/>
+      </svg>
       <span class="label">Summary</span>
     </button>
     <button class="mobile-nav-item" data-tab="collections">
-      <span class="icon">📋</span>
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect width="18" height="18" x="3" y="3" rx="2"/>
+        <path d="M3 9h18"/>
+        <path d="M3 15h18"/>
+        <path d="M9 3v18"/>
+        <path d="M15 3v18"/>
+      </svg>
       <span class="label">52-Sheet</span>
     </button>
     <button class="mobile-nav-item" data-tab="customers">
-      <span class="icon">👥</span>
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
       <span class="label">Customers</span>
     </button>
     <button class="mobile-nav-item" data-tab="schemes">
-      <span class="icon">⚙️</span>
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+        <polyline points="2 17 12 22 22 17"/>
+        <polyline points="2 12 12 17 22 12"/>
+      </svg>
       <span class="label">Schemes</span>
     </button>
     <button class="mobile-nav-item" data-tab="settings">
-      <span class="icon">🛠️</span>
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
       <span class="label">Settings</span>
     </button>
   </nav>
@@ -550,8 +596,8 @@
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=5"></script>
-  <script src="firebase-sync.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="firebase-config.js?v=6"></script>
+  <script src="firebase-sync.js?v=6"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
