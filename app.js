@@ -156,12 +156,23 @@ function getCustomerStats(customer) {
   const balance = Math.max(0, totalPayable - totalPaid);
   const progressPercent = Math.min(100, Math.round((paidCount / totalInst) * 100));
 
+  // Profit calculations
+  const given = Number(customer.givenAmount) || 0;
+  const expectedProfit = Math.max(0, totalPayable - given);
+  const profitMarginRate = totalPayable > 0 ? (expectedProfit / totalPayable) : 0;
+  const profitReturnPercent = given > 0 ? Math.round((expectedProfit / given) * 1000) / 10 : 0;
+  const realizedProfit = Math.round(totalPaid * profitMarginRate);
+
   return {
     paidCount,
     pendingCount,
     totalPaid,
+    totalPayable,
     balance,
     progressPercent,
+    expectedProfit,
+    realizedProfit,
+    profitReturnPercent,
     isCompleted: paidCount >= totalInst,
   };
 }
@@ -175,6 +186,8 @@ function getPortfolioStats() {
   let activeLoans = 0;
   let completedLoans = 0;
   let todayCollected = 0;
+  let totalExpectedProfit = 0;
+  let totalRealizedProfit = 0;
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -184,6 +197,8 @@ function getPortfolioStats() {
     totalCollected += stats.totalPaid;
     totalBalance += stats.balance;
     totalPayable += (cust.totalPayable || 0);
+    totalExpectedProfit += stats.expectedProfit;
+    totalRealizedProfit += stats.realizedProfit;
 
     if (stats.isCompleted) {
       completedLoans++;
@@ -202,6 +217,7 @@ function getPortfolioStats() {
   });
 
   const recoveryPercent = totalPayable > 0 ? Math.round((totalCollected / totalPayable) * 100) : 0;
+  const todayProfit = todayCollected > 0 && totalPayable > 0 ? Math.round(todayCollected * (totalExpectedProfit / totalPayable)) : 0;
 
   return {
     totalCustomers: state.customers.length,
@@ -210,7 +226,11 @@ function getPortfolioStats() {
     totalDisbursed,
     totalCollected,
     totalBalance,
+    totalPayable,
     todayCollected,
+    totalExpectedProfit,
+    totalRealizedProfit,
+    todayProfit,
     recoveryPercent,
   };
 }
@@ -222,6 +242,12 @@ function updateHeaderStats() {
   document.getElementById('header-disbursed').textContent = formatMoney(stats.totalDisbursed);
   document.getElementById('header-collected').textContent = formatMoney(stats.totalCollected);
   document.getElementById('header-today').textContent = formatMoney(stats.todayCollected);
+
+  const headerProfit = document.getElementById('header-profit');
+  if (headerProfit) {
+    headerProfit.textContent = formatMoney(stats.totalRealizedProfit);
+    headerProfit.title = `Earned Profit: ${formatMoney(stats.totalRealizedProfit)} | Expected Total Profit: ${formatMoney(stats.totalExpectedProfit)}`;
+  }
 
   // Set business name in header and brand
   document.getElementById('brand-business-name').textContent = state.settings.businessName || 'JSR Finance';
@@ -262,6 +288,12 @@ function renderDashboard() {
   document.getElementById('kpi-balance-sub').textContent = `${stats.activeLoans} Active Loans Remaining`;
 
   document.getElementById('kpi-today').textContent = formatMoney(stats.todayCollected);
+
+  const kpiProfit = document.getElementById('kpi-profit');
+  if (kpiProfit) {
+    kpiProfit.textContent = formatMoney(stats.totalRealizedProfit);
+    document.getElementById('kpi-profit-sub').textContent = `Total Expected: ${formatMoney(stats.totalExpectedProfit)}`;
+  }
 
   // Recovery Progress Bar
   const progFill = document.getElementById('dashboard-progress-fill');
@@ -520,7 +552,7 @@ function renderCustomersTable() {
   });
 
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:30px; color:#94a3b8;">No customers registered yet. Click "+ Add New Customer" to start.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:30px; color:#94a3b8;">No customers registered yet. Click "+ Add New Customer" to start.</td></tr>`;
     return;
   }
 
@@ -538,6 +570,11 @@ function renderCustomersTable() {
         <td><span style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-size:11px;">${c.areaRoute || 'General'}</span></td>
         <td><strong>${formatMoney(c.givenAmount)}</strong></td>
         <td>${formatMoney(c.instalmentAmount)} /wk</td>
+        <td><strong>${formatMoney(stats.totalPayable)}</strong></td>
+        <td>
+          <strong style="color: #7c3aed;">+ ${formatMoney(stats.expectedProfit)}</strong>
+          <div style="font-size: 11px; color: #16a34a; font-weight: 600;">Earned: ${formatMoney(stats.realizedProfit)}</div>
+        </td>
         <td>
           <div style="font-weight:600;">${stats.paidCount} / ${totalInst} (${stats.progressPercent}%)</div>
           <div class="progress-bar-bg" style="margin-top:4px; width:100px;">
@@ -555,6 +592,25 @@ function renderCustomersTable() {
       </tr>
     `;
   }).join('');
+}
+
+// Dynamic Profit Calculation for Customer Modal
+function updateCustomerModalProfitCalc() {
+  const given = Number(document.getElementById('cust-form-given')?.value) || 0;
+  const instalments = Number(document.getElementById('cust-form-instalments')?.value) || 0;
+  const amount = Number(document.getElementById('cust-form-amount')?.value) || 0;
+
+  const repayable = instalments * amount;
+  const profit = Math.max(0, repayable - given);
+  const profitPct = given > 0 ? (Math.round((profit / given) * 1000) / 10).toFixed(1) : '0.0';
+
+  const repayableEl = document.getElementById('cust-form-calc-repayable');
+  const profitEl = document.getElementById('cust-form-calc-profit');
+  const profitPctEl = document.getElementById('cust-form-calc-profit-pct');
+
+  if (repayableEl) repayableEl.textContent = formatMoney(repayable);
+  if (profitEl) profitEl.textContent = `+ ${formatMoney(profit)}`;
+  if (profitPctEl) profitPctEl.textContent = `${profitPct}%`;
 }
 
 // Open Add Customer Modal
@@ -579,6 +635,7 @@ function openAddCustomerModal() {
   document.getElementById('cust-form-amount').value = state.settings.defaultInstalmentAmount || 200;
   document.getElementById('cust-form-date').value = new Date().toISOString().split('T')[0];
 
+  updateCustomerModalProfitCalc();
   document.getElementById('modal-customer').classList.add('active');
 }
 
@@ -599,6 +656,7 @@ function openEditCustomerModal(customerId) {
   document.getElementById('cust-form-amount').value = c.instalmentAmount || 200;
   document.getElementById('cust-form-date').value = c.startDate || new Date().toISOString().split('T')[0];
 
+  updateCustomerModalProfitCalc();
   document.getElementById('modal-customer').classList.add('active');
 }
 
@@ -719,14 +777,16 @@ function openCustomerPassbook(customerId) {
 
   document.getElementById('passbook-modal-title').textContent = `Customer Passbook - #${c.customerNumber}: ${c.fullName}`;
   document.getElementById('passbook-header-info').innerHTML = `
-    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; background:#f1f5f9; padding:14px; border-radius:8px; margin-bottom:16px;">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; background:#f1f5f9; padding:14px; border-radius:8px; margin-bottom:16px;">
       <div><span style="color:#64748b; font-size:12px;">Customer:</span><br><strong>#${c.customerNumber} - ${c.fullName}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Phone:</span><br><strong>${c.phone || 'N/A'}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Given Amount:</span><br><strong style="color:#1e3a8a;">${formatMoney(c.givenAmount)}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Instalment:</span><br><strong>${formatMoney(c.instalmentAmount)} /wk</strong></div>
+      <div><span style="color:#64748b; font-size:12px;">Total Repayable:</span><br><strong style="color:#1e293b;">${formatMoney(stats.totalPayable)}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Total Paid:</span><br><strong style="color:#16a34a;">${formatMoney(stats.totalPaid)} (${stats.paidCount}/${totalInst})</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Balance Due:</span><br><strong style="color:#b45309;">${formatMoney(stats.balance)}</strong></div>
-      <div><span style="color:#64748b; font-size:12px;">Start Date:</span><br><strong>${c.startDate || 'N/A'}</strong></div>
+      <div><span style="color:#64748b; font-size:12px;">Expected Net Profit:</span><br><strong style="color:#7c3aed;">+ ${formatMoney(stats.expectedProfit)} (${stats.profitReturnPercent}%)</strong></div>
+      <div><span style="color:#64748b; font-size:12px;">Profit Earned:</span><br><strong style="color:#16a34a;">${formatMoney(stats.realizedProfit)}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Status:</span><br><span class="badge-received" style="width:auto; padding:2px 8px;">${stats.isCompleted ? 'Completed' : 'Active'}</span></div>
     </div>
   `;
@@ -1079,6 +1139,14 @@ function setupEventListeners() {
       renderCollectionMatrix();
     });
   }
+
+  // Dynamic profit calculation listeners on customer form inputs
+  ['cust-form-given', 'cust-form-instalments', 'cust-form-amount'].forEach((id) => {
+    const inputEl = document.getElementById(id);
+    if (inputEl) {
+      inputEl.addEventListener('input', updateCustomerModalProfitCalc);
+    }
+  });
 }
 
 // Start application when DOM is ready
