@@ -594,9 +594,9 @@ function renderCustomersTable() {
         <td><strong style="color:#b45309;">${formatMoney(stats.balance)}</strong></td>
         <td>
           <div class="btn-group">
-            <button class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${c.id}')">📖 Passbook</button>
-            <button class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${c.id}')">✏️ Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')">🗑️</button>
+            <button class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
+            <button class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${c.id}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" title="Delete">Delete</button>
           </div>
         </td>
       </tr>
@@ -660,9 +660,9 @@ function renderCustomersTable() {
           </div>
 
           <div class="customer-card-actions">
-            <button class="btn btn-outline" onclick="openCustomerPassbook('${c.id}')">📖 Passbook</button>
-            <button class="btn btn-outline" onclick="openEditCustomerModal('${c.id}')">✏️ Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" style="flex:0; padding:8px 12px;">🗑️</button>
+            <button class="btn btn-outline" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
+            <button class="btn btn-outline" onclick="openEditCustomerModal('${c.id}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" style="flex:0; padding:8px 12px;">Delete</button>
           </div>
         </div>
       `;
