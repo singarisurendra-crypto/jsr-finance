@@ -261,9 +261,15 @@ function switchTab(tabName) {
     link.classList.toggle('active', link.dataset.tab === tabName);
   });
 
+  document.querySelectorAll('.mobile-nav-item').forEach((item) => {
+    item.classList.toggle('active', item.dataset.tab === tabName);
+  });
+
   document.querySelectorAll('.screen-view').forEach((view) => {
     view.classList.toggle('active', view.id === `view-${tabName}`);
   });
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 
   if (tabName === 'summary') renderDashboard();
   if (tabName === 'collections') renderCollectionMatrix();
@@ -553,6 +559,10 @@ function renderCustomersTable() {
 
   if (filtered.length === 0) {
     tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; padding:30px; color:#94a3b8;">No customers registered yet. Click "+ Add New Customer" to start.</td></tr>`;
+    const mobileContainer = document.getElementById('customers-mobile-cards');
+    if (mobileContainer) {
+      mobileContainer.innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8; background:#fff; border-radius:12px; border:1px solid #e2e8f0;">No customers registered yet.</div>`;
+    }
     return;
   }
 
@@ -592,6 +602,72 @@ function renderCustomersTable() {
       </tr>
     `;
   }).join('');
+
+  // Mobile Customer Touch-Cards Render
+  const mobileContainer = document.getElementById('customers-mobile-cards');
+  if (mobileContainer) {
+    mobileContainer.innerHTML = filtered.map((c) => {
+      const stats = getCustomerStats(c);
+      const totalInst = c.totalInstalments || 52;
+      return `
+        <div class="customer-card">
+          <div class="customer-card-header">
+            <div class="customer-card-title">
+              <span class="customer-card-num">#${c.customerNumber}</span>
+              <div>
+                <div class="customer-card-name">${c.fullName}</div>
+                <div class="customer-card-meta">${c.phone || 'No Phone'} • <span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-size:11px;">${c.areaRoute || 'General'}</span></div>
+              </div>
+            </div>
+            <span class="badge-received" style="width:auto; padding:3px 10px; font-size:11px;">${stats.isCompleted ? 'Completed' : 'Active'}</span>
+          </div>
+
+          <div class="customer-card-grid">
+            <div>
+              <div class="card-stat-label">Given Amount</div>
+              <div class="card-stat-val" style="color:#1e3a8a;">${formatMoney(c.givenAmount)}</div>
+            </div>
+            <div>
+              <div class="card-stat-label">Total Repayable</div>
+              <div class="card-stat-val">${formatMoney(stats.totalPayable)}</div>
+            </div>
+            <div>
+              <div class="card-stat-label">Collected (${stats.paidCount}/${totalInst})</div>
+              <div class="card-stat-val" style="color:#16a34a;">${formatMoney(stats.totalPaid)}</div>
+            </div>
+            <div>
+              <div class="card-stat-label">Remaining Balance</div>
+              <div class="card-stat-val" style="color:#b45309;">${formatMoney(stats.balance)}</div>
+            </div>
+            <div>
+              <div class="card-stat-label">Expected Profit</div>
+              <div class="card-stat-val" style="color:#7c3aed;">+ ${formatMoney(stats.expectedProfit)}</div>
+            </div>
+            <div>
+              <div class="card-stat-label">Earned Profit</div>
+              <div class="card-stat-val" style="color:#16a34a;">${formatMoney(stats.realizedProfit)}</div>
+            </div>
+          </div>
+
+          <div style="margin: 8px 0;">
+            <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:4px;">
+              <span style="color:#64748b;">Recovery Progress</span>
+              <strong style="color:#2563eb;">${stats.progressPercent}%</strong>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" style="width:${stats.progressPercent}%;"></div>
+            </div>
+          </div>
+
+          <div class="customer-card-actions">
+            <button class="btn btn-outline" onclick="openCustomerPassbook('${c.id}')">📖 Passbook</button>
+            <button class="btn btn-outline" onclick="openEditCustomerModal('${c.id}')">✏️ Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" style="flex:0; padding:8px 12px;">🗑️</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
 }
 
 // Dynamic Profit Calculation for Customer Modal
@@ -1113,11 +1189,18 @@ function showToast(message) {
 
 // Event Listeners Setup
 function setupEventListeners() {
-  // Navigation tabs
+  // Navigation tabs (Desktop & Mobile)
   document.querySelectorAll('.nav-link').forEach((link) => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
       switchTab(link.dataset.tab);
+    });
+  });
+
+  document.querySelectorAll('.mobile-nav-item').forEach((item) => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchTab(item.dataset.tab);
     });
   });
 
