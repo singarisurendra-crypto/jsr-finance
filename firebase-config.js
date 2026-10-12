@@ -13,9 +13,9 @@
 
 const FIREBASE_CONFIG = {
   apiKey: "YOUR_API_KEY", // Get from Firebase Console > Project Settings > General > Web API Key
-  authDomain: "jsr-finance.firebaseapp.com",
-  projectId: "jsr-finance",
-  storageBucket: "jsr-finance.appspot.com",
+  authDomain: "jsr-finance-app-4a72e.firebaseapp.com",
+  projectId: "jsr-finance-app-4a72e",
+  storageBucket: "jsr-finance-app-4a72e.appspot.com",
   messagingSenderId: "",
   appId: ""
 };
