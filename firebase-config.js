@@ -12,12 +12,13 @@
  */
 
 const FIREBASE_CONFIG = {
-  apiKey: "YOUR_API_KEY", // Get from Firebase Console > Project Settings > General > Web API Key
+  apiKey: "AIzaSyDAk2lMErXlWdjxdoY3Mdp9bgzPf7XHowk",
   authDomain: "jsr-finance-app-4a72e.firebaseapp.com",
   projectId: "jsr-finance-app-4a72e",
-  storageBucket: "jsr-finance-app-4a72e.appspot.com",
-  messagingSenderId: "",
-  appId: ""
+  storageBucket: "jsr-finance-app-4a72e.firebasestorage.app",
+  messagingSenderId: "804448045954",
+  appId: "1:804448045954:web:d95cd7336237762b0b5d9b",
+  measurementId: "G-FR61Y5RXED"
 };
 
 // Check if user has entered their real Google Firebase credentials
