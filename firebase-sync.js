@@ -51,7 +51,7 @@ function updateCloudStatusIndicator(connected, projectId = '', errorMsg = '') {
   if (connected) {
     pill.style.background = 'rgba(34, 197, 94, 0.25)';
     pill.style.borderColor = '#22c55e';
-    pill.innerHTML = `☁️ Google Cloud: <strong style="color:#4ade80;">Connected (${projectId})</strong>`;
+    pill.innerHTML = `<span>☁️ Storage:</span> <strong style="color:#4ade80;">Google Cloud (Live)</strong>`;
   } else if (errorMsg) {
     pill.style.background = 'rgba(239, 68, 68, 0.25)';
     pill.style.borderColor = '#ef4444';
