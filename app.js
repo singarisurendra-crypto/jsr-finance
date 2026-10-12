@@ -83,6 +83,12 @@ function initApp() {
 // Data Storage Management
 function loadData() {
   try {
+    // One-time cleanup: Wipe old demo data from browser localStorage for live production
+    if (localStorage.getItem('jsr_demo_cleaned_v2') !== 'true') {
+      localStorage.removeItem(STORAGE_KEYS.CUSTOMERS);
+      localStorage.setItem('jsr_demo_cleaned_v2', 'true');
+    }
+
     const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (savedSettings) state.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) };
 
