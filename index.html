@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JSR Instalment Receiving - Finance Management</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Top Navigation & Global Header -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-icon">₹</div>
+      <div>
+        <div class="brand-title" id="brand-business-name">JSR Finance</div>
+        <div class="brand-sub">Instalment Receiving & Microfinance System</div>
+      </div>
+    </div>
+
+    <div class="header-stats">
+      <div class="stat-pill">
+        <span>Active Loans:</span>
+        <strong id="header-active-cust">0</strong>
+      </div>
+      <div class="stat-pill">
+        <span>Total Disbursed:</span>
+        <strong id="header-disbursed">₹ 0</strong>
+      </div>
+      <div class="stat-pill">
+        <span>Total Collected:</span>
+        <strong id="header-collected" style="color: #4ade80;">₹ 0</strong>
+      </div>
+      <div class="stat-pill" style="background: rgba(34, 197, 94, 0.25);">
+        <span>Today's Cash:</span>
+        <strong id="header-today" style="color: #86efac;">₹ 0</strong>
+      </div>
+      <div class="stat-pill" id="cloud-status-pill">
+        <span>☁️ Storage:</span>
+        <strong style="color: #cbd5e1;">Local Mode</strong>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <a class="nav-link active" data-tab="summary">
+        <span class="icon">📊</span>
+        <span>Summary Dashboard</span>
+      </a>
+      <a class="nav-link" data-tab="collections">
+        <span class="icon">📋</span>
+        <span>52-Instalment Sheet</span>
+      </a>
+      <a class="nav-link" data-tab="customers">
+        <span class="icon">👥</span>
+        <span>Customer Master</span>
+      </a>
+      <a class="nav-link" data-tab="schemes">
+        <span class="icon">⚙️</span>
+        <span>Schemes Master</span>
+      </a>
+      <a class="nav-link" data-tab="settings">
+        <span class="icon">🛠️</span>
+        <span>Settings & Config</span>
+      </a>
+
+      <div class="sidebar-footer">
+        <div style="font-weight: 600; color: #475569; margin-bottom: 4px;">Zero-Install Local App</div>
+        <div>Offline ready & private. Data securely saved in your browser.</div>
+      </div>
+    </aside>
+
+    <!-- Main Content Workspace -->
+    <main class="content-area">
+
+      <!-- ============================================== -->
+      <!-- SCREEN 1: SUMMARY / DASHBOARD VIEW             -->
+      <!-- ============================================== -->
+      <section id="view-summary" class="screen-view active">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Financial Summary & Overview</h1>
+            <p class="view-subtitle">High-level portfolio performance, capital recovery, and collection tracking.</p>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-outline" onclick="loadSampleDemoData(true)">🔄 Reload Demo Data</button>
+            <button class="btn btn-primary" onclick="openAddCustomerModal()">+ New Customer Loan</button>
+          </div>
+        </div>
+
+        <!-- 4 Core KPI Cards -->
+        <div class="cards-grid">
+          <div class="card">
+            <div class="kpi-title">Total Disbursed Capital</div>
+            <div class="kpi-value" id="kpi-disbursed">₹ 0</div>
+            <div class="kpi-sub" id="kpi-disbursed-sub">0 Total Loans</div>
+          </div>
+          <div class="card">
+            <div class="kpi-title">Total Instalments Collected</div>
+            <div class="kpi-value" id="kpi-collected" style="color: #16a34a;">₹ 0</div>
+            <div class="kpi-sub" id="kpi-collected-sub">0% Recovered</div>
+          </div>
+          <div class="card">
+            <div class="kpi-title">Outstanding Balance</div>
+            <div class="kpi-value" id="kpi-balance" style="color: #b45309;">₹ 0</div>
+            <div class="kpi-sub" id="kpi-balance-sub">Remaining Portfolio</div>
+          </div>
+          <div class="card">
+            <div class="kpi-title">Today's Collections</div>
+            <div class="kpi-value" id="kpi-today" style="color: #2563eb;">₹ 0</div>
+            <div class="kpi-sub">Cash received today</div>
+          </div>
+        </div>
+
+        <!-- Recovery Progress Bar Card -->
+        <div class="card" style="margin-bottom: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <strong style="font-size: 14px; color: #334155;">Portfolio 52-Week Recovery Progress</strong>
+            <span id="dashboard-progress-label" style="font-size: 13px; font-weight: 600; color: #2563eb;">0%</span>
+          </div>
+          <div class="progress-bar-bg" style="height: 12px;">
+            <div id="dashboard-progress-fill" class="progress-bar-fill" style="width: 0%;"></div>
+          </div>
+
+          <!-- Customer Milestone Distribution -->
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center;">
+            <div>
+              <div style="font-size: 11px; color: #64748b; font-weight: 600;">WEEKS 1 – 10</div>
+              <div style="font-size: 18px; font-weight: 700; color: #0f172a; margin-top: 2px;" id="dist-w1-10">0 Cust</div>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: #64748b; font-weight: 600;">WEEKS 11 – 25</div>
+              <div style="font-size: 18px; font-weight: 700; color: #0f172a; margin-top: 2px;" id="dist-w11-25">0 Cust</div>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: #64748b; font-weight: 600;">WEEKS 26 – 40</div>
+              <div style="font-size: 18px; font-weight: 700; color: #0f172a; margin-top: 2px;" id="dist-w26-40">0 Cust</div>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: #64748b; font-weight: 600;">WEEKS 41 – 52+</div>
+              <div style="font-size: 18px; font-weight: 700; color: #16a34a; margin-top: 2px;" id="dist-w41-52">0 Cust</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Transactions Feed -->
+        <div class="card">
+          <div style="font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 14px;">Recent Received Instalments</div>
+          <div class="data-table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Instalment #</th>
+                  <th>Amount</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="recent-transactions-list">
+                <!-- Injected by app.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- SCREEN 2: 52-INSTALMENT COLLECTION SHEET       -->
+      <!-- ============================================== -->
+      <section id="view-collections" class="screen-view">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Instalment Collection Sheet</h1>
+            <p class="view-subtitle">Table format with customer numbers and 1 to 52 instalment reception status.</p>
+          </div>
+          <div class="btn-group">
+            <input type="text" id="global-search-input" class="form-control" placeholder="🔍 Search Cust # / Name..." style="width: 220px;">
+            <select id="collection-filter-select" class="form-control">
+              <option value="all">All Loans</option>
+              <option value="active">Active Only</option>
+              <option value="completed">Completed Only</option>
+            </select>
+            <button class="btn btn-outline" onclick="exportCollectionSheetCSV()">📥 Export CSV / Excel</button>
+            <button class="btn btn-outline" onclick="window.print()">🖨️ Print Sheet</button>
+            <button class="btn btn-primary" onclick="openAddCustomerModal()">+ Add Customer</button>
+          </div>
+        </div>
+
+        <!-- The 52-Column Spreadhseet Matrix -->
+        <div class="collection-table-container">
+          <table class="matrix-table">
+            <thead id="matrix-table-head">
+              <!-- Dynamically rendered with sticky customer columns and Weeks 1-52 -->
+            </thead>
+            <tbody id="matrix-table-body">
+              <!-- Dynamically populated customer rows -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Rapid Keyboard Numpad Entry Bar -->
+        <form class="quick-entry-bar" onsubmit="handleQuickReceive(event)">
+          <div style="font-weight: 700; font-size: 13px; color: #1e3a8a; display: flex; align-items: center; gap: 6px;">
+            ⚡ Quick Receive (Keyboard / Field Entry):
+          </div>
+          <div class="input-group">
+            <label for="quick-cust-num">Customer #:</label>
+            <input type="number" id="quick-cust-num" class="form-control" placeholder="e.g. 1" style="width: 90px;" required>
+          </div>
+          <button type="submit" class="btn btn-success">
+            Mark Next Instalment Received ↵
+          </button>
+          <span style="font-size: 11px; color: #64748b;">
+            💡 Tip: Enter customer number & hit Enter to instantly mark their next due week as received!
+          </span>
+        </form>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- SCREEN 3: CUSTOMER MASTER                      -->
+      <!-- ============================================== -->
+      <section id="view-customers" class="screen-view">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Customer Master</h1>
+            <p class="view-subtitle">Manage customer profiles, loans, disbursed amounts, and view individual passbooks.</p>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" onclick="openAddCustomerModal()">+ Add New Customer</button>
+          </div>
+        </div>
+
+        <div class="data-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Cust #</th>
+                <th>Full Name</th>
+                <th>Phone</th>
+                <th>Area / Route</th>
+                <th>Given Amount</th>
+                <th>Instalment</th>
+                <th>Paid / Total</th>
+                <th>Balance</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="customers-table-body">
+              <!-- Populated by app.js -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- SCREEN 4: SCHEMES & INSTALMENTS MASTER         -->
+      <!-- ============================================== -->
+      <section id="view-schemes" class="screen-view">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Schemes & Instalments Master</h1>
+            <p class="view-subtitle">Configure loan plans, number of instalments, and default repayment amounts.</p>
+          </div>
+        </div>
+
+        <div class="data-table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Scheme Code</th>
+                <th>Scheme Name</th>
+                <th>Instalments</th>
+                <th>Frequency</th>
+                <th>Standard Given</th>
+                <th>Instalment Amount</th>
+                <th>Total Repayable</th>
+                <th>Default Status</th>
+              </tr>
+            </thead>
+            <tbody id="schemes-table-body">
+              <!-- Populated by app.js -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- SCREEN 5: SETTINGS & CONFIGURATION             -->
+      <!-- ============================================== -->
+      <section id="view-settings" class="screen-view">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">System Settings & Instalment Configuration</h1>
+            <p class="view-subtitle">Configure instalment amounts, default numbers, firm branding, and database backups.</p>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+          <!-- Settings Form -->
+          <div class="card">
+            <h3 style="font-size: 16px; margin-bottom: 16px; color: #1e293b;">Default Instalment & Finance Rules</h3>
+            <form onsubmit="handleSaveSettings(event)">
+              <div class="form-grid">
+                <div>
+                  <label class="form-label">Default Given Amount (₹):</label>
+                  <input type="number" id="setting-default-given" class="form-control" required style="width: 100%;">
+                  <div class="form-help">Standard loan disbursed to new customers (e.g. 10000)</div>
+                </div>
+
+                <div>
+                  <label class="form-label">Default Number of Instalments:</label>
+                  <input type="number" id="setting-default-instalments" class="form-control" required style="width: 100%;">
+                  <div class="form-help">Standard collection duration (e.g. 52 instalments)</div>
+                </div>
+
+                <div>
+                  <label class="form-label">Configurable Instalment Amount (₹):</label>
+                  <input type="number" id="setting-default-inst-amount" class="form-control" required style="width: 100%;">
+                  <div class="form-help">Amount collected per instalment (e.g. 200 for ₹10k loan)</div>
+                </div>
+
+                <div>
+                  <label class="form-label">Currency Symbol:</label>
+                  <input type="text" id="setting-currency" class="form-control" required style="width: 100%;">
+                </div>
+
+                <div class="form-full">
+                  <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 10px 0;">
+                  <h4 style="font-size: 14px; margin-bottom: 12px; color: #334155;">Business Details (Printed on Passbooks & Receipts)</h4>
+                </div>
+
+                <div>
+                  <label class="form-label">Business Name:</label>
+                  <input type="text" id="setting-business-name" class="form-control" required style="width: 100%;">
+                </div>
+
+                <div>
+                  <label class="form-label">Contact Phone:</label>
+                  <input type="text" id="setting-phone" class="form-control" style="width: 100%;">
+                </div>
+
+                <div class="form-full">
+                  <label class="form-label">Office Address:</label>
+                  <input type="text" id="setting-address" class="form-control" style="width: 100%;">
+                </div>
+
+                <div class="form-full" style="margin-top: 10px;">
+                  <button type="submit" class="btn btn-primary">Save Settings</button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <!-- Data Management & Backups -->
+          <div class="card">
+            <h3 style="font-size: 16px; margin-bottom: 16px; color: #1e293b;">Data Backup & Tools</h3>
+            <p style="font-size: 13px; color: #64748b; margin-bottom: 16px;">
+              Backup your entire customer ledger and 52-week records as a portable JSON file.
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <button class="btn btn-outline" onclick="exportDataBackup()" style="width: 100%; justify-content: flex-start;">
+                💾 Download Complete Backup (.json)
+              </button>
+
+              <label class="btn btn-outline" style="width: 100%; justify-content: flex-start; cursor: pointer;">
+                📂 Restore Backup from File
+                <input type="file" accept=".json" onchange="importDataBackup(event)" style="display: none;">
+              </label>
+
+              <button class="btn btn-outline" onclick="loadSampleDemoData(true)" style="width: 100%; justify-content: flex-start;">
+                🔄 Reset & Load Sample Data
+              </button>
+
+              <button class="btn btn-danger btn-sm" onclick="clearAllData()" style="width: 100%; margin-top: 20px;">
+                ⚠️ Clear All Customer Records
+              </button>
+            </div>
+          </div>
+
+          <!-- Google Cloud / Firebase Connection Card -->
+          <div class="card" style="grid-column: span 2; margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div>
+                <h3 style="font-size: 16px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                  ☁️ Google Cloud / Firebase Database Connection
+                </h3>
+                <p style="font-size: 13px; color: #64748b; margin-top: 2px;">
+                  Connect to Google Cloud Firestore for real-time multi-device sync across all phones & computers.
+                </p>
+              </div>
+              <span id="settings-cloud-badge" class="badge-received" style="width: auto; padding: 4px 12px; background: #e0f2fe; color: #0369a1;">
+                Zero Install Cloud Sync
+              </span>
+            </div>
+
+            <form onsubmit="handleSaveCloudCredentials(event)" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+              <div>
+                <label class="form-label">Firebase Project ID:</label>
+                <input type="text" id="gcp-project-id" class="form-control" placeholder="e.g. jsr-finance" style="width: 100%;" required>
+              </div>
+              <div>
+                <label class="form-label">Firebase Web API Key:</label>
+                <input type="text" id="gcp-api-key" class="form-control" placeholder="AIzaSy..." style="width: 100%;" required>
+              </div>
+              <div>
+                <label class="form-label">Firebase App ID:</label>
+                <input type="text" id="gcp-app-id" class="form-control" placeholder="1:123456:web:..." style="width: 100%;">
+              </div>
+              <div style="grid-column: span 3; display: flex; gap: 10px; align-items: center;">
+                <button type="submit" class="btn btn-primary">Connect & Sync with Google Cloud</button>
+                <button type="button" class="btn btn-outline" onclick="disconnectCloud()">Disconnect Cloud</button>
+                <span style="font-size: 12px; color: #64748b;">
+                  Credentials are also configurable in <code>firebase-config.js</code>.
+                </span>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODAL: ADD / EDIT CUSTOMER                     -->
+  <!-- ============================================== -->
+  <div id="modal-customer" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-customer-title">Add New Customer</h3>
+        <button class="modal-close" onclick="closeModal('modal-customer')">&times;</button>
+      </div>
+      <form onsubmit="handleSaveCustomer(event)">
+        <input type="hidden" id="form-customer-id">
+        <div class="modal-body">
+          <div class="form-grid">
+            <div>
+              <label class="form-label">Customer Number (Unique ID):</label>
+              <input type="number" id="cust-form-number" class="form-control" required style="width: 100%;">
+              <div class="form-help">e.g. 1, 2, 3... Assigned to the customer</div>
+            </div>
+
+            <div>
+              <label class="form-label">Customer Full Name:</label>
+              <input type="text" id="cust-form-name" class="form-control" placeholder="e.g. Ramesh Kumar" required style="width: 100%;">
+            </div>
+
+            <div>
+              <label class="form-label">Mobile Phone:</label>
+              <input type="tel" id="cust-form-phone" class="form-control" placeholder="10-digit mobile" style="width: 100%;">
+            </div>
+
+            <div>
+              <label class="form-label">Area / Collection Route:</label>
+              <input type="text" id="cust-form-area" class="form-control" placeholder="e.g. Market Line" style="width: 100%;">
+            </div>
+
+            <div class="form-full">
+              <label class="form-label">Full Address / Landmark:</label>
+              <input type="text" id="cust-form-address" class="form-control" placeholder="Address..." style="width: 100%;">
+            </div>
+
+            <div>
+              <label class="form-label">Given Amount (₹):</label>
+              <input type="number" id="cust-form-given" class="form-control" value="10000" required style="width: 100%;">
+            </div>
+
+            <div>
+              <label class="form-label">Number of Instalments:</label>
+              <input type="number" id="cust-form-instalments" class="form-control" value="52" required style="width: 100%;">
+            </div>
+
+            <div>
+              <label class="form-label">Instalment Amount (₹):</label>
+              <input type="number" id="cust-form-amount" class="form-control" value="200" required style="width: 100%;">
+              <div class="form-help">Weekly or daily collection amount</div>
+            </div>
+
+            <div>
+              <label class="form-label">Loan Disbursal Date:</label>
+              <input type="date" id="cust-form-date" class="form-control" required style="width: 100%;">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-customer')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Customer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODAL: CUSTOMER PASSBOOK & 52-WEEK LEDGER      -->
+  <!-- ============================================== -->
+  <div id="modal-passbook" class="modal-overlay">
+    <div class="modal-dialog large">
+      <div class="modal-header">
+        <h3 class="modal-title" id="passbook-modal-title">Customer Passbook</h3>
+        <button class="modal-close" onclick="closeModal('modal-passbook')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="passbook-header-info"></div>
+
+        <div style="font-weight: 700; font-size: 14px; margin-bottom: 8px; color: #1e293b;">
+          52-Week Chronological Instalment Statement
+        </div>
+        <div class="data-table-container" style="max-height: 380px; overflow-y: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Instalment</th>
+                <th>Due Amount</th>
+                <th>Status</th>
+                <th>Paid Date</th>
+                <th>Receipt #</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="passbook-table-body">
+              <!-- Rendered by app.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="passbook-whatsapp-btn" class="btn btn-success">📲 Share on WhatsApp</button>
+        <button type="button" class="btn btn-outline" onclick="window.print()">🖨️ Print Passbook</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-passbook')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="app-toast" style="display: none; position: fixed; bottom: 24px; right: 24px; background: #1e293b; color: #ffffff; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); z-index: 200;"></div>
+
+  <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="firebase-sync.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
