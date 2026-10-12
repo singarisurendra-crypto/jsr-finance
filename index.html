@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 
@@ -62,7 +62,7 @@
           <path d="M9 3v18"/>
           <path d="M15 3v18"/>
         </svg>
-        <span class="nav-text">52-Instalment Sheet</span>
+        <span class="nav-text">Instalment Sheet</span>
       </a>
       <a class="nav-link" data-tab="customers">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -195,8 +195,8 @@
       <section id="view-collections" class="screen-view">
         <div class="view-header">
           <div>
-            <h1 class="view-title">Instalment Collection Sheet</h1>
-            <p class="view-subtitle">Table format with customer numbers and 1 to 52 instalment reception status.</p>
+            <h1 class="view-title">Instalment Sheet</h1>
+            <p class="view-subtitle">Live weekly collection ledger with 1-click status toggling.</p>
           </div>
           <div class="btn-group">
             <input type="text" id="global-search-input" class="form-control" placeholder="🔍 Search Cust # / Name..." style="width: 220px;">
@@ -209,6 +209,15 @@
             <button class="btn btn-outline" onclick="window.print()">🖨️ Print Sheet</button>
             <button class="btn btn-primary" onclick="openAddCustomerModal()">+ Add Customer</button>
           </div>
+        </div>
+
+        <!-- Sheet Info Strip & Mobile Swipe Indicator -->
+        <div class="sheet-info-strip">
+          <div class="sheet-badges">
+            <span class="sheet-badge">📋 52 Weeks Grid</span>
+            <span class="sheet-badge green">✓ Click / Tap to Mark Paid</span>
+          </div>
+          <div class="mobile-swipe-hint">👉 Swipe right to view all 52 weeks 👈</div>
         </div>
 
         <!-- The 52-Column Spreadhseet Matrix -->
@@ -565,7 +574,7 @@
         <path d="M9 3v18"/>
         <path d="M15 3v18"/>
       </svg>
-      <span class="label">52-Sheet</span>
+      <span class="label">Instalments</span>
     </button>
     <button class="mobile-nav-item" data-tab="customers">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -596,8 +605,8 @@
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=7"></script>
-  <script src="firebase-sync.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="firebase-config.js?v=8"></script>
+  <script src="firebase-sync.js?v=8"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
