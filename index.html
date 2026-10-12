@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
@@ -39,10 +39,6 @@
         <span>Today's Cash:</span>
         <strong id="header-today" style="color: #86efac;">₹ 0</strong>
       </div>
-      <div class="stat-pill" id="cloud-status-pill">
-        <span>☁️ Storage:</span>
-        <strong style="color: #cbd5e1;">Local Mode</strong>
-      </div>
     </div>
   </header>
 
@@ -69,11 +65,6 @@
         <span class="icon">🛠️</span>
         <span>Settings & Config</span>
       </a>
-
-      <div class="sidebar-footer">
-        <div style="font-weight: 600; color: #475569; margin-bottom: 4px;">Zero-Install Local App</div>
-        <div>Offline ready & private. Data securely saved in your browser.</div>
-      </div>
     </aside>
 
     <!-- Main Content Workspace -->
@@ -241,7 +232,8 @@
           </div>
         </div>
 
-        <div class="data-table-container">
+        <!-- Desktop High-Density Data Table -->
+        <div class="data-table-container desktop-only-table">
           <table class="data-table">
             <thead>
               <tr>
@@ -262,6 +254,11 @@
               <!-- Populated by app.js -->
             </tbody>
           </table>
+        </div>
+
+        <!-- Mobile-First Responsive Customer Cards (Thumb-friendly on phones) -->
+        <div id="customers-mobile-cards" class="mobile-cards-list">
+          <!-- Populated by app.js -->
         </div>
       </section>
 
@@ -385,45 +382,6 @@
                 🧹 Clear Demo Data (Start Clean for Live Use)
               </button>
             </div>
-          </div>
-
-          <!-- Google Cloud / Firebase Connection Card -->
-          <div class="card" style="grid-column: span 2; margin-top: 10px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-              <div>
-                <h3 style="font-size: 16px; color: #1e293b; display: flex; align-items: center; gap: 8px;">
-                  ☁️ Google Cloud / Firebase Database Connection
-                </h3>
-                <p style="font-size: 13px; color: #64748b; margin-top: 2px;">
-                  Connect to Google Cloud Firestore for real-time multi-device sync across all phones & computers.
-                </p>
-              </div>
-              <span id="settings-cloud-badge" class="badge-received" style="width: auto; padding: 4px 12px; background: #e0f2fe; color: #0369a1;">
-                Zero Install Cloud Sync
-              </span>
-            </div>
-
-            <form onsubmit="handleSaveCloudCredentials(event)" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
-              <div>
-                <label class="form-label">Firebase Project ID:</label>
-                <input type="text" id="gcp-project-id" class="form-control" value="jsr-finance-app-4a72e" style="width: 100%;" required>
-              </div>
-              <div>
-                <label class="form-label">Firebase Web API Key:</label>
-                <input type="text" id="gcp-api-key" class="form-control" placeholder="AIzaSy..." style="width: 100%;" required>
-              </div>
-              <div>
-                <label class="form-label">Firebase App ID:</label>
-                <input type="text" id="gcp-app-id" class="form-control" placeholder="1:123456:web:..." style="width: 100%;">
-              </div>
-              <div style="grid-column: span 3; display: flex; gap: 10px; align-items: center;">
-                <button type="submit" class="btn btn-primary">Connect & Sync with Google Cloud</button>
-                <button type="button" class="btn btn-outline" onclick="disconnectCloud()">Disconnect Cloud</button>
-                <span style="font-size: 12px; color: #64748b;">
-                  Credentials are also configurable in <code>firebase-config.js</code>.
-                </span>
-              </div>
-            </form>
           </div>
         </div>
       </section>
@@ -565,11 +523,35 @@
   <!-- Toast Notification -->
   <div id="app-toast" style="display: none; position: fixed; bottom: 24px; right: 24px; background: #1e293b; color: #ffffff; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); z-index: 200;"></div>
 
+  <!-- Mobile Bottom Navigation Bar (High-Tech Mobile Experience) -->
+  <nav class="mobile-nav" id="mobile-nav">
+    <button class="mobile-nav-item active" data-tab="summary">
+      <span class="icon">📊</span>
+      <span class="label">Summary</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="collections">
+      <span class="icon">📋</span>
+      <span class="label">52-Sheet</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="customers">
+      <span class="icon">👥</span>
+      <span class="label">Customers</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="schemes">
+      <span class="icon">⚙️</span>
+      <span class="label">Schemes</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="settings">
+      <span class="icon">🛠️</span>
+      <span class="label">Settings</span>
+    </button>
+  </nav>
+
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=4"></script>
-  <script src="firebase-sync.js?v=4"></script>
-  <script src="app.js?v=4"></script>
+  <script src="firebase-config.js?v=5"></script>
+  <script src="firebase-sync.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
