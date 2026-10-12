@@ -91,10 +91,15 @@ function loadData() {
 
     const savedCustomers = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
     if (savedCustomers) {
-      state.customers = JSON.parse(savedCustomers);
+      try {
+        const parsed = JSON.parse(savedCustomers);
+        // Automatically filter out any starter demo data for live production use
+        state.customers = Array.isArray(parsed) ? parsed.filter(c => c && c.id && !c.id.startsWith('DEMO-')) : [];
+      } catch (e) {
+        state.customers = [];
+      }
     } else {
-      // Auto-load starter demo data if first time
-      loadSampleDemoData(false);
+      state.customers = [];
     }
   } catch (err) {
     console.error('Error loading data from localStorage', err);
