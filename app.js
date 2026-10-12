@@ -363,7 +363,7 @@ function renderDashboard() {
 }
 
 // ----------------------------------------------------
-// SCREEN 2: 52-INSTALMENT COLLECTION SHEET (MATRIX GRID)
+// SCREEN 2: INSTALMENT COLLECTION SHEET (MATRIX GRID)
 // ----------------------------------------------------
 function renderCollectionMatrix() {
   const tableHead = document.getElementById('matrix-table-head');
@@ -418,8 +418,8 @@ function renderCollectionMatrix() {
           <span style="font-weight:700; color:#1e3a8a;">#${cust.customerNumber}</span>
         </td>
         <td class="sticky-col-2">
-          <div style="font-weight:600;">${cust.fullName}</div>
-          <div style="font-size:11px; color:#64748b;">${cust.phone || 'No Phone'}</div>
+          <div style="font-weight:600; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; max-width:140px;" title="${cust.fullName}">${cust.fullName}</div>
+          <div style="font-size:11px; color:#64748b; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; max-width:140px;">${cust.phone || 'No Phone'}</div>
         </td>
         <td class="sticky-col-3">
           <div style="font-weight:600; color:#0f172a;">${formatMoney(cust.givenAmount)}</div>
