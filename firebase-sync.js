@@ -165,9 +165,12 @@ function disconnectCloud() {
   isCloudSyncActive = false;
   firestoreDb = null;
   updateCloudStatusIndicator(false);
-  document.getElementById('gcp-project-id').value = '';
-  document.getElementById('gcp-api-key').value = '';
-  document.getElementById('gcp-app-id').value = '';
-  showToast('Disconnected from Google Cloud. Switched to local storage.');
+  const pEl = document.getElementById('gcp-project-id');
+  if (pEl) pEl.value = '';
+  const aEl = document.getElementById('gcp-api-key');
+  if (aEl) aEl.value = '';
+  const appEl = document.getElementById('gcp-app-id');
+  if (appEl) appEl.value = '';
+  showToast('Switched to offline local storage.');
 }
 
