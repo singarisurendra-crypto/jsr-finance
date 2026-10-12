@@ -85,7 +85,6 @@
             <p class="view-subtitle">High-level portfolio performance, capital recovery, and collection tracking.</p>
           </div>
           <div class="btn-group">
-            <button class="btn btn-outline" onclick="loadSampleDemoData(true)">🔄 Reload Demo Data</button>
             <button class="btn btn-primary" onclick="openAddCustomerModal()">+ New Customer Loan</button>
           </div>
         </div>
@@ -371,12 +370,8 @@
                 <input type="file" accept=".json" onchange="importDataBackup(event)" style="display: none;">
               </label>
 
-              <button class="btn btn-outline" onclick="loadSampleDemoData(true)" style="width: 100%; justify-content: flex-start;">
-                🔄 Reset & Load Sample Data
-              </button>
-
-              <button class="btn btn-danger btn-sm" onclick="clearAllData()" style="width: 100%; margin-top: 20px;">
-                ⚠️ Clear All Customer Records
+              <button class="btn btn-outline" onclick="clearAllData()" style="width: 100%; justify-content: flex-start; color: #b91c1c;">
+                🧹 Clear Demo Data (Start Clean for Live Use)
               </button>
             </div>
           </div>
@@ -400,7 +395,7 @@
             <form onsubmit="handleSaveCloudCredentials(event)" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
               <div>
                 <label class="form-label">Firebase Project ID:</label>
-                <input type="text" id="gcp-project-id" class="form-control" placeholder="e.g. jsr-finance" style="width: 100%;" required>
+                <input type="text" id="gcp-project-id" class="form-control" value="jsr-finance-app-4a72e" style="width: 100%;" required>
               </div>
               <div>
                 <label class="form-label">Firebase Web API Key:</label>
