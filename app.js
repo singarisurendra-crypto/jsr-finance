@@ -123,8 +123,22 @@ function updateSoundToggleButton() {
   }
 }
 
+// Screen Zoom Management (Default: 90% to fit full system screens)
+function applyScreenZoom(zoomVal) {
+  const zoom = zoomVal || localStorage.getItem('jsr_screen_zoom') || '0.9';
+  document.body.style.zoom = zoom;
+  localStorage.setItem('jsr_screen_zoom', zoom);
+
+  const headerSelect = document.getElementById('screen-zoom-select');
+  if (headerSelect) headerSelect.value = zoom;
+
+  const settingSelect = document.getElementById('setting-screen-zoom');
+  if (settingSelect) settingSelect.value = zoom;
+}
+
 // Initialize App
 function initApp() {
+  applyScreenZoom();
   loadData();
   setupEventListeners();
   updateHeaderStats();
@@ -1713,6 +1727,8 @@ function renderSettings() {
   document.getElementById('setting-default-given').value = state.settings.defaultGivenAmount;
   document.getElementById('setting-default-instalments').value = state.settings.defaultInstalments;
   document.getElementById('setting-default-inst-amount').value = state.settings.defaultInstalmentAmount;
+  const zoomSelect = document.getElementById('setting-screen-zoom');
+  if (zoomSelect) zoomSelect.value = localStorage.getItem('jsr_screen_zoom') || '0.9';
 }
 
 function handleSaveSettings(event) {
@@ -1725,6 +1741,9 @@ function handleSaveSettings(event) {
   state.settings.defaultGivenAmount = Number(document.getElementById('setting-default-given').value) || 10000;
   state.settings.defaultInstalments = Number(document.getElementById('setting-default-instalments').value) || 52;
   state.settings.defaultInstalmentAmount = Number(document.getElementById('setting-default-inst-amount').value) || 200;
+
+  const zoomSelect = document.getElementById('setting-screen-zoom');
+  if (zoomSelect) applyScreenZoom(zoomSelect.value);
 
   saveData();
   updateHeaderStats();
