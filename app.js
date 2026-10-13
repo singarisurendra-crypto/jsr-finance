@@ -279,6 +279,7 @@ function switchTab(tabName) {
   if (tabName === 'summary') renderDashboard();
   if (tabName === 'collections') renderCollectionMatrix();
   if (tabName === 'customers') renderCustomersTable();
+  if (tabName === 'analytics') renderAnalytics();
   if (tabName === 'schemes') renderSchemesTable();
   if (tabName === 'settings') renderSettings();
 }
@@ -308,8 +309,9 @@ function renderDashboard() {
 
   // Recovery Progress Bar
   const progFill = document.getElementById('dashboard-progress-fill');
-  progFill.style.width = `${stats.recoveryPercent}%`;
-  document.getElementById('dashboard-progress-label').textContent = `${stats.recoveryPercent}% Complete (${formatMoney(stats.totalCollected)} of ${formatMoney(stats.totalDisbursed)})`;
+  if (progFill) progFill.style.width = `${stats.recoveryPercent}%`;
+  const progLabel = document.getElementById('dashboard-progress-label');
+  if (progLabel) progLabel.textContent = `${stats.recoveryPercent}% Complete (${formatMoney(stats.totalCollected)} of ${formatMoney(stats.totalDisbursed)})`;
 
   // Milestone distribution counts
   let w1to10 = 0, w11to25 = 0, w26to40 = 0, w41to52 = 0;
@@ -321,22 +323,65 @@ function renderDashboard() {
     else w41to52++;
   });
 
-  document.getElementById('dist-w1-10').textContent = `${w1to10} Cust`;
-  document.getElementById('dist-w11-25').textContent = `${w11to25} Cust`;
-  document.getElementById('dist-w26-40').textContent = `${w26to40} Cust`;
-  document.getElementById('dist-w41-52').textContent = `${w41to52} Cust`;
+  const dist1 = document.getElementById('dist-w1-10');
+  const dist2 = document.getElementById('dist-w11-25');
+  const dist3 = document.getElementById('dist-w26-40');
+  const dist4 = document.getElementById('dist-w41-52');
+  if (dist1) dist1.textContent = `${w1to10} Cust`;
+  if (dist2) dist2.textContent = `${w11to25} Cust`;
+  if (dist3) dist3.textContent = `${w26to40} Cust`;
+  if (dist4) dist4.textContent = `${w41to52} Cust`;
 
-  // Recent Collections Feed
+  // Render filtered recent transactions feed
+  renderRecentTransactions();
+}
+
+// Recent Collections Feed with Interactive Filtering
+function renderRecentTransactions() {
   const recentList = document.getElementById('recent-transactions-list');
-  const allPaid = [];
+  if (!recentList) return;
+
+  const dateFilter = document.getElementById('recent-date-filter')?.value || 'all';
+  const searchQuery = (document.getElementById('recent-search-filter')?.value || '').toLowerCase().trim();
+  const routeFilter = document.getElementById('recent-route-filter')?.value || 'all';
+
+  // Populate routes dropdown if empty
+  const routeSelect = document.getElementById('recent-route-filter');
+  if (routeSelect && routeSelect.options.length <= 1) {
+    const uniqueRoutes = Array.from(new Set(state.customers.map(c => c.areaRoute).filter(Boolean)));
+    uniqueRoutes.forEach(route => {
+      const opt = document.createElement('option');
+      opt.value = route;
+      opt.textContent = `📍 ${route}`;
+      routeSelect.appendChild(opt);
+    });
+  }
+
+  // Get current date benchmarks
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  
+  const weekAgo = new Date(now);
+  weekAgo.setDate(now.getDate() - 7);
+  const weekAgoStr = weekAgo.toISOString().split('T')[0];
+
+  const monthStartStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+
+  let allPaid = [];
   state.customers.forEach((c) => {
     (c.instalments || []).forEach((inst) => {
       if (inst && inst.status === 'Received') {
         allPaid.push({
+          customerId: c.id,
           customerNumber: c.customerNumber,
+          loanNumber: c.loanNumber || 1,
           customerName: c.fullName,
+          areaRoute: c.areaRoute || 'General',
           instNumber: inst.number,
-          paidDate: inst.paidDate || 'Today',
+          paidDate: inst.paidDate || todayStr,
           amount: inst.paidAmount || c.instalmentAmount,
           receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
         });
@@ -344,21 +389,234 @@ function renderDashboard() {
     });
   });
 
-  // Sort descending by paidDate/receipt
-  allPaid.sort((a, b) => (b.paidDate || '').localeCompare(a.paidDate || '')).slice(0, 8);
+  // Apply filters
+  const filtered = allPaid.filter(item => {
+    // Date filter
+    const itemDate = item.paidDate;
+    if (dateFilter === 'today' && itemDate !== todayStr && itemDate !== 'Today') return false;
+    if (dateFilter === 'yesterday' && itemDate !== yesterdayStr) return false;
+    if (dateFilter === 'this-week' && itemDate < weekAgoStr) return false;
+    if (dateFilter === 'this-month' && itemDate < monthStartStr) return false;
 
-  if (allPaid.length === 0) {
-    recentList.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">No collections recorded yet.</td></tr>`;
+    // Search filter
+    if (searchQuery) {
+      const matchNum = item.customerNumber.toString().includes(searchQuery);
+      const matchName = item.customerName.toLowerCase().includes(searchQuery);
+      if (!matchNum && !matchName) return false;
+    }
+
+    // Route filter
+    if (routeFilter !== 'all' && item.areaRoute !== routeFilter) return false;
+
+    return true;
+  });
+
+  // Sort descending by paidDate/receipt
+  filtered.sort((a, b) => (b.paidDate || '').localeCompare(a.paidDate || ''));
+
+  // Update Summary count
+  const countEl = document.getElementById('recent-summary-count');
+  const totalAmount = filtered.reduce((sum, item) => sum + item.amount, 0);
+  if (countEl) {
+    countEl.textContent = `Showing ${filtered.length} collections · Total: ${formatMoney(totalAmount)}`;
+  }
+
+  if (filtered.length === 0) {
+    recentList.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No collections match the selected filters.</td></tr>`;
   } else {
-    recentList.innerHTML = allPaid.map((item) => `
+    recentList.innerHTML = filtered.slice(0, 50).map((item) => `
       <tr>
-        <td><strong>#${item.customerNumber}</strong> - ${item.customerName}</td>
+        <td>
+          <strong>#${item.customerNumber}</strong>${item.loanNumber > 1 ? ` <span class="loan-badge">L${item.loanNumber}</span>` : ''} - ${item.customerName}
+        </td>
         <td>Instalment #${item.instNumber}</td>
-        <td><span style="color:#16a34a; font-weight:600;">+ ${formatMoney(item.amount)}</span></td>
+        <td><span style="color:#16a34a; font-weight:700;">+ ${formatMoney(item.amount)}</span></td>
         <td>${item.paidDate}</td>
+        <td><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px;">${item.areaRoute}</span></td>
         <td><span class="badge-received" style="width:auto; padding:2px 8px;">Received</span></td>
       </tr>
     `).join('');
+  }
+}
+
+// ----------------------------------------------------
+// ANALYTICS & INSIGHTS ENGINE
+// ----------------------------------------------------
+function renderAnalytics() {
+  const customers = state.customers || [];
+  
+  let totalDisbursed = 0;
+  let totalPayable = 0;
+  let totalCollected = 0;
+  let totalExpectedProfit = 0;
+  let totalRealizedProfit = 0;
+  let activeLoansCount = 0;
+  let completedLoansCount = 0;
+  let totalDueWeeks = 0;
+  let totalPaidWeeks = 0;
+  let nextWeekProjected = 0;
+
+  const routeMap = {};
+  const weekCollectionMap = {};
+  for (let w = 1; w <= 52; w++) {
+    weekCollectionMap[w] = 0;
+  }
+
+  customers.forEach(c => {
+    const stats = getCustomerStats(c);
+    totalDisbursed += (c.givenAmount || 0);
+    totalPayable += (stats.totalPayable || 0);
+    totalCollected += (stats.totalPaid || 0);
+    totalExpectedProfit += (stats.expectedProfit || 0);
+    totalRealizedProfit += (stats.realizedProfit || 0);
+
+    if (stats.isCompleted) {
+      completedLoansCount++;
+    } else {
+      activeLoansCount++;
+      nextWeekProjected += (c.instalmentAmount || 0);
+    }
+
+    const instCount = c.totalInstalments || 52;
+    totalDueWeeks += instCount;
+    totalPaidWeeks += stats.paidCount;
+
+    // Route map
+    const route = c.areaRoute || 'General';
+    if (!routeMap[route]) {
+      routeMap[route] = { route, count: 0, disbursed: 0, collected: 0 };
+    }
+    routeMap[route].count++;
+    routeMap[route].disbursed += (c.givenAmount || 0);
+    routeMap[route].collected += (stats.totalPaid || 0);
+
+    // Week collections map
+    (c.instalments || []).forEach(inst => {
+      if (inst && inst.status === 'Received') {
+        const w = inst.number;
+        if (w >= 1 && w <= 52) {
+          weekCollectionMap[w] += (inst.paidAmount || c.instalmentAmount || 0);
+        }
+      }
+    });
+  });
+
+  // Rates
+  const principalRecovered = Math.min(totalDisbursed, totalCollected);
+  const recoveryRate = totalDisbursed > 0 ? Math.round((principalRecovered / totalDisbursed) * 100) : 0;
+  const profitYield = totalDisbursed > 0 ? ((totalRealizedProfit / totalDisbursed) * 100).toFixed(1) : '0.0';
+  const collectionVelocity = totalDueWeeks > 0 ? Math.round((totalPaidWeeks / totalDueWeeks) * 100) : 0;
+  const remainingOutlay = Math.max(0, totalDisbursed - principalRecovered);
+
+  // Set Top KPI cards
+  const elRate = document.getElementById('ana-recovery-rate');
+  const elRateSub = document.getElementById('ana-recovery-sub');
+  if (elRate) elRate.textContent = `${recoveryRate}%`;
+  if (elRateSub) elRateSub.textContent = `${formatMoney(principalRecovered)} of ${formatMoney(totalDisbursed)}`;
+
+  const elYield = document.getElementById('ana-profit-yield');
+  const elYieldSub = document.getElementById('ana-profit-sub');
+  if (elYield) elYield.textContent = `${profitYield}%`;
+  if (elYieldSub) elYieldSub.textContent = `+ ${formatMoney(totalRealizedProfit)} Earned`;
+
+  const elVel = document.getElementById('ana-collection-rate');
+  const elVelSub = document.getElementById('ana-velocity-sub');
+  if (elVel) elVel.textContent = `${collectionVelocity}%`;
+  if (elVelSub) elVelSub.textContent = `${totalPaidWeeks} of ${totalDueWeeks} Weeks`;
+
+  const elProj = document.getElementById('ana-projected-week');
+  if (elProj) elProj.textContent = formatMoney(nextWeekProjected);
+
+  // Meter Bar
+  const meterPct = totalPayable > 0 ? Math.round((totalCollected / totalPayable) * 100) : 0;
+  const elMeterPct = document.getElementById('ana-meter-pct');
+  if (elMeterPct) elMeterPct.textContent = `${meterPct}%`;
+
+  const prinPct = totalPayable > 0 ? Math.round((principalRecovered / totalPayable) * 100) : 0;
+  const profPct = totalPayable > 0 ? Math.round((totalRealizedProfit / totalPayable) * 100) : 0;
+
+  const barPrin = document.getElementById('ana-bar-principal');
+  const barProf = document.getElementById('ana-bar-profit');
+  if (barPrin) barPrin.style.width = `${prinPct}%`;
+  if (barProf) barProf.style.width = `${profPct}%`;
+
+  const elPrinRec = document.getElementById('ana-stat-prin-rec');
+  const elProfRec = document.getElementById('ana-stat-prof-rec');
+  const elRem = document.getElementById('ana-stat-remaining');
+  if (elPrinRec) elPrinRec.textContent = formatMoney(principalRecovered);
+  if (elProfRec) elProfRec.textContent = formatMoney(totalRealizedProfit);
+  if (elRem) elRem.textContent = formatMoney(remainingOutlay);
+
+  // Weekly Collection Bar Chart (SVG / HTML Flex bars)
+  const chartEl = document.getElementById('ana-weekly-chart');
+  if (chartEl) {
+    let maxVal = 1;
+    for (let w = 1; w <= 16; w++) {
+      if (weekCollectionMap[w] > maxVal) maxVal = weekCollectionMap[w];
+    }
+    let chartHtml = '';
+    for (let w = 1; w <= 16; w++) {
+      const val = weekCollectionMap[w] || 0;
+      const heightPct = Math.max(8, Math.round((val / maxVal) * 100));
+      chartHtml += `
+        <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end;">
+          <div style="font-size:10px; font-weight:700; color:#2563eb;">${val > 0 ? (val >= 1000 ? (val/1000).toFixed(0)+'k' : val) : ''}</div>
+          <div style="width:100%; max-width:24px; height:${heightPct}%; background:${val > 0 ? 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)' : '#e2e8f0'}; border-radius:4px 4px 0 0;" title="Week ${w}: ${formatMoney(val)}"></div>
+          <div style="font-size:10px; color:#64748b; font-weight:600;">W${w}</div>
+        </div>
+      `;
+    }
+    chartEl.innerHTML = chartHtml;
+  }
+
+  // Route breakdown table
+  const routesTbody = document.getElementById('ana-routes-table-body');
+  if (routesTbody) {
+    const routeList = Object.values(routeMap);
+    if (routeList.length === 0) {
+      routesTbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:16px; color:#94a3b8;">No route data yet.</td></tr>';
+    } else {
+      routesTbody.innerHTML = routeList.map(r => {
+        const recPct = r.disbursed > 0 ? Math.round((r.collected / r.disbursed) * 100) : 0;
+        return `
+          <tr>
+            <td><strong>${r.route}</strong></td>
+            <td>${r.count}</td>
+            <td>${formatMoney(r.disbursed)}</td>
+            <td><strong style="color:#16a34a;">${formatMoney(r.collected)}</strong></td>
+            <td><span style="font-weight:700; color:#2563eb;">${recPct}%</span></td>
+          </tr>
+        `;
+      }).join('');
+    }
+  }
+
+  // Health Radar list
+  const healthListEl = document.getElementById('ana-health-list');
+  if (healthListEl) {
+    healthListEl.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px;">
+        <div>
+          <strong style="color:#15803d; font-size:13px;">✓ Completed Loans (100% Repaid)</strong>
+          <div style="font-size:11px; color:#166534;">Fully recovered principal & maximum profit collected</div>
+        </div>
+        <span style="font-size:18px; font-weight:800; color:#15803d;">${completedLoansCount}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px;">
+        <div>
+          <strong style="color:#1d4ed8; font-size:13px;">⚡ Active Generating Loans</strong>
+          <div style="font-size:11px; color:#1e40af;">Currently paying weekly instalments as scheduled</div>
+        </div>
+        <span style="font-size:18px; font-weight:800; color:#1d4ed8;">${activeLoansCount}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px;">
+        <div>
+          <strong style="color:#b45309; font-size:13px;">💰 Outstanding Total Balance</strong>
+          <div style="font-size:11px; color:#92400e;">Remaining collections to be gathered across active loans</div>
+        </div>
+        <span style="font-size:18px; font-weight:800; color:#b45309;">${formatMoney(totalPayable - totalCollected)}</span>
+      </div>
+    `;
   }
 }
 
@@ -416,6 +674,9 @@ function renderCollectionMatrix() {
       <tr data-customer-id="${cust.id}">
         <td class="sticky-col-1">
           <span style="font-weight:700; color:#1e3a8a;">#${cust.customerNumber}</span>
+          ${(cust.loanNumber && cust.loanNumber > 1) || state.customers.filter(c => c.customerNumber.toString() === cust.customerNumber.toString()).length > 1
+            ? ` <span class="loan-badge">L${cust.loanNumber || 1}</span>`
+            : ''}
         </td>
         <td class="sticky-col-2">
           <div style="font-weight:600; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; max-width:140px;" title="${cust.fullName}">${cust.fullName}</div>
@@ -443,7 +704,7 @@ function renderCollectionMatrix() {
       bodyHtml += `
         <td class="inst-cell" 
             onclick="toggleInstalmentReceived('${cust.id}', ${w})" 
-            title="Customer #${cust.customerNumber} - Week ${w}: ${isReceived ? 'Received on ' + (inst.paidDate || 'Today') : 'Click to mark Received'}">
+            title="Customer #${cust.customerNumber}${cust.loanNumber > 1 ? ` (Loan ${cust.loanNumber})` : ''} - Week ${w}: ${isReceived ? 'Received on ' + (inst.paidDate || 'Today') : 'Click to mark Received'}">
           ${
             isReceived
               ? `<span class="badge-received">✓</span>`
@@ -505,17 +766,51 @@ function handleQuickReceive(event) {
   if (event) event.preventDefault();
 
   const custNumInput = document.getElementById('quick-cust-num');
-  const custNum = custNumInput.value.trim();
+  const rawInput = custNumInput.value.trim();
 
-  if (!custNum) {
-    alert('Please enter a Customer Number');
+  if (!rawInput) {
+    alert('Please enter a Customer Number (e.g. 1, or 1-2 for Loan 2)');
     return;
   }
 
-  const customer = state.customers.find((c) => c.customerNumber.toString() === custNum);
-  if (!customer) {
-    alert(`Customer #${custNum} not found.`);
+  // Parse input for loan format e.g. "1-2", "1L2", "1 l 2", "1/2", "1"
+  let targetCustNum = rawInput;
+  let targetLoanNum = null;
+  const match = rawInput.match(/^(\d+)[\s\-_/lL]+(\d+)$/);
+  if (match) {
+    targetCustNum = match[1];
+    targetLoanNum = parseInt(match[2], 10);
+  }
+
+  // Find matching customer(s)
+  const matches = state.customers.filter((c) => c.customerNumber.toString() === targetCustNum);
+  if (matches.length === 0) {
+    alert(`Customer #${targetCustNum} not found.`);
     return;
+  }
+
+  let customer = null;
+  if (targetLoanNum !== null) {
+    customer = matches.find((c) => (Number(c.loanNumber) || 1) === targetLoanNum);
+    if (!customer) {
+      alert(`Customer #${targetCustNum} does not have Loan #${targetLoanNum}. Available loans: ${matches.map(m => 'L' + (m.loanNumber || 1)).join(', ')}`);
+      return;
+    }
+  } else if (matches.length === 1) {
+    customer = matches[0];
+  } else {
+    // Multiple loans exist for this customer: select first with pending instalment
+    const pendingLoans = matches.filter((c) => {
+      const stats = getCustomerStats(c);
+      return stats.pendingCount > 0;
+    });
+
+    if (pendingLoans.length === 0) {
+      alert(`All loans for Customer #${targetCustNum} (${matches[0].fullName}) are already completed!`);
+      return;
+    }
+
+    customer = pendingLoans[0]; // defaults to lowest active loan
   }
 
   // Find next pending instalment
@@ -532,7 +827,7 @@ function handleQuickReceive(event) {
   }
 
   if (nextPending === 0) {
-    alert(`Customer #${custNum} (${customer.fullName}) has already paid all ${totalInst} instalments!`);
+    alert(`Customer #${customer.customerNumber} Loan #${customer.loanNumber || 1} (${customer.fullName}) has already paid all ${totalInst} instalments!`);
     return;
   }
 
@@ -542,8 +837,10 @@ function handleQuickReceive(event) {
   custNumInput.value = '';
   custNumInput.focus();
 
-  // Show brief feedback toast
-  showToast(`Received Week #${nextPending} for #${customer.customerNumber} (${customer.fullName})`);
+  // Show brief feedback toast with multi-loan guidance
+  const loanTag = (customer.loanNumber && customer.loanNumber > 1) || matches.length > 1 ? ` L${customer.loanNumber || 1}` : '';
+  const multiTip = matches.length > 1 ? ` (Tip: type ${targetCustNum}-2 for Loan 2)` : '';
+  showToast(`Received Week #${nextPending} for #${customer.customerNumber}${loanTag} (${customer.fullName})${multiTip}`);
 }
 
 // ----------------------------------------------------
@@ -574,9 +871,13 @@ function renderCustomersTable() {
   tbody.innerHTML = filtered.map((c) => {
     const stats = getCustomerStats(c);
     const totalInst = c.totalInstalments || 52;
+    const hasMultipleLoans = (c.loanNumber && c.loanNumber > 1) || state.customers.filter(x => x.customerNumber.toString() === c.customerNumber.toString()).length > 1;
     return `
       <tr>
-        <td><strong style="color:#1e3a8a; font-size:14px;">#${c.customerNumber}</strong></td>
+        <td>
+          <strong style="color:#1e3a8a; font-size:14px;">#${c.customerNumber}</strong>
+          ${hasMultipleLoans ? ` <span class="loan-badge">L${c.loanNumber || 1}</span>` : ''}
+        </td>
         <td>
           <div style="font-weight:600;">${c.fullName}</div>
           <div style="font-size:12px; color:#64748b;">${c.address || 'No Address'}</div>
@@ -600,6 +901,7 @@ function renderCustomersTable() {
         <td>
           <div class="btn-group">
             <button class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
+            <button class="btn btn-outline btn-sm" onclick="openAddLoanForCustomer('${c.customerNumber}')" title="Issue additional loan to customer" style="color: #2563eb; font-weight: 600;">+ Loan</button>
             <button class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${c.id}')">Edit</button>
             <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" title="Delete">Delete</button>
           </div>
@@ -614,11 +916,13 @@ function renderCustomersTable() {
     mobileContainer.innerHTML = filtered.map((c) => {
       const stats = getCustomerStats(c);
       const totalInst = c.totalInstalments || 52;
+      const hasMultipleLoans = (c.loanNumber && c.loanNumber > 1) || state.customers.filter(x => x.customerNumber.toString() === c.customerNumber.toString()).length > 1;
       return `
         <div class="customer-card">
           <div class="customer-card-header">
             <div class="customer-card-title">
               <span class="customer-card-num">#${c.customerNumber}</span>
+              ${hasMultipleLoans ? `<span class="loan-badge">L${c.loanNumber || 1}</span>` : ''}
               <div>
                 <div class="customer-card-name">${c.fullName}</div>
                 <div class="customer-card-meta">${c.phone || 'No Phone'} • <span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-size:11px;">${c.areaRoute || 'General'}</span></div>
@@ -666,6 +970,7 @@ function renderCustomersTable() {
 
           <div class="customer-card-actions">
             <button class="btn btn-outline" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
+            <button class="btn btn-outline" onclick="openAddLoanForCustomer('${c.customerNumber}')" style="color: #2563eb; font-weight: 600;">+ Loan</button>
             <button class="btn btn-outline" onclick="openEditCustomerModal('${c.id}')">Edit</button>
             <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" style="flex:0; padding:8px 12px;">Delete</button>
           </div>
@@ -694,29 +999,187 @@ function updateCustomerModalProfitCalc() {
   if (profitPctEl) profitPctEl.textContent = `${profitPct}%`;
 }
 
+// Bi-directional Auto Calculation: Margin % -> Instalment Amount
+function calculateFromMargin() {
+  const given = Number(document.getElementById('cust-form-given')?.value) || 0;
+  const marginPct = Number(document.getElementById('cust-form-margin')?.value) || 0;
+  const instalments = Number(document.getElementById('cust-form-instalments')?.value) || 52;
+  if (given > 0 && instalments > 0) {
+    const repayable = Math.round(given * (1 + marginPct / 100));
+    const instAmount = Math.round(repayable / instalments);
+    const amountInput = document.getElementById('cust-form-amount');
+    if (amountInput) amountInput.value = instAmount;
+  }
+  updateCustomerModalProfitCalc();
+}
+
+// Bi-directional Auto Calculation: Instalment Amount -> Margin %
+function calculateFromAmount() {
+  const given = Number(document.getElementById('cust-form-given')?.value) || 0;
+  const instAmount = Number(document.getElementById('cust-form-amount')?.value) || 0;
+  const instalments = Number(document.getElementById('cust-form-instalments')?.value) || 52;
+  if (given > 0 && instalments > 0 && instAmount > 0) {
+    const repayable = instalments * instAmount;
+    const profit = repayable - given;
+    const marginPct = ((profit / given) * 100).toFixed(1);
+    const marginInput = document.getElementById('cust-form-margin');
+    if (marginInput) marginInput.value = marginPct;
+  }
+  updateCustomerModalProfitCalc();
+}
+
+function setMarginPreset(pct) {
+  const marginInput = document.getElementById('cust-form-margin');
+  if (marginInput) {
+    marginInput.value = pct;
+    calculateFromMargin();
+  }
+}
+
+function setInstalmentsPreset(count) {
+  const instInput = document.getElementById('cust-form-instalments');
+  if (instInput) {
+    instInput.value = count;
+    calculateFromMargin();
+  }
+}
+
+// Multi-Loan Handling Mode Switcher
+function toggleLoanTypeMode(mode) {
+  const wrap = document.getElementById('existing-customer-selector-wrap');
+  const custNumInput = document.getElementById('cust-form-number');
+  const nameInput = document.getElementById('cust-form-name');
+  const phoneInput = document.getElementById('cust-form-phone');
+  const addressInput = document.getElementById('cust-form-address');
+  const areaInput = document.getElementById('cust-form-area');
+  const loanNumInput = document.getElementById('cust-form-loan-number');
+  const titleEl = document.getElementById('modal-customer-title');
+
+  if (mode === 'existing') {
+    if (wrap) wrap.style.display = 'block';
+    populateExistingCustomerSelect();
+    const select = document.getElementById('cust-form-existing-select');
+    if (select && select.value) {
+      handleSelectExistingCustomer(select.value);
+    }
+  } else {
+    if (wrap) wrap.style.display = 'none';
+    if (titleEl) titleEl.textContent = 'Add New Customer';
+    if (loanNumInput) loanNumInput.value = '1';
+
+    if (custNumInput) custNumInput.readOnly = false;
+    if (nameInput) nameInput.readOnly = false;
+    if (phoneInput) phoneInput.readOnly = false;
+    if (addressInput) addressInput.readOnly = false;
+    if (areaInput) areaInput.readOnly = false;
+
+    // Suggest next customer number
+    let nextNum = state.settings.nextCustNumber || 1;
+    const existingNums = new Set(state.customers.map(c => Number(c.customerNumber)));
+    while (existingNums.has(nextNum)) {
+      nextNum++;
+    }
+    if (custNumInput && !document.getElementById('form-customer-id').value) {
+      custNumInput.value = nextNum;
+    }
+  }
+}
+
+function populateExistingCustomerSelect(selectedCustNum) {
+  const select = document.getElementById('cust-form-existing-select');
+  if (!select) return;
+
+  const map = new Map();
+  state.customers.forEach(c => {
+    const num = c.customerNumber.toString();
+    if (!map.has(num)) {
+      map.set(num, { customerNumber: num, fullName: c.fullName, phone: c.phone, loans: [] });
+    }
+    map.get(num).loans.push(c);
+  });
+
+  const sorted = Array.from(map.values()).sort((a, b) => Number(a.customerNumber) - Number(b.customerNumber));
+
+  if (sorted.length === 0) {
+    select.innerHTML = '<option value="">No existing customers found</option>';
+    return;
+  }
+
+  select.innerHTML = sorted.map(c => `
+    <option value="${c.customerNumber}" ${c.customerNumber === (selectedCustNum || '').toString() ? 'selected' : ''}>
+      #${c.customerNumber} - ${c.fullName} (${c.loans.length} existing loan${c.loans.length > 1 ? 's' : ''})
+    </option>
+  `).join('');
+}
+
+function handleSelectExistingCustomer(custNum) {
+  if (!custNum) return;
+  const matching = state.customers.filter(c => c.customerNumber.toString() === custNum.toString());
+  if (matching.length === 0) return;
+
+  const base = matching[0];
+  const maxLoan = matching.reduce((max, c) => Math.max(max, Number(c.loanNumber) || 1), 1);
+  const nextLoan = maxLoan + 1;
+
+  const custNumInput = document.getElementById('cust-form-number');
+  const nameInput = document.getElementById('cust-form-name');
+  const phoneInput = document.getElementById('cust-form-phone');
+  const addressInput = document.getElementById('cust-form-address');
+  const areaInput = document.getElementById('cust-form-area');
+  const loanNumInput = document.getElementById('cust-form-loan-number');
+
+  if (custNumInput) { custNumInput.value = base.customerNumber; custNumInput.readOnly = true; }
+  if (nameInput) { nameInput.value = base.fullName; nameInput.readOnly = true; }
+  if (phoneInput) { phoneInput.value = base.phone || ''; }
+  if (addressInput) { addressInput.value = base.address || ''; }
+  if (areaInput) { areaInput.value = base.areaRoute || ''; }
+  if (loanNumInput) { loanNumInput.value = nextLoan; }
+
+  const titleEl = document.getElementById('modal-customer-title');
+  if (titleEl) titleEl.textContent = `Issue Loan #${nextLoan} to #${base.customerNumber} (${base.fullName})`;
+
+  const helpEl = document.getElementById('existing-cust-loan-count-help');
+  if (helpEl) {
+    helpEl.textContent = `Customer already has ${matching.length} loan(s). This creates separate ledger Loan #${nextLoan}.`;
+  }
+}
+
+function openAddLoanForCustomer(customerNumber) {
+  openAddCustomerModal();
+  const radioExisting = document.getElementById('loan-type-existing');
+  if (radioExisting) {
+    radioExisting.checked = true;
+    toggleLoanTypeMode('existing');
+    populateExistingCustomerSelect(customerNumber);
+    const select = document.getElementById('cust-form-existing-select');
+    if (select) {
+      select.value = customerNumber.toString();
+      handleSelectExistingCustomer(customerNumber);
+    }
+  }
+}
+
 // Open Add Customer Modal
 function openAddCustomerModal() {
   document.getElementById('modal-customer-title').textContent = 'Add New Customer';
   document.getElementById('form-customer-id').value = '';
+  document.getElementById('cust-form-loan-number').value = '1';
 
-  // Auto assign next number
-  let nextNum = state.settings.nextCustNumber || 1;
-  const existingNums = new Set(state.customers.map(c => Number(c.customerNumber)));
-  while (existingNums.has(nextNum)) {
-    nextNum++;
-  }
+  const radioNew = document.getElementById('loan-type-new');
+  if (radioNew) radioNew.checked = true;
+  toggleLoanTypeMode('new');
 
-  document.getElementById('cust-form-number').value = nextNum;
   document.getElementById('cust-form-name').value = '';
   document.getElementById('cust-form-phone').value = '';
   document.getElementById('cust-form-address').value = '';
   document.getElementById('cust-form-area').value = 'Main Area';
   document.getElementById('cust-form-given').value = state.settings.defaultGivenAmount || 10000;
+  document.getElementById('cust-form-margin').value = '4.0';
   document.getElementById('cust-form-instalments').value = state.settings.defaultInstalments || 52;
   document.getElementById('cust-form-amount').value = state.settings.defaultInstalmentAmount || 200;
   document.getElementById('cust-form-date').value = new Date().toISOString().split('T')[0];
 
-  updateCustomerModalProfitCalc();
+  calculateFromMargin();
   document.getElementById('modal-customer').classList.add('active');
 }
 
@@ -725,10 +1188,14 @@ function openEditCustomerModal(customerId) {
   const c = state.customers.find((cust) => cust.id === customerId);
   if (!c) return;
 
-  document.getElementById('modal-customer-title').textContent = `Edit Customer #${c.customerNumber}`;
+  const loanNum = c.loanNumber || 1;
+  document.getElementById('modal-customer-title').textContent = `Edit Customer #${c.customerNumber} (Loan #${loanNum})`;
   document.getElementById('form-customer-id').value = c.id;
+  document.getElementById('cust-form-loan-number').value = loanNum;
   document.getElementById('cust-form-number').value = c.customerNumber;
+  document.getElementById('cust-form-number').readOnly = false;
   document.getElementById('cust-form-name').value = c.fullName;
+  document.getElementById('cust-form-name').readOnly = false;
   document.getElementById('cust-form-phone').value = c.phone || '';
   document.getElementById('cust-form-address').value = c.address || '';
   document.getElementById('cust-form-area').value = c.areaRoute || '';
@@ -737,16 +1204,20 @@ function openEditCustomerModal(customerId) {
   document.getElementById('cust-form-amount').value = c.instalmentAmount || 200;
   document.getElementById('cust-form-date').value = c.startDate || new Date().toISOString().split('T')[0];
 
-  updateCustomerModalProfitCalc();
+  const wrap = document.getElementById('existing-customer-selector-wrap');
+  if (wrap) wrap.style.display = 'none';
+
+  calculateFromAmount();
   document.getElementById('modal-customer').classList.add('active');
 }
 
-// Save Customer (Create or Update)
+// Save Customer (Create or Update with Multi-Loan support)
 function handleSaveCustomer(event) {
   event.preventDefault();
 
   const id = document.getElementById('form-customer-id').value;
   const customerNumber = document.getElementById('cust-form-number').value.trim();
+  const loanNumber = Number(document.getElementById('cust-form-loan-number')?.value) || 1;
   const fullName = document.getElementById('cust-form-name').value.trim();
   const phone = document.getElementById('cust-form-phone').value.trim();
   const address = document.getElementById('cust-form-address').value.trim();
@@ -761,18 +1232,24 @@ function handleSaveCustomer(event) {
     return;
   }
 
-  // Check duplicate customer number
-  const duplicate = state.customers.find((c) => c.customerNumber.toString() === customerNumber && c.id !== id);
+  // Check duplicate customer number AND loan number combination
+  const duplicate = state.customers.find((c) =>
+    c.customerNumber.toString() === customerNumber &&
+    (Number(c.loanNumber) || 1) === loanNumber &&
+    c.id !== id
+  );
+
   if (duplicate) {
-    alert(`Customer number #${customerNumber} is already taken by ${duplicate.fullName}. Please choose a unique number.`);
+    alert(`Customer #${customerNumber} Loan #${loanNumber} already exists. Please choose a different loan number.`);
     return;
   }
 
   if (id) {
-    // Edit existing
+    // Edit existing loan
     const existing = state.customers.find((c) => c.id === id);
     if (existing) {
       existing.customerNumber = customerNumber;
+      existing.loanNumber = loanNumber;
       existing.fullName = fullName;
       existing.phone = phone;
       existing.address = address;
@@ -784,8 +1261,8 @@ function handleSaveCustomer(event) {
       existing.startDate = startDate;
     }
   } else {
-    // Create new customer
-    const newId = 'CUST-' + Date.now();
+    // Create new customer or additional loan
+    const newId = 'CUST-' + customerNumber + '-L' + loanNumber + '-' + Date.now();
     const instalments = [];
     for (let i = 1; i <= totalInstalments; i++) {
       instalments.push({
@@ -799,6 +1276,7 @@ function handleSaveCustomer(event) {
     state.customers.push({
       id: newId,
       customerNumber,
+      loanNumber,
       fullName,
       phone,
       address,
@@ -813,11 +1291,13 @@ function handleSaveCustomer(event) {
       createdAt: new Date().toISOString(),
     });
 
-    state.settings.nextCustNumber = Number(customerNumber) + 1;
+    if (loanNumber === 1) {
+      state.settings.nextCustNumber = Math.max(state.settings.nextCustNumber || 1, Number(customerNumber) + 1);
+    }
   }
 
   saveData();
-  const savedCust = state.customers.find((c) => c.customerNumber.toString() === customerNumber);
+  const savedCust = state.customers.find((c) => c.customerNumber.toString() === customerNumber && (c.loanNumber || 1) === loanNumber);
   if (savedCust && typeof syncCustomerToFirestore === 'function') {
     syncCustomerToFirestore(savedCust);
   }
@@ -825,15 +1305,16 @@ function handleSaveCustomer(event) {
   renderCustomersTable();
   renderCollectionMatrix();
   renderDashboard();
-  showToast(`Customer #${customerNumber} saved successfully!`);
+  showToast(`Customer #${customerNumber} (Loan #${loanNumber}) saved successfully!`);
 }
 
-// Delete Customer
+// Delete Customer / Loan
 function deleteCustomer(customerId) {
   const c = state.customers.find((cust) => cust.id === customerId);
   if (!c) return;
 
-  if (confirm(`Are you sure you want to delete Customer #${c.customerNumber} (${c.fullName})? All 52-week records for this customer will be removed.`)) {
+  const loanLabel = (c.loanNumber && c.loanNumber > 1) ? ` (Loan #${c.loanNumber})` : '';
+  if (confirm(`Are you sure you want to delete Customer #${c.customerNumber}${loanLabel} (${c.fullName})? All collection records for this loan will be removed.`)) {
     state.customers = state.customers.filter((cust) => cust.id !== customerId);
     saveData();
     if (typeof deleteCustomerFromFirestore === 'function') {
@@ -842,7 +1323,7 @@ function deleteCustomer(customerId) {
     renderCustomersTable();
     renderCollectionMatrix();
     renderDashboard();
-    showToast(`Customer #${c.customerNumber} deleted.`);
+    showToast(`Customer #${c.customerNumber}${loanLabel} deleted.`);
   }
 }
 
@@ -856,10 +1337,13 @@ function openCustomerPassbook(customerId) {
   const stats = getCustomerStats(c);
   const totalInst = c.totalInstalments || 52;
 
-  document.getElementById('passbook-modal-title').textContent = `Customer Passbook - #${c.customerNumber}: ${c.fullName}`;
+  const loanSuffix = (c.loanNumber && c.loanNumber > 1) ? ` (Loan #${c.loanNumber})` : '';
+  const loanBadgeHtml = (c.loanNumber && c.loanNumber > 1) ? ` <span class="loan-badge">L${c.loanNumber}</span>` : '';
+
+  document.getElementById('passbook-modal-title').textContent = `Customer Passbook - #${c.customerNumber}${loanSuffix}: ${c.fullName}`;
   document.getElementById('passbook-header-info').innerHTML = `
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; background:#f1f5f9; padding:14px; border-radius:8px; margin-bottom:16px;">
-      <div><span style="color:#64748b; font-size:12px;">Customer:</span><br><strong>#${c.customerNumber} - ${c.fullName}</strong></div>
+      <div><span style="color:#64748b; font-size:12px;">Customer:</span><br><strong>#${c.customerNumber}${loanBadgeHtml} - ${c.fullName}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Phone:</span><br><strong>${c.phone || 'N/A'}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Given Amount:</span><br><strong style="color:#1e3a8a;">${formatMoney(c.givenAmount)}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Instalment:</span><br><strong>${formatMoney(c.instalmentAmount)} /wk</strong></div>
@@ -901,7 +1385,7 @@ function openCustomerPassbook(customerId) {
   // Setup WhatsApp share button
   const shareBtn = document.getElementById('passbook-whatsapp-btn');
   const msg = encodeURIComponent(
-    `*${state.settings.businessName}*\nCustomer: #${c.customerNumber} - ${c.fullName}\nGiven Amount: ${formatMoney(c.givenAmount)}\nInstalments Paid: ${stats.paidCount}/${totalInst}\nTotal Paid: ${formatMoney(stats.totalPaid)}\nBalance Remaining: ${formatMoney(stats.balance)}\nThank you!`
+    `*${state.settings.businessName}*\nCustomer: #${c.customerNumber}${loanSuffix} - ${c.fullName}\nGiven Amount: ${formatMoney(c.givenAmount)}\nInstalments Paid: ${stats.paidCount}/${totalInst}\nTotal Paid: ${formatMoney(stats.totalPaid)}\nBalance Remaining: ${formatMoney(stats.balance)}\nThank you!`
   );
   shareBtn.onclick = () => window.open(`https://wa.me/${c.phone ? c.phone.replace(/[^0-9]/g, '') : ''}?text=${msg}`, '_blank');
 
@@ -1229,12 +1713,22 @@ function setupEventListeners() {
   }
 
   // Dynamic profit calculation listeners on customer form inputs
-  ['cust-form-given', 'cust-form-instalments', 'cust-form-amount'].forEach((id) => {
+  ['cust-form-given', 'cust-form-instalments', 'cust-form-amount', 'cust-form-margin'].forEach((id) => {
     const inputEl = document.getElementById(id);
     if (inputEl) {
       inputEl.addEventListener('input', updateCustomerModalProfitCalc);
     }
   });
+
+  // Recent Received Instalments Feed interactive filters
+  const recentDate = document.getElementById('recent-date-filter');
+  if (recentDate) recentDate.addEventListener('change', renderRecentTransactions);
+
+  const recentSearch = document.getElementById('recent-search-filter');
+  if (recentSearch) recentSearch.addEventListener('input', renderRecentTransactions);
+
+  const recentRoute = document.getElementById('recent-route-filter');
+  if (recentRoute) recentRoute.addEventListener('change', renderRecentTransactions);
 
   // Left Menu Hover-to-Open & Click-to-Close behavior
   const sidebar = document.getElementById('app-sidebar');
