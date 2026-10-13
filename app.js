@@ -112,28 +112,65 @@ function toggleSoundEffect() {
 }
 
 function updateSoundToggleButton() {
-  const btn = document.getElementById('btn-sound-toggle');
-  if (!btn) return;
-  if (state.settings && state.settings.soundMuted) {
-    btn.innerHTML = '🔕 Sound: Off';
-    btn.style.color = '#94a3b8';
-  } else {
-    btn.innerHTML = '🔔 Sound: On';
-    btn.style.color = '#15803d';
+  const isMuted = !!(state.settings && state.settings.soundMuted);
+
+  // Top header button (if present)
+  const topBtn = document.getElementById('btn-sound-toggle');
+  if (topBtn) {
+    topBtn.innerHTML = isMuted ? '🔕 Sound: Off' : '🔔 Sound: On';
+    topBtn.style.color = isMuted ? '#94a3b8' : '#15803d';
+  }
+
+  // Settings screen button & status badge
+  const settingBtn = document.getElementById('setting-sound-toggle-btn');
+  const settingBadge = document.getElementById('setting-sound-status-badge');
+  if (settingBtn) {
+    if (isMuted) {
+      settingBtn.className = 'btn btn-outline';
+      settingBtn.innerHTML = '🔕 Sound: OFF (Click to Turn ON)';
+    } else {
+      settingBtn.className = 'btn btn-primary';
+      settingBtn.innerHTML = '🔔 Sound: ON (Click to Mute)';
+    }
+  }
+  if (settingBadge) {
+    if (isMuted) {
+      settingBadge.style.background = '#f1f5f9';
+      settingBadge.style.color = '#64748b';
+      settingBadge.textContent = 'Sound: OFF';
+    } else {
+      settingBadge.style.background = '#dcfce7';
+      settingBadge.style.color = '#15803d';
+      settingBadge.textContent = 'Sound: ON';
+    }
   }
 }
 
 // Screen Zoom Management (Default: 90% to fit full system screens)
 function applyScreenZoom(zoomVal) {
-  const zoom = zoomVal || localStorage.getItem('jsr_screen_zoom') || '0.9';
-  document.body.style.zoom = zoom;
-  localStorage.setItem('jsr_screen_zoom', zoom);
+  const raw = zoomVal !== undefined ? zoomVal : (localStorage.getItem('jsr_screen_zoom') || '0.9');
+  const num = Math.max(0.7, Math.min(1.3, parseFloat(raw) || 0.9));
+  const rounded = Math.round(num * 100) / 100;
+  const zoomStr = rounded.toString();
+
+  document.body.style.zoom = zoomStr;
+  localStorage.setItem('jsr_screen_zoom', zoomStr);
 
   const headerSelect = document.getElementById('screen-zoom-select');
-  if (headerSelect) headerSelect.value = zoom;
+  if (headerSelect) headerSelect.value = zoomStr;
 
   const settingSelect = document.getElementById('setting-screen-zoom');
-  if (settingSelect) settingSelect.value = zoom;
+  if (settingSelect) settingSelect.value = zoomStr;
+
+  const badge = document.getElementById('current-zoom-badge');
+  if (badge) badge.textContent = `${Math.round(rounded * 100)}%`;
+}
+
+function stepScreenZoom(delta) {
+  const current = parseFloat(localStorage.getItem('jsr_screen_zoom') || '0.9');
+  const next = Math.max(0.7, Math.min(1.3, Math.round((current + delta) * 100) / 100));
+  applyScreenZoom(next.toString());
+  showToast(`Screen Zoom set to ${Math.round(next * 100)}%`);
 }
 
 // Initialize App
@@ -2132,8 +2169,9 @@ function renderSettings() {
   document.getElementById('setting-default-given').value = state.settings.defaultGivenAmount;
   document.getElementById('setting-default-instalments').value = state.settings.defaultInstalments;
   document.getElementById('setting-default-inst-amount').value = state.settings.defaultInstalmentAmount;
-  const zoomSelect = document.getElementById('setting-screen-zoom');
-  if (zoomSelect) zoomSelect.value = localStorage.getItem('jsr_screen_zoom') || '0.9';
+  
+  applyScreenZoom();
+  updateSoundToggleButton();
 }
 
 function handleSaveSettings(event) {
