@@ -520,7 +520,7 @@ function renderRecentTransactions() {
         <td><span style="color:#16a34a; font-weight:700;">+ ${formatMoney(item.amount)}</span></td>
         <td>${item.paidDate}</td>
         <td><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px;">${item.areaRoute}</span></td>
-        <td>${item.status === 'Partial' ? `<span class="badge-partial" style="width:auto; padding:2px 8px;">Partial</span>` : `<span class="badge-received" style="width:auto; padding:2px 8px;">Received</span>`}</td>
+        <td>${item.status === 'Partial' ? `<span class="badge-status badge-status-partial">½ Partial</span>` : `<span class="badge-status badge-status-success">✓ Received</span>`}</td>
       </tr>
     `).join('');
   }
@@ -577,12 +577,12 @@ function renderAnalytics() {
     routeMap[route].disbursed += (c.givenAmount || 0);
     routeMap[route].collected += (stats.totalPaid || 0);
 
-    // Week collections map
+    // Week collections map (both full and partial payments)
     (c.instalments || []).forEach(inst => {
-      if (inst && inst.status === 'Received') {
+      if (inst && (inst.status === 'Received' || inst.status === 'Partial')) {
         const w = inst.number;
         if (w >= 1 && w <= 52) {
-          weekCollectionMap[w] += (inst.paidAmount || c.instalmentAmount || 0);
+          weekCollectionMap[w] += (inst.paidAmount || (inst.status === 'Received' ? c.instalmentAmount : 0) || 0);
         }
       }
     });
@@ -634,7 +634,7 @@ function renderAnalytics() {
   if (elProfRec) elProfRec.textContent = formatMoney(totalRealizedProfit);
   if (elRem) elRem.textContent = formatMoney(remainingOutlay);
 
-  // Weekly Collection Bar Chart (SVG / HTML Flex bars)
+  // Weekly Collection Bar Chart (Rendered with explicit pixel heights for rock-solid cross-device display)
   const chartEl = document.getElementById('ana-weekly-chart');
   if (chartEl) {
     let maxVal = 1;
@@ -644,12 +644,15 @@ function renderAnalytics() {
     let chartHtml = '';
     for (let w = 1; w <= 16; w++) {
       const val = weekCollectionMap[w] || 0;
-      const heightPct = Math.max(8, Math.round((val / maxVal) * 100));
+      const barHeightPx = val > 0 ? Math.max(10, Math.round((val / maxVal) * 128)) : 6;
+      const formattedVal = val > 0 ? (val >= 1000 ? (val >= 10000 ? (val/1000).toFixed(0)+'k' : (val/1000).toFixed(1)+'k') : val) : '';
       chartHtml += `
-        <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end;">
-          <div style="font-size:10px; font-weight:700; color:#2563eb;">${val > 0 ? (val >= 1000 ? (val/1000).toFixed(0)+'k' : val) : ''}</div>
-          <div style="width:100%; max-width:24px; height:${heightPct}%; background:${val > 0 ? 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)' : '#e2e8f0'}; border-radius:4px 4px 0 0;" title="Week ${w}: ${formatMoney(val)}"></div>
-          <div style="font-size:10px; color:#64748b; font-weight:600;">W${w}</div>
+        <div style="flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:190px; gap:4px;">
+          <div style="font-size:10px; font-weight:700; color:#2563eb; min-height:14px; line-height:14px; text-align:center; white-space:nowrap;">${formattedVal}</div>
+          <div style="width:100%; height:135px; display:flex; align-items:flex-end; justify-content:center; background:#f8fafc; border-radius:6px; padding:2px 1px;">
+            <div style="width:100%; max-width:22px; height:${barHeightPx}px; background:${val > 0 ? 'linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%)' : '#e2e8f0'}; border-radius:4px 4px 0 0; box-shadow:${val > 0 ? '0 2px 6px rgba(37,99,235,0.25)' : 'none'}; cursor:pointer;" title="Week ${w}: ${formatMoney(val)}"></div>
+          </div>
+          <div style="font-size:10px; color:#64748b; font-weight:600; min-height:14px; line-height:14px;">W${w}</div>
         </div>
       `;
     }
@@ -1158,9 +1161,9 @@ function renderCustomersTable() {
                 <div class="customer-card-meta">${c.phone || 'No Phone'} • <span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-size:11px;">${c.areaRoute || 'General'}</span></div>
               </div>
             </div>
-            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
-              <span class="badge-received" style="width:auto; padding:3px 10px; font-size:11px;">${stats.isCompleted ? 'Completed' : 'Active'}</span>
-              ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px;">⚠️ Due ${stats.missedCount}</span>` : ''}
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
+              <span class="badge-status ${stats.isCompleted ? 'badge-status-completed' : 'badge-status-active'}">${stats.isCompleted ? '✓ Completed' : '● Active'}</span>
+              ${stats.isOverdue ? `<span class="badge-status badge-status-overdue">⚠️ Due ${stats.missedCount}</span>` : ''}
             </div>
           </div>
 
@@ -1619,7 +1622,7 @@ function openCustomerPassbook(customerId) {
       <div><span style="color:#64748b; font-size:12px;">Balance Due:</span><br><strong style="color:#b45309;">${formatMoney(stats.balance)}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Expected Net Profit:</span><br><strong style="color:#7c3aed;">+ ${formatMoney(stats.expectedProfit)} (${stats.profitReturnPercent}%)</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Plan Frequency:</span><br>${planBadge}</div>
-      <div><span style="color:#64748b; font-size:12px;">Status:</span><br><span class="badge-received" style="width:auto; padding:2px 8px;">${stats.isCompleted ? 'Completed' : 'Active'}</span></div>
+      <div><span style="color:#64748b; font-size:12px;">Status:</span><br><span class="badge-status ${stats.isCompleted ? 'badge-status-completed' : 'badge-status-active'}">${stats.isCompleted ? 'Completed' : 'Active'}</span></div>
     </div>
   `;
 
@@ -1637,9 +1640,9 @@ function openCustomerPassbook(customerId) {
         <td>${formatMoney(c.instalmentAmount)}</td>
         <td>
           ${isReceived
-            ? `<span class="badge-received" style="width:auto; padding:2px 8px;">✓ Received (${formatMoney(inst.paidAmount || c.instalmentAmount)})</span>`
+            ? `<span class="badge-status badge-status-success">✓ Received (${formatMoney(inst.paidAmount || c.instalmentAmount)})</span>`
             : (isPartial
-                ? `<span class="badge-partial" style="width:auto; padding:2px 8px;">½ Partial (${formatMoney(inst.paidAmount)})</span>`
+                ? `<span class="badge-status badge-status-partial">½ Partial (${formatMoney(inst.paidAmount)})</span>`
                 : `<span style="color:#94a3b8;">Pending</span>`)}
         </td>
         <td>${inst.paidDate || '-'}</td>
@@ -2090,9 +2093,9 @@ function renderRunSheet() {
           </div>
           <div>
             ${isPaidToday
-              ? `<span class="badge-received" style="width: auto; padding: 4px 10px; font-size: 11px;">✓ Paid Today</span>`
+              ? `<span class="badge-status badge-status-success">✓ Paid Today</span>`
               : (stats.isOverdue
-                  ? `<span class="badge-overdue" style="font-size: 11px;">⚠️ Due ${stats.missedCount}</span>`
+                  ? `<span class="badge-status badge-status-overdue">⚠️ Due ${stats.missedCount}</span>`
                   : `<span style="font-size: 12px; font-weight: 700; color: #2563eb;">${unitLabel} #${nextDueNum}</span>`)}
           </div>
         </div>
