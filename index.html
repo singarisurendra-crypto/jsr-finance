@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body>
 
@@ -43,19 +43,6 @@
         <span>💵 Cash Tally:</span>
         <strong style="color: #b45309;">Count Notes ↵</strong>
       </button>
-      <button class="sound-toggle-btn" id="btn-sound-toggle" onclick="toggleSoundEffect()" title="Toggle Cash Audio Chime">
-        🔔 Sound: On
-      </button>
-      <div class="stat-pill" style="padding: 4px 10px; background: #eff6ff; border-color: #bfdbfe;" title="Adjust Screen Zoom">
-        <span style="font-size: 11px; color: #1e40af; font-weight: 600;">🔍 Zoom:</span>
-        <select id="screen-zoom-select" onchange="applyScreenZoom(this.value)" style="border: none; background: transparent; font-size: 11px; font-weight: 700; color: #1e40af; cursor: pointer; outline: none; padding: 0 2px;">
-          <option value="0.8">80%</option>
-          <option value="0.85">85%</option>
-          <option value="0.9" selected>90% (Default)</option>
-          <option value="0.95">95%</option>
-          <option value="1">100%</option>
-        </select>
-      </div>
     </div>
   </header>
 
@@ -614,17 +601,6 @@
                   <input type="text" id="setting-currency" class="form-control" required style="width: 100%;">
                 </div>
 
-                <div>
-                  <label class="form-label">Default Screen Zoom / Display Scale:</label>
-                  <select id="setting-screen-zoom" class="form-control" onchange="applyScreenZoom(this.value)" style="width: 100%;">
-                    <option value="0.8">80% Compact</option>
-                    <option value="0.85">85% Compact</option>
-                    <option value="0.9" selected>90% (Recommended - Full System Fit)</option>
-                    <option value="0.95">95% Regular</option>
-                    <option value="1">100% Standard</option>
-                  </select>
-                  <div class="form-help">Zooms the entire screen to fit full matrices and charts</div>
-                </div>
 
                 <div class="form-full">
                   <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 10px 0;">
@@ -673,6 +649,86 @@
               <button class="btn btn-outline" onclick="clearAllData()" style="width: 100%; justify-content: flex-start; color: #b91c1c;">
                 Reset Demo Data (Start Clean)
               </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Display Zoom & Sound Preferences Card -->
+        <div class="card" style="margin-top: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
+            <div>
+              <h3 style="font-size: 16px; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 8px;">
+                <span>🖥️</span> Display Zoom & Collection Sound Preferences
+              </h3>
+              <p style="font-size: 13px; color: #64748b; margin: 4px 0 0 0;">
+                Zoom in or out to fit your screen size, and toggle audio cash chime for payment collections.
+              </p>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+            <!-- Zoom Controls -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: 700; font-size: 14px; color: #1e293b;">🔍 Screen Zoom In / Out</span>
+                <span id="current-zoom-badge" style="background: #eff6ff; color: #1d4ed8; padding: 3px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700;">90%</span>
+              </div>
+              <p style="font-size: 12px; color: #64748b; margin-bottom: 14px;">
+                Adjust display scale so tables, collection sheets, and analytics fit comfortably on your display.
+              </p>
+
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                <button type="button" class="btn btn-outline" onclick="stepScreenZoom(-0.05)" title="Zoom Out (Make display smaller to fit more data)" style="font-weight: 700;">
+                  ➖ Zoom Out
+                </button>
+
+                <select id="setting-screen-zoom" class="form-control" onchange="applyScreenZoom(this.value)" style="flex: 1; font-weight: 600; cursor: pointer;">
+                  <option value="0.75">75% (Ultra Compact)</option>
+                  <option value="0.8">80% (Compact)</option>
+                  <option value="0.85">85% (Compact)</option>
+                  <option value="0.9" selected>90% (Default - Full Fit)</option>
+                  <option value="0.95">95% (Medium)</option>
+                  <option value="1">100% (Standard 1:1)</option>
+                  <option value="1.05">105% (Slightly Larger)</option>
+                  <option value="1.1">110% (Large)</option>
+                  <option value="1.2">120% (Extra Large)</option>
+                </select>
+
+                <button type="button" class="btn btn-outline" onclick="stepScreenZoom(0.05)" title="Zoom In (Make text & buttons larger)" style="font-weight: 700;">
+                  ➕ Zoom In
+                </button>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" class="btn btn-outline btn-sm" onclick="applyScreenZoom('0.9')" style="font-size: 12px; color: #475569;">
+                  ↺ Reset to Default (90%)
+                </button>
+                <span style="font-size: 11px; color: #94a3b8;">Instantly applied</span>
+              </div>
+            </div>
+
+            <!-- Sound Controls -->
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-weight: 700; font-size: 14px; color: #1e293b;">🔔 Collection Audio Chime</span>
+                <span id="setting-sound-status-badge" style="background: #dcfce7; color: #15803d; padding: 3px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700;">Sound: ON</span>
+              </div>
+              <p style="font-size: 12px; color: #64748b; margin-bottom: 14px;">
+                Plays a cash register chime whenever an instalment is received or cash is reconciled.
+              </p>
+
+              <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                <button type="button" id="setting-sound-toggle-btn" class="btn btn-primary" onclick="toggleSoundEffect()" style="flex: 1; justify-content: center; gap: 8px;">
+                  🔔 Sound: ON (Click to Mute)
+                </button>
+                <button type="button" class="btn btn-outline" onclick="playCashChime()" title="Test Cash Register Audio Chime" style="padding: 8px 14px;">
+                  🔊 Test Chime
+                </button>
+              </div>
+
+              <div style="font-size: 11px; color: #64748b;">
+                Zero external sound files — synthesized live using the browser Web Audio API.
+              </div>
             </div>
           </div>
         </div>
@@ -1033,8 +1089,8 @@
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=16"></script>
-  <script src="firebase-sync.js?v=16"></script>
-  <script src="app.js?v=16"></script>
+  <script src="firebase-config.js?v=17"></script>
+  <script src="firebase-sync.js?v=17"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>
