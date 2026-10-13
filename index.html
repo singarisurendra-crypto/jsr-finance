@@ -4,17 +4,38 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=19">
 </head>
 <body>
 
   <!-- Top Navigation & Global Header -->
   <header class="app-header">
-    <div class="brand-section">
-      <div class="brand-icon">₹</div>
-      <div>
-        <div class="brand-title" id="brand-business-name">JSR Finance</div>
-        <div class="brand-sub">Instalment Receiving & Microfinance System</div>
+    <div class="app-header-top">
+      <div class="brand-section">
+        <div class="brand-icon">₹</div>
+        <div>
+          <div class="brand-title" id="brand-business-name">JSR Finance</div>
+          <div class="brand-sub">Instalment Receiving & Microfinance System</div>
+        </div>
+      </div>
+
+      <!-- Mobile Quick Actions: Schemes & Settings Relocated to Header -->
+      <div class="mobile-header-actions">
+        <button class="mobile-header-btn" data-tab="schemes" onclick="switchTab('schemes')" title="Schemes Master">
+          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+            <polyline points="2 17 12 22 22 17"/>
+            <polyline points="2 12 12 17 22 12"/>
+          </svg>
+          <span>Schemes</span>
+        </button>
+        <button class="mobile-header-btn" data-tab="settings" onclick="switchTab('settings')" title="Settings & Config">
+          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span>Settings</span>
+        </button>
       </div>
     </div>
 
@@ -148,7 +169,7 @@
             <div class="kpi-value" id="kpi-balance" style="color: #b45309;">₹ 0</div>
             <div class="kpi-sub" id="kpi-balance-sub">Remaining Portfolio</div>
           </div>
-          <div class="card">
+          <div class="card kpi-card-featured">
             <div class="kpi-title">Today's Collections</div>
             <div class="kpi-value" id="kpi-today" style="color: #2563eb;">₹ 0</div>
             <div class="kpi-sub">Cash received today</div>
@@ -393,7 +414,7 @@
         </div>
 
         <!-- 4 Top Analytics Intelligence Cards -->
-        <div class="cards-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px;">
+        <div class="cards-grid analytics-kpi-grid">
           <div class="card">
             <div class="kpi-header">
               <span class="kpi-title">Capital Recovery Rate</span>
@@ -572,7 +593,7 @@
           </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+        <div class="settings-layout-grid">
           <!-- Settings Form -->
           <div class="card">
             <h3 style="font-size: 16px; margin-bottom: 16px; color: #1e293b;">Default Instalment & Finance Rules</h3>
@@ -1069,28 +1090,13 @@
       </svg>
       <span class="label">Analytics</span>
     </button>
-    <button class="mobile-nav-item" data-tab="schemes">
-      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-        <polyline points="2 17 12 22 22 17"/>
-        <polyline points="2 12 12 17 22 12"/>
-      </svg>
-      <span class="label">Schemes</span>
-    </button>
-    <button class="mobile-nav-item" data-tab="settings">
-      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-      </svg>
-      <span class="label">Settings</span>
-    </button>
   </nav>
 
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=18"></script>
-  <script src="firebase-sync.js?v=18"></script>
-  <script src="app.js?v=18"></script>
+  <script src="firebase-config.js?v=19"></script>
+  <script src="firebase-sync.js?v=19"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>
