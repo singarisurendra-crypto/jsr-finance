@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 
@@ -232,13 +232,13 @@
       <!-- SCREEN 2: 52-INSTALMENT COLLECTION SHEET       -->
       <!-- ============================================== -->
       <section id="view-collections" class="screen-view">
-        <div class="view-header">
-          <div>
+        <div class="view-header collections-header">
+          <div class="collections-title-block">
             <h1 class="view-title">Instalment Sheet</h1>
-            <p class="view-subtitle">Live weekly collection ledger with 1-click status toggling.</p>
+            <p class="view-subtitle">Live collection ledger</p>
           </div>
-          <div class="btn-group">
-            <input type="text" id="global-search-input" class="form-control" placeholder="🔍 Search Cust # / Name..." style="width: 220px;">
+          <div class="collections-tools">
+            <input type="text" id="global-search-input" class="form-control" placeholder="🔍 Search # / Name...">
             <select id="collection-filter-select" class="form-control">
               <option value="all">All Loans (Weekly & Daily)</option>
               <option value="active">Active Only</option>
@@ -248,9 +248,9 @@
               <option value="weekly">Weekly Loans Only</option>
               <option value="daily">Daily Loans Only (100 Days)</option>
             </select>
-            <button class="btn btn-outline" onclick="exportCollectionSheetCSV()">📥 Export CSV / Excel</button>
-            <button class="btn btn-outline" onclick="window.print()">🖨️ Print Sheet</button>
-            <button class="btn btn-primary" onclick="openAddCustomerModal()">+ Add Customer</button>
+            <button class="btn btn-outline btn-compact" onclick="exportCollectionSheetCSV()" title="Export CSV / Excel">📥 Export CSV</button>
+            <button class="btn btn-outline btn-compact" onclick="window.print()" title="Print Sheet">🖨️ Print</button>
+            <button class="btn btn-primary btn-compact" onclick="openAddCustomerModal()">+ Add Customer</button>
           </div>
         </div>
 
@@ -1011,8 +1011,8 @@
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=12"></script>
-  <script src="firebase-sync.js?v=12"></script>
-  <script src="app.js?v=12"></script>
+  <script src="firebase-config.js?v=13"></script>
+  <script src="firebase-sync.js?v=13"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>
