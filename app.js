@@ -569,7 +569,7 @@ function renderRecentTransactions() {
         </td>
         <td>Instalment #${item.instNumber}</td>
         <td><span style="color:#16a34a; font-weight:700;">+ ${formatMoney(item.amount)}</span></td>
-        <td>${item.paidDate}</td>
+        <td>${formatPassbookDate(item.paidDate, false)}</td>
         <td><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px;">${item.areaRoute}</span></td>
         <td>${item.status === 'Partial' ? `<span class="badge-status badge-status-partial">½ Partial</span>` : `<span class="badge-status badge-status-success">✓ Received</span>`}</td>
       </tr>
@@ -1642,6 +1642,18 @@ function deleteCustomer(customerId) {
   }
 }
 
+// Helper: Format Dates consistently (YYYY-MM-DD -> DD/MM/YYYY or DD/MM/YY)
+function formatPassbookDate(dateStr, isCompact = false) {
+  if (!dateStr || dateStr === '-') return '-';
+  const str = String(dateStr).trim();
+  const parts = str.split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    const [y, m, d] = parts;
+    return isCompact ? `${d}/${m}/${y.slice(2)}` : `${d}/${m}/${y}`;
+  }
+  return str;
+}
+
 // ----------------------------------------------------
 // CUSTOMER PASSBOOK / LEDGER MODAL
 // ----------------------------------------------------
@@ -1698,7 +1710,7 @@ function openCustomerPassbook(customerId) {
                 ? `<span class="badge-status badge-status-partial">½ Partial (${formatMoney(inst.paidAmount)})</span>`
                 : `<span style="color:#94a3b8;">Pending</span>`)}
         </td>
-        <td>${inst.paidDate || '-'}</td>
+        <td>${formatPassbookDate(inst.paidDate) || '-'}</td>
         <td>${inst.receiptNumber || '-'}</td>
         <td>
           <button class="btn btn-outline btn-sm" onclick="toggleInstalmentReceived('${c.id}', ${w}); openCustomerPassbook('${c.id}');">
@@ -1782,7 +1794,7 @@ function printCustomerPassbook(customerId) {
           const stLabel = isRec ? 'PAID' : (isPart ? 'PART' : 'DUE');
           const stColor = isRec ? '#15803d' : (isPart ? '#b45309' : '#64748b');
           const amt = isPart ? (inst.paidAmount || 0) : (c.instalmentAmount || 0);
-          const dt = inst.paidDate ? inst.paidDate.slice(0, 5) : '-';
+          const dt = formatPassbookDate(inst.paidDate, true);
           rows += `
             <td style="text-align:center; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1; padding:2px 3px; font-size:10px;">${w}</td>
             <td style="text-align:right; border:1px solid #cbd5e1; padding:2px 3px; font-size:10px; font-weight:600;">₹${amt}</td>
@@ -1843,7 +1855,7 @@ function printCustomerPassbook(customerId) {
         const stColor = isRec ? '#166534' : (isPart ? '#b45309' : '#64748b');
         const stBg = isRec ? '#f0fdf4' : (isPart ? '#fffbeb' : '#fff');
         const amt = isPart ? `₹ ${(inst.paidAmount || 0).toLocaleString('en-IN')}` : `₹ ${(c.instalmentAmount || 0).toLocaleString('en-IN')}`;
-        const dt = inst.paidDate ? inst.paidDate : '-';
+        const dt = formatPassbookDate(inst.paidDate, false);
         const rcpt = inst.receiptNumber ? `#${inst.receiptNumber}` : '-';
 
         return `
@@ -2083,7 +2095,7 @@ function printCustomerPassbook(customerId) {
           </div>
           <div class="info-cell">
             <span class="info-label">Start / Issue Date:</span>
-            <span class="info-val">${c.startDate || 'N/A'}</span>
+            <span class="info-val">${formatPassbookDate(c.startDate, false) || 'N/A'}</span>
           </div>
         </div>
 
