@@ -1587,6 +1587,90 @@ thead th.sticky-col-3 {
   .badge-pending {
     border: 1px solid #888 !important;
   }
+
+  /* Passbook Print Support: In-page fallback and Ctrl+P handling */
+  body.printing-passbook .app-header,
+  body.printing-passbook .sidebar,
+  body.printing-passbook .mobile-nav,
+  body.printing-passbook .screen-view,
+  body.printing-passbook .content-area,
+  body.printing-passbook .quick-entry-bar,
+  body:has(#modal-passbook.active) .app-header,
+  body:has(#modal-passbook.active) .sidebar,
+  body:has(#modal-passbook.active) .mobile-nav,
+  body:has(#modal-passbook.active) .screen-view,
+  body:has(#modal-passbook.active) .content-area,
+  body:has(#modal-passbook.active) .quick-entry-bar {
+    display: none !important;
+  }
+
+  body.printing-passbook #modal-passbook,
+  body:has(#modal-passbook.active) #modal-passbook {
+    display: block !important;
+    position: static !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    z-index: 99999 !important;
+  }
+
+  body.printing-passbook #modal-passbook .modal-dialog,
+  body:has(#modal-passbook.active) #modal-passbook .modal-dialog {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: none !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.printing-passbook #modal-passbook .modal-header,
+  body:has(#modal-passbook.active) #modal-passbook .modal-header {
+    border-bottom: 2px solid #0f172a !important;
+    padding: 8px 0 !important;
+    margin-bottom: 12px !important;
+  }
+
+  body.printing-passbook #modal-passbook .modal-footer,
+  body.printing-passbook #modal-passbook .modal-close,
+  body:has(#modal-passbook.active) #modal-passbook .modal-footer,
+  body:has(#modal-passbook.active) #modal-passbook .modal-close {
+    display: none !important;
+  }
+
+  body.printing-passbook #modal-passbook .data-table-container,
+  body:has(#modal-passbook.active) #modal-passbook .data-table-container {
+    max-height: none !important;
+    overflow: visible !important;
+    border: 1px solid #0f172a !important;
+  }
+
+  body.printing-passbook #modal-passbook table,
+  body:has(#modal-passbook.active) #modal-passbook table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  body.printing-passbook #modal-passbook table th,
+  body.printing-passbook #modal-passbook table td,
+  body:has(#modal-passbook.active) #modal-passbook table th,
+  body:has(#modal-passbook.active) #modal-passbook table td {
+    padding: 4px 6px !important;
+    font-size: 11px !important;
+    border: 1px solid #cbd5e1 !important;
+  }
+
+  body.printing-passbook #modal-passbook table th:last-child,
+  body.printing-passbook #modal-passbook table td:last-child,
+  body:has(#modal-passbook.active) #modal-passbook table th:last-child,
+  body:has(#modal-passbook.active) #modal-passbook table td:last-child {
+    display: none !important;
+  }
 }
 
 /* ==================================================== */
