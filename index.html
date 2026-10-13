@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=11">
+  <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
 
@@ -39,6 +39,13 @@
         <span>Today's Cash:</span>
         <strong id="header-today" style="color: #16a34a;">₹ 0</strong>
       </div>
+      <button class="stat-pill" onclick="openCashTallyModal()" style="cursor: pointer; background: #fffbeb; border-color: #fde68a;" title="End-of-day Cash Tally & Handover Slip">
+        <span>💵 Cash Tally:</span>
+        <strong style="color: #b45309;">Count Notes ↵</strong>
+      </button>
+      <button class="sound-toggle-btn" id="btn-sound-toggle" onclick="toggleSoundEffect()" title="Toggle Cash Audio Chime">
+        🔔 Sound: On
+      </button>
     </div>
   </header>
 
@@ -63,6 +70,13 @@
           <path d="M15 3v18"/>
         </svg>
         <span class="nav-text">Instalment Sheet</span>
+      </a>
+      <a class="nav-link" data-tab="runsheet">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 11l3 3L22 4"/>
+          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
+        <span class="nav-text">Field Run Sheet</span>
       </a>
       <a class="nav-link" data-tab="customers">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -228,6 +242,8 @@
             <select id="collection-filter-select" class="form-control">
               <option value="all">All Loans (Weekly & Daily)</option>
               <option value="active">Active Only</option>
+              <option value="overdue">⚠️ Overdue (Behind ≥2)</option>
+              <option value="partial">½ Partial Payments</option>
               <option value="completed">Completed Only</option>
               <option value="weekly">Weekly Loans Only</option>
               <option value="daily">Daily Loans Only (100 Days)</option>
@@ -244,14 +260,18 @@
             ⚡ Quick Receive (Keyboard / Field Entry):
           </div>
           <div class="input-group">
-            <label for="quick-cust-num">Customer # / Loan:</label>
-            <input type="text" id="quick-cust-num" class="form-control" placeholder="e.g. 1 or 1-2" style="width: 110px;" required>
+            <label for="quick-cust-num">Cust # / Loan:</label>
+            <input type="text" id="quick-cust-num" class="form-control" placeholder="e.g. 1 or 1-2" style="width: 100px;" oninput="handleQuickCustNumChange()" required>
+          </div>
+          <div class="input-group">
+            <label for="quick-amount">Amount (₹):</label>
+            <input type="number" id="quick-amount" class="form-control" placeholder="e.g. 200 or 100" style="width: 110px;" step="1" min="1">
           </div>
           <button type="submit" class="btn btn-success">
-            Mark Next Instalment Received ↵
+            Mark Received ↵
           </button>
           <span style="font-size: 11px; color: #64748b;">
-            💡 Tip: Enter customer number (or #1-2 for Loan 2) & hit Enter to instantly mark next due week!
+            💡 Tip: Enter # (and partial ₹ if paying less) & hit Enter!
           </span>
         </form>
 
@@ -274,6 +294,45 @@
               <!-- Dynamically populated customer rows -->
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- SCREEN: FIELD COLLECTION RUN SHEET             -->
+      <!-- ============================================== -->
+      <section id="view-runsheet" class="screen-view">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Field Collection Run Sheet</h1>
+            <p class="view-subtitle">Optimized field agent route checklist with 1-tap collection and direct WhatsApp / Call.</p>
+          </div>
+          <div class="btn-group">
+            <select id="runsheet-route-filter" class="form-control" style="width: 180px;" onchange="renderRunSheet()">
+              <option value="all">All Routes / Areas</option>
+            </select>
+            <input type="text" id="runsheet-search-input" class="form-control" placeholder="🔍 Search in route..." style="width: 180px;" oninput="renderRunSheet()">
+            <button class="btn btn-outline" onclick="window.print()">🖨️ Print Run Sheet</button>
+          </div>
+        </div>
+
+        <!-- Field Run Progress Strip -->
+        <div class="card" style="margin-bottom: 20px; padding: 14px 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="font-size: 14px; font-weight: 700; color: #1e293b;">
+              Today's Field Collection Progress: <span id="runsheet-progress-text" style="color: #2563eb;">0 / 0 Collected</span>
+            </div>
+            <div style="font-size: 14px; font-weight: 700; color: #16a34a;" id="runsheet-collected-rupees">
+              ₹ 0 Collected
+            </div>
+          </div>
+          <div class="progress-bar-bg" style="height: 10px;">
+            <div id="runsheet-progress-fill" class="progress-bar-fill" style="width: 0%; background: linear-gradient(90deg, #10b981, #059669);"></div>
+          </div>
+        </div>
+
+        <!-- Run Sheet Cards Grid -->
+        <div id="runsheet-cards-container" class="runsheet-grid">
+          <!-- Populated dynamically by app.js -->
         </div>
       </section>
 
@@ -776,6 +835,114 @@
     </div>
   </div>
 
+  <!-- Modal: Cash Tally & Handover Slip -->
+  <div id="modal-cash-tally" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 600px;">
+      <div class="modal-header">
+        <div class="modal-title">💵 End-of-Day Cash Tally & Handover Slip</div>
+        <button class="modal-close" onclick="closeModal('modal-cash-tally')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 13px; color: #64748b; margin-bottom: 14px;">
+          Count physical currency notes collected in the field and reconcile directly against the ledger totals.
+        </p>
+        
+        <table class="denomination-table">
+          <thead>
+            <tr>
+              <th>Denomination</th>
+              <th style="width: 110px;">Count</th>
+              <th style="text-align: right;">Total Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>₹ 500</strong></td>
+              <td><input type="number" id="tally-500" class="form-control" style="padding: 4px 8px; font-size: 13px;" min="0" value="0" oninput="updateCashTallyCalc()"></td>
+              <td style="text-align: right; font-weight: 600;" id="tally-sub-500">₹ 0</td>
+            </tr>
+            <tr>
+              <td><strong>₹ 200</strong></td>
+              <td><input type="number" id="tally-200" class="form-control" style="padding: 4px 8px; font-size: 13px;" min="0" value="0" oninput="updateCashTallyCalc()"></td>
+              <td style="text-align: right; font-weight: 600;" id="tally-sub-200">₹ 0</td>
+            </tr>
+            <tr>
+              <td><strong>₹ 100</strong></td>
+              <td><input type="number" id="tally-100" class="form-control" style="padding: 4px 8px; font-size: 13px;" min="0" value="0" oninput="updateCashTallyCalc()"></td>
+              <td style="text-align: right; font-weight: 600;" id="tally-sub-100">₹ 0</td>
+            </tr>
+            <tr>
+              <td><strong>₹ 50</strong></td>
+              <td><input type="number" id="tally-50" class="form-control" style="padding: 4px 8px; font-size: 13px;" min="0" value="0" oninput="updateCashTallyCalc()"></td>
+              <td style="text-align: right; font-weight: 600;" id="tally-sub-50">₹ 0</td>
+            </tr>
+            <tr>
+              <td><strong>₹ 20</strong></td>
+              <td><input type="number" id="tally-20" class="form-control" style="padding: 4px 8px; font-size: 13px;" min="0" value="0" oninput="updateCashTallyCalc()"></td>
+              <td style="text-align: right; font-weight: 600;" id="tally-sub-20">₹ 0</td>
+            </tr>
+            <tr>
+              <td><strong>₹ 10 & Coins</strong></td>
+              <td><input type="number" id="tally-10" class="form-control" style="padding: 4px 8px; font-size: 13px;" min="0" value="0" oninput="updateCashTallyCalc()"></td>
+              <td style="text-align: right; font-weight: 600;" id="tally-sub-10">₹ 0</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Summary & Reconciliation -->
+        <div style="background: #f8fafc; border-radius: 8px; padding: 14px; margin-top: 14px; border: 1px solid #e2e8f0;">
+          <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px;">
+            <span>Total Physical Cash Counted:</span>
+            <strong id="tally-total-counted" style="color: #2563eb; font-size: 16px;">₹ 0</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 6px;">
+            <span>Today's Ledger Collections:</span>
+            <strong id="tally-ledger-today" style="font-size: 15px;">₹ 0</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 14px; padding-top: 6px; border-top: 1px dashed #cbd5e1;">
+            <span>Variance / Difference:</span>
+            <strong id="tally-difference" style="color: #16a34a;">Balanced (₹ 0)</strong>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" onclick="printCashHandoverSlip()">🖨️ Print Handover Slip</button>
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-cash-tally')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Custom / Partial Instalment Payment -->
+  <div id="modal-partial-pay" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 440px;">
+      <div class="modal-header">
+        <div class="modal-title">½ Receive Instalment / Partial Amount</div>
+        <button class="modal-close" onclick="closeModal('modal-partial-pay')">&times;</button>
+      </div>
+      <form id="form-partial-pay" onsubmit="handlePartialPaySubmit(event)">
+        <input type="hidden" id="partial-cust-id">
+        <input type="hidden" id="partial-inst-num">
+        <div class="modal-body">
+          <div style="background: #f8fafc; padding: 12px; border-radius: 8px; margin-bottom: 14px; border: 1px solid #e2e8f0;">
+            <div style="font-weight: 700; color: #1e293b;" id="partial-modal-cust-name">Customer Name</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 4px;" id="partial-modal-details">Instalment #1 | Scheduled: ₹ 200</div>
+          </div>
+          <div class="input-group">
+            <label for="partial-pay-amount">Amount Received (₹):</label>
+            <input type="number" id="partial-pay-amount" class="form-control" min="1" step="1" required autofocus>
+            <span style="font-size: 11px; color: #64748b; margin-top: 4px;">
+              💡 Enter ₹100 if user pays 100 instead of 200. It will be recorded as partial and remaining balance will stay due.
+            </span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-success">Save Payment</button>
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-partial-pay')">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div id="app-toast" style="display: none; position: fixed; bottom: 24px; right: 24px; background: #1e293b; color: #ffffff; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); z-index: 200;"></div>
 
@@ -799,6 +966,13 @@
         <path d="M15 3v18"/>
       </svg>
       <span class="label">Instalments</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="runsheet">
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 11l3 3L22 4"/>
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+      </svg>
+      <span class="label">Run Sheet</span>
     </button>
     <button class="mobile-nav-item" data-tab="customers">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -837,8 +1011,8 @@
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=11"></script>
-  <script src="firebase-sync.js?v=11"></script>
-  <script src="app.js?v=11"></script>
+  <script src="firebase-config.js?v=12"></script>
+  <script src="firebase-sync.js?v=12"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>
