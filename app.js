@@ -401,6 +401,10 @@ function switchTab(tabName) {
     item.classList.toggle('active', item.dataset.tab === tabName);
   });
 
+  document.querySelectorAll('.mobile-header-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+
   document.querySelectorAll('.screen-view').forEach((view) => {
     view.classList.toggle('active', view.id === `view-${tabName}`);
   });
