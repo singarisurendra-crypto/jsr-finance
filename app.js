@@ -1612,6 +1612,8 @@ function openCustomerPassbook(customerId) {
   const c = state.customers.find((cust) => cust.id === customerId);
   if (!c) return;
 
+  state.activePassbookCustomerId = customerId;
+
   const stats = getCustomerStats(c);
   const totalInst = c.totalInstalments || 52;
   const isDaily = c.frequency === 'Daily' || totalInst === 100;
@@ -1679,6 +1681,409 @@ function openCustomerPassbook(customerId) {
   shareBtn.onclick = () => window.open(`https://wa.me/${c.phone ? c.phone.replace(/[^0-9]/g, '') : ''}?text=${msg}`, '_blank');
 
   document.getElementById('modal-passbook').classList.add('active');
+}
+
+// ----------------------------------------------------
+// PRINT OFFICIAL CUSTOMER PASSBOOK / LEDGER STATEMENT
+// ----------------------------------------------------
+function printCustomerPassbook(customerId) {
+  const targetId = customerId || state.activePassbookCustomerId;
+  const c = state.customers.find((cust) => cust.id === targetId);
+  if (!c) {
+    showToast('Please select or open a customer passbook first.');
+    return;
+  }
+
+  const stats = getCustomerStats(c);
+  const totalInst = c.totalInstalments || 52;
+  const isDaily = c.frequency === 'Daily' || totalInst === 100;
+  const unitLabel = isDaily ? 'Day' : 'Week';
+  const unitRate = isDaily ? '/day' : '/wk';
+  const planName = isDaily ? '100-Day Daily Plan' : `${totalInst}-Week Weekly Plan`;
+  const loanNumber = c.loanNumber || 1;
+  const loanSuffix = loanNumber > 1 ? ` (Loan #${loanNumber})` : '';
+
+  const todayStr = new Date().toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+  const timeStr = new Date().toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const printWindow = window.open('', '_blank', 'width=900,height=950');
+  if (!printWindow) {
+    // Fallback: If popup is blocked by browser, trigger in-page passbook printing via CSS
+    document.body.classList.add('printing-passbook');
+    window.print();
+    setTimeout(() => {
+      document.body.classList.remove('printing-passbook');
+    }, 1500);
+    return;
+  }
+
+  // Generate table columns based on totalInstalments
+  let tableHtml = '';
+  if (totalInst === 100) {
+    // 4 columns of 25 rows for 100-Day plan (compact A4 fit)
+    const colSize = 25;
+    let rows = '';
+    for (let r = 1; r <= colSize; r++) {
+      rows += '<tr>';
+      for (let col = 0; col < 4; col++) {
+        const w = r + col * colSize;
+        if (col > 0) {
+          rows += '<td style="width:6px; border:none; background:#fff;"></td>';
+        }
+        if (w <= totalInst) {
+          const inst = (c.instalments && c.instalments[w - 1]) || { number: w, status: 'Pending' };
+          const isRec = inst.status === 'Received';
+          const isPart = inst.status === 'Partial';
+          const stLabel = isRec ? 'PAID' : (isPart ? 'PART' : 'DUE');
+          const stColor = isRec ? '#15803d' : (isPart ? '#b45309' : '#64748b');
+          const amt = isPart ? (inst.paidAmount || 0) : (c.instalmentAmount || 0);
+          const dt = inst.paidDate ? inst.paidDate.slice(0, 5) : '-';
+          rows += `
+            <td style="text-align:center; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1; padding:2px 3px; font-size:10px;">${w}</td>
+            <td style="text-align:right; border:1px solid #cbd5e1; padding:2px 3px; font-size:10px; font-weight:600;">₹${amt}</td>
+            <td style="text-align:center; border:1px solid #cbd5e1; padding:2px 3px; font-size:9px;">${dt}</td>
+            <td style="text-align:center; border:1px solid #cbd5e1; padding:2px 3px; font-size:9px; font-weight:700; color:${stColor};">${stLabel}</td>
+          `;
+        } else {
+          rows += '<td colspan="4" style="border:none;"></td>';
+        }
+      }
+      rows += '</tr>';
+    }
+
+    tableHtml = `
+      <table style="width:100%; border-collapse:collapse; margin-top:8px;">
+        <thead>
+          <tr style="background:#0f172a; color:#fff; font-size:10px;">
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Day</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Amt</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Date</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">St</th>
+            <th style="width:6px; border:none; background:#fff;"></th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Day</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Amt</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Date</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">St</th>
+            <th style="width:6px; border:none; background:#fff;"></th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Day</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Amt</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Date</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">St</th>
+            <th style="width:6px; border:none; background:#fff;"></th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Day</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Amt</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">Date</th>
+            <th style="padding:4px 2px; border:1px solid #0f172a;">St</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    `;
+  } else {
+    // 2 columns of 26 rows for 52-Week standard plans
+    const colSize = Math.ceil(totalInst / 2);
+    let rows = '';
+    for (let r = 1; r <= colSize; r++) {
+      const leftW = r;
+      const rightW = r + colSize;
+
+      const renderCol = (w) => {
+        if (w > totalInst) return '<td colspan="5" style="border:none;"></td>';
+        const inst = (c.instalments && c.instalments[w - 1]) || { number: w, status: 'Pending' };
+        const isRec = inst.status === 'Received';
+        const isPart = inst.status === 'Partial';
+        const stLabel = isRec ? '✓ RECEIVED' : (isPart ? '½ PARTIAL' : 'PENDING');
+        const stColor = isRec ? '#166534' : (isPart ? '#b45309' : '#64748b');
+        const stBg = isRec ? '#f0fdf4' : (isPart ? '#fffbeb' : '#fff');
+        const amt = isPart ? `₹ ${(inst.paidAmount || 0).toLocaleString('en-IN')}` : `₹ ${(c.instalmentAmount || 0).toLocaleString('en-IN')}`;
+        const dt = inst.paidDate ? inst.paidDate : '-';
+        const rcpt = inst.receiptNumber ? `#${inst.receiptNumber}` : '-';
+
+        return `
+          <td style="text-align:center; font-weight:700; background:#f8fafc; border:1px solid #cbd5e1; padding:3px 4px; font-size:11px;">${unitLabel} #${w}</td>
+          <td style="text-align:right; border:1px solid #cbd5e1; padding:3px 4px; font-size:11px; font-weight:600;">${amt}</td>
+          <td style="text-align:center; border:1px solid #cbd5e1; padding:3px 4px; font-size:10px;">${dt}</td>
+          <td style="text-align:center; border:1px solid #cbd5e1; padding:3px 4px; font-size:10px;">${rcpt}</td>
+          <td style="text-align:center; border:1px solid #cbd5e1; padding:3px 4px; font-size:10px; font-weight:700; background:${stBg}; color:${stColor};">${stLabel}</td>
+        `;
+      };
+
+      rows += `
+        <tr>
+          ${renderCol(leftW)}
+          <td style="width:10px; border:none; background:#fff;"></td>
+          ${renderCol(rightW)}
+        </tr>
+      `;
+    }
+
+    tableHtml = `
+      <table style="width:100%; border-collapse:collapse; margin-top:8px;">
+        <thead>
+          <tr style="background:#0f172a; color:#fff; font-size:11px;">
+            <th style="padding:4px; border:1px solid #0f172a;">Week</th>
+            <th style="padding:4px; border:1px solid #0f172a; text-align:right;">Inst. Amt</th>
+            <th style="padding:4px; border:1px solid #0f172a;">Paid Date</th>
+            <th style="padding:4px; border:1px solid #0f172a;">Receipt #</th>
+            <th style="padding:4px; border:1px solid #0f172a;">Status</th>
+            <th style="width:10px; border:none; background:#fff;"></th>
+            <th style="padding:4px; border:1px solid #0f172a;">Week</th>
+            <th style="padding:4px; border:1px solid #0f172a; text-align:right;">Inst. Amt</th>
+            <th style="padding:4px; border:1px solid #0f172a;">Paid Date</th>
+            <th style="padding:4px; border:1px solid #0f172a;">Receipt #</th>
+            <th style="padding:4px; border:1px solid #0f172a;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    `;
+  }
+
+  const businessName = state.settings.businessName || 'JSR FINANCE';
+  const businessPhone = state.settings.phone || '';
+  const businessAddress = state.settings.address || '';
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>Passbook - #${c.customerNumber}${loanSuffix} ${c.fullName}</title>
+      <style>
+        @page {
+          size: A4 portrait;
+          margin: 8mm;
+        }
+        * {
+          box-sizing: border-box;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          color: #0f172a;
+          background: #fff;
+          margin: 0;
+          padding: 6px;
+          font-size: 11px;
+        }
+        .passbook-container {
+          max-width: 800px;
+          margin: 0 auto;
+          border: 2px solid #0f172a;
+          padding: 12px;
+          border-radius: 6px;
+        }
+        .header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          border-bottom: 2px solid #0f172a;
+          padding-bottom: 8px;
+          margin-bottom: 8px;
+        }
+        .business-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #0f172a;
+          letter-spacing: 0.5px;
+        }
+        .business-sub {
+          font-size: 11px;
+          color: #475569;
+          margin-top: 2px;
+        }
+        .doc-badge {
+          text-align: right;
+        }
+        .doc-title {
+          font-size: 14px;
+          font-weight: 800;
+          color: #1e3a8a;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .doc-meta {
+          font-size: 10px;
+          color: #64748b;
+          margin-top: 2px;
+        }
+        .summary-card {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 6px;
+          background: #f8fafc;
+          border: 1px solid #cbd5e1;
+          border-radius: 6px;
+          padding: 8px 10px;
+          margin-bottom: 8px;
+        }
+        .info-cell {
+          font-size: 11px;
+        }
+        .info-label {
+          color: #64748b;
+          font-size: 10px;
+          display: block;
+          margin-bottom: 2px;
+        }
+        .info-val {
+          font-weight: 700;
+          color: #0f172a;
+        }
+        .badge-status {
+          display: inline-block;
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 10px;
+          font-weight: 700;
+        }
+        .status-active {
+          background: #dbeafe;
+          color: #1d4ed8;
+        }
+        .status-completed {
+          background: #dcfce7;
+          color: #15803d;
+        }
+        .financial-bar {
+          display: flex;
+          justify-content: space-between;
+          background: #0f172a;
+          color: #fff;
+          padding: 6px 12px;
+          border-radius: 4px;
+          font-size: 11px;
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+        .financial-bar span {
+          display: flex;
+          gap: 6px;
+        }
+        .financial-bar .num {
+          color: #38bdf8;
+        }
+        .signature-area {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 18px;
+          padding-top: 22px;
+          border-top: 1px dashed #94a3b8;
+        }
+        .sign-box {
+          text-align: center;
+          width: 180px;
+          border-top: 1px solid #0f172a;
+          padding-top: 4px;
+          font-size: 10px;
+          font-weight: 700;
+          color: #334155;
+        }
+        .footer-note {
+          text-align: center;
+          font-size: 9px;
+          color: #94a3b8;
+          margin-top: 10px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="passbook-container">
+        <!-- Business Header -->
+        <div class="header">
+          <div>
+            <div class="business-title">${businessName}</div>
+            <div class="business-sub">${businessAddress}${businessAddress && businessPhone ? ' | ' : ''}${businessPhone}</div>
+          </div>
+          <div class="doc-badge">
+            <div class="doc-title">Loan Passbook Statement</div>
+            <div class="doc-meta">Printed: ${todayStr} ${timeStr}</div>
+          </div>
+        </div>
+
+        <!-- Customer & Loan Account Info -->
+        <div class="summary-card">
+          <div class="info-cell">
+            <span class="info-label">Customer ID & Name:</span>
+            <span class="info-val">#${c.customerNumber}${loanSuffix} - ${c.fullName}</span>
+          </div>
+          <div class="info-cell">
+            <span class="info-label">Phone / Mobile:</span>
+            <span class="info-val">${c.phone || 'N/A'}</span>
+          </div>
+          <div class="info-cell">
+            <span class="info-label">Loan Plan:</span>
+            <span class="info-val">${planName}</span>
+          </div>
+          <div class="info-cell">
+            <span class="info-label">Loan Status:</span>
+            <span class="badge-status ${stats.isCompleted ? 'status-completed' : 'status-active'}">${stats.isCompleted ? 'COMPLETED' : 'ACTIVE'}</span>
+          </div>
+          <div class="info-cell">
+            <span class="info-label">Principal Given:</span>
+            <span class="info-val" style="color:#1d4ed8;">₹ ${Number(c.givenAmount).toLocaleString('en-IN')}</span>
+          </div>
+          <div class="info-cell">
+            <span class="info-label">Instalment Rate:</span>
+            <span class="info-val">₹ ${Number(c.instalmentAmount).toLocaleString('en-IN')} ${unitRate}</span>
+          </div>
+          <div class="info-cell">
+            <span class="info-label">Total Repayable:</span>
+            <span class="info-val">₹ ${Number(stats.totalPayable).toLocaleString('en-IN')}</span>
+          </div>
+          <div class="info-cell">
+            <span class="info-label">Start / Issue Date:</span>
+            <span class="info-val">${c.startDate || 'N/A'}</span>
+          </div>
+        </div>
+
+        <!-- Financial Summary Bar -->
+        <div class="financial-bar">
+          <span>Total Paid: <span class="num">₹ ${Number(stats.totalPaid).toLocaleString('en-IN')}</span> (${stats.paidCount}/${totalInst})</span>
+          <span>Balance Outstanding: <span class="num" style="color:#f87171;">₹ ${Number(stats.balance).toLocaleString('en-IN')}</span></span>
+          <span>Progress: <span class="num">${Math.min(100, Math.round((stats.totalPaid / (stats.totalPayable || 1)) * 100))}%</span></span>
+        </div>
+
+        <!-- Chronological Repayment Ledger -->
+        ${tableHtml}
+
+        <!-- Signatures -->
+        <div class="signature-area">
+          <div class="sign-box">Customer Signature</div>
+          <div class="sign-box">Agent / Collector Signature</div>
+          <div class="sign-box">Authorized Cashier / Manager</div>
+        </div>
+
+        <div class="footer-note">
+          Official repayment record issued by ${businessName}. Please preserve this passbook for your payment verification.
+        </div>
+      </div>
+
+      <script>
+        window.onload = function() {
+          window.focus();
+          setTimeout(function() {
+            window.print();
+          }, 250);
+        };
+      </script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
 }
 
 // ----------------------------------------------------
