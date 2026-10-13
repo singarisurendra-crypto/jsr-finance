@@ -69,11 +69,66 @@ let state = {
   filterStatus: 'all',
 };
 
+// Web Audio API Cash Register Chime & Sound Effects (Zero External Files)
+function playCashChime() {
+  if (state.settings && state.settings.soundMuted) return;
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    const now = ctx.currentTime;
+    // Ascending cash ding tone: 880Hz (A5) -> 1320Hz (E6)
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.35);
+  } catch (e) {
+    // Graceful fallback if audio is restricted before first gesture
+  }
+}
+
+function toggleSoundEffect() {
+  if (!state.settings) state.settings = {};
+  state.settings.soundMuted = !state.settings.soundMuted;
+  saveData();
+  updateSoundToggleButton();
+  if (!state.settings.soundMuted) {
+    playCashChime();
+    showToast('Sound effects enabled 🔔');
+  } else {
+    showToast('Sound effects muted 🔕');
+  }
+}
+
+function updateSoundToggleButton() {
+  const btn = document.getElementById('btn-sound-toggle');
+  if (!btn) return;
+  if (state.settings && state.settings.soundMuted) {
+    btn.innerHTML = '🔕 Sound: Off';
+    btn.style.color = '#94a3b8';
+  } else {
+    btn.innerHTML = '🔔 Sound: On';
+    btn.style.color = '#15803d';
+  }
+}
+
 // Initialize App
 function initApp() {
   loadData();
   setupEventListeners();
   updateHeaderStats();
+  updateSoundToggleButton();
   switchTab('summary');
   if (typeof initGoogleCloudDatabase === 'function') {
     initGoogleCloudDatabase();
@@ -141,20 +196,47 @@ function getCustomerStats(customer) {
   const totalInst = customer.totalInstalments || 52;
   const instalments = customer.instalments || [];
   let paidCount = 0;
+  let partialCount = 0;
   let totalPaid = 0;
 
   for (let i = 0; i < totalInst; i++) {
     const inst = instalments[i];
-    if (inst && inst.status === 'Received') {
-      paidCount++;
-      totalPaid += (inst.paidAmount || customer.instalmentAmount);
+    if (inst) {
+      if (inst.status === 'Received') {
+        paidCount++;
+        totalPaid += (Number(inst.paidAmount) || customer.instalmentAmount);
+      } else if (inst.status === 'Partial') {
+        partialCount++;
+        totalPaid += (Number(inst.paidAmount) || 0);
+      }
     }
   }
 
-  const pendingCount = totalInst - paidCount;
+  const pendingCount = Math.max(0, totalInst - paidCount);
   const totalPayable = customer.totalPayable || (customer.instalmentAmount * totalInst);
   const balance = Math.max(0, totalPayable - totalPaid);
-  const progressPercent = Math.min(100, Math.round((paidCount / totalInst) * 100));
+  const isCompleted = balance <= 0 || paidCount >= totalInst;
+  const progressPercent = Math.min(100, Math.round((totalPaid / (totalPayable || 1)) * 100));
+
+  // Overdue calculation (Behind schedule by 2 or more instalments)
+  let isOverdue = false;
+  let missedCount = 0;
+  if (!isCompleted && customer.startDate) {
+    try {
+      const startMs = new Date(customer.startDate).getTime();
+      const nowMs = new Date().getTime();
+      const diffDays = Math.floor((nowMs - startMs) / (1000 * 60 * 60 * 24));
+      const isDaily = customer.frequency === 'Daily' || (customer.totalInstalments || 52) === 100;
+      const expectedInst = isDaily ? Math.max(0, diffDays + 1) : Math.max(0, Math.floor(diffDays / 7) + 1);
+      const cappedExpected = Math.min(totalInst, expectedInst);
+      if (cappedExpected - paidCount >= 2) {
+        isOverdue = true;
+        missedCount = cappedExpected - paidCount;
+      }
+    } catch (e) {
+      // ignore date parse error
+    }
+  }
 
   // Profit calculations
   const given = Number(customer.givenAmount) || 0;
@@ -165,6 +247,7 @@ function getCustomerStats(customer) {
 
   return {
     paidCount,
+    partialCount,
     pendingCount,
     totalPaid,
     totalPayable,
@@ -173,7 +256,9 @@ function getCustomerStats(customer) {
     expectedProfit,
     realizedProfit,
     profitReturnPercent,
-    isCompleted: paidCount >= totalInst,
+    isCompleted,
+    isOverdue,
+    missedCount,
   };
 }
 
@@ -209,8 +294,8 @@ function getPortfolioStats() {
     // Check today's collections
     if (cust.instalments) {
       cust.instalments.forEach((inst) => {
-        if (inst && inst.status === 'Received' && inst.paidDate === todayStr) {
-          todayCollected += (inst.paidAmount || cust.instalmentAmount);
+        if (inst && (inst.status === 'Received' || inst.status === 'Partial') && inst.paidDate === todayStr) {
+          todayCollected += (Number(inst.paidAmount) || cust.instalmentAmount);
         }
       });
     }
@@ -278,6 +363,7 @@ function switchTab(tabName) {
 
   if (tabName === 'summary') renderDashboard();
   if (tabName === 'collections') renderCollectionMatrix();
+  if (tabName === 'runsheet') renderRunSheet();
   if (tabName === 'customers') renderCustomersTable();
   if (tabName === 'analytics') renderAnalytics();
   if (tabName === 'schemes') renderSchemesTable();
@@ -373,7 +459,7 @@ function renderRecentTransactions() {
   let allPaid = [];
   state.customers.forEach((c) => {
     (c.instalments || []).forEach((inst) => {
-      if (inst && inst.status === 'Received') {
+      if (inst && (inst.status === 'Received' || inst.status === 'Partial')) {
         allPaid.push({
           customerId: c.id,
           customerNumber: c.customerNumber,
@@ -382,8 +468,9 @@ function renderRecentTransactions() {
           areaRoute: c.areaRoute || 'General',
           instNumber: inst.number,
           paidDate: inst.paidDate || todayStr,
-          amount: inst.paidAmount || c.instalmentAmount,
+          amount: Number(inst.paidAmount) || c.instalmentAmount,
           receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
+          status: inst.status,
         });
       }
     });
@@ -433,7 +520,7 @@ function renderRecentTransactions() {
         <td><span style="color:#16a34a; font-weight:700;">+ ${formatMoney(item.amount)}</span></td>
         <td>${item.paidDate}</td>
         <td><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px;">${item.areaRoute}</span></td>
-        <td><span class="badge-received" style="width:auto; padding:2px 8px;">Received</span></td>
+        <td>${item.status === 'Partial' ? `<span class="badge-partial" style="width:auto; padding:2px 8px;">Partial</span>` : `<span class="badge-received" style="width:auto; padding:2px 8px;">Received</span>`}</td>
       </tr>
     `).join('');
   }
@@ -639,6 +726,8 @@ function renderCollectionMatrix() {
     const stats = getCustomerStats(c);
     if (!matchesSearch) return false;
     if (state.filterStatus === 'active') return !stats.isCompleted;
+    if (state.filterStatus === 'overdue') return stats.isOverdue;
+    if (state.filterStatus === 'partial') return (c.instalments || []).some(i => i && i.status === 'Partial');
     if (state.filterStatus === 'completed') return stats.isCompleted;
     if (state.filterStatus === 'weekly') return c.frequency !== 'Daily' && (c.totalInstalments || 52) !== 100;
     if (state.filterStatus === 'daily') return c.frequency === 'Daily' || c.totalInstalments === 100;
@@ -703,6 +792,7 @@ function renderCollectionMatrix() {
           ${(cust.loanNumber && cust.loanNumber > 1) || state.customers.filter(c => c.customerNumber.toString() === cust.customerNumber.toString()).length > 1
             ? ` <span class="loan-badge">L${cust.loanNumber || 1}</span>`
             : ''}
+          ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="${stats.missedCount} instalments behind schedule">⚠️ Due ${stats.missedCount}</span>` : ''}
         </td>
         <td class="sticky-col-2">
           <div style="font-weight:600; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; max-width:140px;" title="${cust.fullName}">${cust.fullName}</div>
@@ -729,16 +819,27 @@ function renderCollectionMatrix() {
 
       const inst = (cust.instalments && cust.instalments[w - 1]) || { number: w, status: 'Pending' };
       const isReceived = inst.status === 'Received';
+      const isPartial = inst.status === 'Partial';
+
+      let cellBadge = '';
+      let cellTitle = '';
+
+      if (isReceived) {
+        cellBadge = `<span class="badge-received">✓</span>`;
+        cellTitle = `Customer #${cust.customerNumber} - ${unitLabel} ${w}: Received ₹${inst.paidAmount || cust.instalmentAmount} on ${inst.paidDate || 'Today'}. Click to Undo.`;
+      } else if (isPartial) {
+        cellBadge = `<span class="badge-partial" title="Partial: ₹${inst.paidAmount} of ₹${cust.instalmentAmount}">₹${inst.paidAmount}</span>`;
+        cellTitle = `Customer #${cust.customerNumber} - ${unitLabel} ${w}: Partial ₹${inst.paidAmount} received (₹${(cust.instalmentAmount - (inst.paidAmount || 0))} remaining). Click to complete!`;
+      } else {
+        cellBadge = `<span class="badge-pending">${w}</span>`;
+        cellTitle = `Customer #${cust.customerNumber} - ${unitLabel} ${w}: Click to mark ₹${cust.instalmentAmount} Received.`;
+      }
 
       bodyHtml += `
         <td class="inst-cell" 
             onclick="toggleInstalmentReceived('${cust.id}', ${w})" 
-            title="Customer #${cust.customerNumber}${cust.loanNumber > 1 ? ` (Loan ${cust.loanNumber})` : ''} - ${unitLabel} ${w}: ${isReceived ? 'Received on ' + (inst.paidDate || 'Today') : 'Click to mark Received'}">
-          ${
-            isReceived
-              ? `<span class="badge-received">✓</span>`
-              : `<span class="badge-pending">${w}</span>`
-          }
+            title="${cellTitle}">
+          ${cellBadge}
         </td>
       `;
     }
@@ -749,37 +850,72 @@ function renderCollectionMatrix() {
   tableBody.innerHTML = bodyHtml;
 }
 
-// 1-Click Toggle Instalment
-function toggleInstalmentReceived(customerId, instNumber) {
+// 1-Click Toggle / Partial Instalment
+function toggleInstalmentReceived(customerId, instNumber, customAmount) {
   const customer = state.customers.find((c) => c.id === customerId);
   if (!customer) return;
 
   if (!customer.instalments) {
     customer.instalments = [];
     for (let i = 1; i <= (customer.totalInstalments || 52); i++) {
-      customer.instalments.push({ number: i, status: 'Pending' });
+      customer.instalments.push({ number: i, status: 'Pending', dueAmount: customer.instalmentAmount, paidAmount: 0 });
     }
   }
 
   // Ensure all indices up to instNumber exist
   while (customer.instalments.length < instNumber) {
-    customer.instalments.push({ number: customer.instalments.length + 1, status: 'Pending' });
+    customer.instalments.push({ number: customer.instalments.length + 1, status: 'Pending', dueAmount: customer.instalmentAmount, paidAmount: 0 });
   }
 
   const inst = customer.instalments[instNumber - 1];
   const todayStr = new Date().toISOString().split('T')[0];
+  const scheduledAmount = Number(customer.instalmentAmount) || 200;
 
-  if (inst.status === 'Received') {
-    // Undo
-    inst.status = 'Pending';
-    inst.paidDate = null;
-    inst.paidAmount = 0;
+  if (customAmount !== undefined && customAmount !== null && !isNaN(customAmount) && Number(customAmount) > 0) {
+    // Partial or custom amount payment received
+    const amountVal = Number(customAmount);
+    const existingPaid = Number(inst.paidAmount) || 0;
+    const newTotalPaid = existingPaid + amountVal;
+
+    if (newTotalPaid >= scheduledAmount) {
+      inst.status = 'Received';
+      inst.paidAmount = scheduledAmount;
+      inst.paidDate = todayStr;
+      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+      playCashChime();
+      showToast(`✓ Received Full #${instNumber} (${formatMoney(scheduledAmount)}) for #${customer.customerNumber}`);
+    } else {
+      inst.status = 'Partial';
+      inst.paidAmount = newTotalPaid;
+      inst.paidDate = todayStr;
+      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}-P`;
+      playCashChime();
+      showToast(`½ Partial payment of ₹${amountVal} recorded for #${instNumber} (₹${scheduledAmount - newTotalPaid} due) for #${customer.customerNumber}`);
+    }
   } else {
-    // Mark Received
-    inst.status = 'Received';
-    inst.paidDate = todayStr;
-    inst.paidAmount = customer.instalmentAmount;
-    inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+    // Standard 1-Click toggle
+    if (inst.status === 'Received') {
+      // Undo
+      inst.status = 'Pending';
+      inst.paidDate = null;
+      inst.paidAmount = 0;
+      inst.receiptNumber = null;
+    } else if (inst.status === 'Partial') {
+      // Clicking a partial instalment completes the remaining due balance
+      inst.status = 'Received';
+      inst.paidAmount = scheduledAmount;
+      inst.paidDate = todayStr;
+      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+      playCashChime();
+      showToast(`✓ Completed remaining balance for #${instNumber} (${formatMoney(scheduledAmount)}) for #${customer.customerNumber}`);
+    } else {
+      // Mark Received full
+      inst.status = 'Received';
+      inst.paidDate = todayStr;
+      inst.paidAmount = scheduledAmount;
+      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+      playCashChime();
+    }
   }
 
   saveData();
@@ -788,6 +924,59 @@ function toggleInstalmentReceived(customerId, instNumber) {
   }
   renderCollectionMatrix();
   if (state.activeTab === 'summary') renderDashboard();
+  if (state.activeTab === 'runsheet') renderRunSheet();
+}
+
+// Auto-populate default due amount or remaining partial balance as user types customer #
+function handleQuickCustNumChange() {
+  const custNumInput = document.getElementById('quick-cust-num');
+  const amountInput = document.getElementById('quick-amount');
+  if (!custNumInput || !amountInput) return;
+
+  const rawInput = custNumInput.value.trim();
+  if (!rawInput) {
+    amountInput.value = '';
+    return;
+  }
+
+  let targetCustNum = rawInput;
+  let targetLoanNum = null;
+  const match = rawInput.match(/^(\d+)[\s\-_/lL]+(\d+)$/);
+  if (match) {
+    targetCustNum = match[1];
+    targetLoanNum = parseInt(match[2], 10);
+  }
+
+  const matches = state.customers.filter((c) => c.customerNumber.toString() === targetCustNum);
+  if (matches.length === 0) return;
+
+  let customer = null;
+  if (targetLoanNum !== null) {
+    customer = matches.find((c) => (Number(c.loanNumber) || 1) === targetLoanNum);
+  } else {
+    customer = matches[0];
+  }
+
+  if (!customer) return;
+
+  // Find next pending or partial instalment
+  const totalInst = customer.totalInstalments || 52;
+  const instalments = customer.instalments || [];
+  let nextDueInst = null;
+  for (let i = 0; i < totalInst; i++) {
+    const inst = instalments[i];
+    if (!inst || inst.status !== 'Received') {
+      nextDueInst = inst || { number: i + 1, status: 'Pending', paidAmount: 0 };
+      break;
+    }
+  }
+
+  if (nextDueInst) {
+    const scheduled = Number(customer.instalmentAmount) || 200;
+    const paidSoFar = Number(nextDueInst.paidAmount) || 0;
+    const remaining = Math.max(1, scheduled - paidSoFar);
+    amountInput.value = remaining;
+  }
 }
 
 // Quick Numpad Entry Handler
@@ -795,6 +984,7 @@ function handleQuickReceive(event) {
   if (event) event.preventDefault();
 
   const custNumInput = document.getElementById('quick-cust-num');
+  const customAmountInput = document.getElementById('quick-amount');
   const rawInput = custNumInput.value.trim();
 
   if (!rawInput) {
@@ -842,7 +1032,7 @@ function handleQuickReceive(event) {
     customer = pendingLoans[0]; // defaults to lowest active loan
   }
 
-  // Find next pending instalment
+  // Find next pending or partial instalment
   const totalInst = customer.totalInstalments || 52;
   if (!customer.instalments) customer.instalments = [];
 
@@ -860,10 +1050,12 @@ function handleQuickReceive(event) {
     return;
   }
 
-  toggleInstalmentReceived(customer.id, nextPending);
+  const customAmountVal = customAmountInput && customAmountInput.value ? Number(customAmountInput.value) : null;
+  toggleInstalmentReceived(customer.id, nextPending, customAmountVal);
 
-  // Clear or refocus for next rapid entry
+  // Clear inputs and refocus
   custNumInput.value = '';
+  if (customAmountInput) customAmountInput.value = '';
   custNumInput.focus();
 
   // Show brief feedback toast with multi-loan guidance
@@ -908,6 +1100,7 @@ function renderCustomersTable() {
         <td>
           <strong style="color:#1e3a8a; font-size:14px;">#${c.customerNumber}</strong>
           ${hasMultipleLoans ? ` <span class="loan-badge">L${c.loanNumber || 1}</span>` : ''}
+          ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="${stats.missedCount} instalments behind schedule">⚠️ Due ${stats.missedCount}</span>` : ''}
         </td>
         <td>
           <div style="font-weight:600;">${c.fullName}</div>
@@ -938,6 +1131,7 @@ function renderCustomersTable() {
           <div class="btn-group">
             <button class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
             <button class="btn btn-outline btn-sm" onclick="openAddLoanForCustomer('${c.customerNumber}')" title="Issue additional loan to customer" style="color: #2563eb; font-weight: 600;">+ Loan</button>
+            <button class="btn btn-outline btn-sm" style="color: #16a34a; border-color: #86efac;" onclick="sendWhatsAppDueReminder('${c.id}')" title="Send WhatsApp Due Reminder">💬 WA</button>
             <button class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${c.id}')">Edit</button>
             <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" title="Delete">Delete</button>
           </div>
@@ -964,7 +1158,10 @@ function renderCustomersTable() {
                 <div class="customer-card-meta">${c.phone || 'No Phone'} • <span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-size:11px;">${c.areaRoute || 'General'}</span></div>
               </div>
             </div>
-            <span class="badge-received" style="width:auto; padding:3px 10px; font-size:11px;">${stats.isCompleted ? 'Completed' : 'Active'}</span>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+              <span class="badge-received" style="width:auto; padding:3px 10px; font-size:11px;">${stats.isCompleted ? 'Completed' : 'Active'}</span>
+              ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px;">⚠️ Due ${stats.missedCount}</span>` : ''}
+            </div>
           </div>
 
           <div class="customer-card-grid">
@@ -1007,6 +1204,7 @@ function renderCustomersTable() {
           <div class="customer-card-actions">
             <button class="btn btn-outline" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
             <button class="btn btn-outline" onclick="openAddLoanForCustomer('${c.customerNumber}')" style="color: #2563eb; font-weight: 600;">+ Loan</button>
+            <button class="btn btn-outline" style="color: #16a34a; border-color: #86efac;" onclick="sendWhatsAppDueReminder('${c.id}')">💬 WA</button>
             <button class="btn btn-outline" onclick="openEditCustomerModal('${c.id}')">Edit</button>
             <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" style="flex:0; padding:8px 12px;">Delete</button>
           </div>
@@ -1431,19 +1629,24 @@ function openCustomerPassbook(customerId) {
   for (let w = 1; w <= totalInst; w++) {
     const inst = (c.instalments && c.instalments[w - 1]) || { number: w, status: 'Pending' };
     const isReceived = inst.status === 'Received';
+    const isPartial = inst.status === 'Partial';
 
     rowsHtml += `
       <tr>
         <td><strong>${unitLabel} #${w}</strong></td>
         <td>${formatMoney(c.instalmentAmount)}</td>
         <td>
-          ${isReceived ? `<span class="badge-received" style="width:auto; padding:2px 8px;">✓ Received</span>` : `<span style="color:#94a3b8;">Pending</span>`}
+          ${isReceived
+            ? `<span class="badge-received" style="width:auto; padding:2px 8px;">✓ Received (${formatMoney(inst.paidAmount || c.instalmentAmount)})</span>`
+            : (isPartial
+                ? `<span class="badge-partial" style="width:auto; padding:2px 8px;">½ Partial (${formatMoney(inst.paidAmount)})</span>`
+                : `<span style="color:#94a3b8;">Pending</span>`)}
         </td>
         <td>${inst.paidDate || '-'}</td>
         <td>${inst.receiptNumber || '-'}</td>
         <td>
           <button class="btn btn-outline btn-sm" onclick="toggleInstalmentReceived('${c.id}', ${w}); openCustomerPassbook('${c.id}');">
-            ${isReceived ? 'Undo' : 'Mark Received'}
+            ${isReceived ? 'Undo' : (isPartial ? 'Pay Balance' : 'Mark Received')}
           </button>
         </td>
       </tr>
@@ -1592,7 +1795,8 @@ function exportCollectionSheetCSV() {
         row += `,"-"`;
       } else {
         const inst = (c.instalments && c.instalments[i - 1]) || {};
-        row += `,"${inst.status === 'Received' ? 'Received' : 'Pending'}"`;
+        const cellStatus = inst.status === 'Received' ? 'Received' : (inst.status === 'Partial' ? `Partial (₹${inst.paidAmount})` : 'Pending');
+        row += `,"${cellStatus}"`;
       }
     }
     csv += row + '\n';
@@ -1755,6 +1959,446 @@ function showToast(message) {
   setTimeout(() => {
     toast.style.display = 'none';
   }, 2600);
+}
+
+// ----------------------------------------------------
+// SCREEN: FIELD COLLECTION RUN SHEET
+// ----------------------------------------------------
+function renderRunSheet() {
+  const container = document.getElementById('runsheet-cards-container');
+  if (!container) return;
+
+  const routeFilterSelect = document.getElementById('runsheet-route-filter');
+  const searchInput = document.getElementById('runsheet-search-input');
+  const selectedRoute = routeFilterSelect ? routeFilterSelect.value : 'all';
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Populate route filter options
+  if (routeFilterSelect) {
+    const currentVal = routeFilterSelect.value;
+    const routes = new Set();
+    state.customers.forEach((c) => {
+      if (c.areaRoute) routes.add(c.areaRoute.trim());
+    });
+    let optionsHtml = '<option value="all">All Routes / Areas</option>';
+    Array.from(routes).sort().forEach((r) => {
+      optionsHtml += `<option value="${r}">${r}</option>`;
+    });
+    routeFilterSelect.innerHTML = optionsHtml;
+    if (Array.from(routes).includes(currentVal) || currentVal === 'all') {
+      routeFilterSelect.value = currentVal;
+    }
+  }
+
+  // Filter active customers for today's run
+  const activeCustomers = state.customers.filter((c) => {
+    const stats = getCustomerStats(c);
+    if (stats.isCompleted) return false;
+
+    if (selectedRoute !== 'all' && (c.areaRoute || 'General') !== selectedRoute) {
+      return false;
+    }
+
+    if (query) {
+      const matchNum = c.customerNumber.toString().includes(query);
+      const matchName = c.fullName.toLowerCase().includes(query);
+      const matchPhone = (c.phone || '').includes(query);
+      const matchArea = (c.areaRoute || '').toLowerCase().includes(query);
+      if (!matchNum && !matchName && !matchPhone && !matchArea) return false;
+    }
+
+    return true;
+  });
+
+  // Calculate run sheet metrics
+  let totalActive = activeCustomers.length;
+  let collectedTodayCount = 0;
+  let collectedTodayRupees = 0;
+
+  activeCustomers.forEach((c) => {
+    const todayInsts = (c.instalments || []).filter(
+      (inst) => inst && (inst.status === 'Received' || inst.status === 'Partial') && inst.paidDate === todayStr
+    );
+    if (todayInsts.length > 0) {
+      collectedTodayCount++;
+      todayInsts.forEach((inst) => {
+        collectedTodayRupees += (Number(inst.paidAmount) || c.instalmentAmount);
+      });
+    }
+  });
+
+  // Update Progress Strip
+  const progressText = document.getElementById('runsheet-progress-text');
+  const progressFill = document.getElementById('runsheet-progress-fill');
+  const rupeesText = document.getElementById('runsheet-collected-rupees');
+
+  const pct = totalActive > 0 ? Math.round((collectedTodayCount / totalActive) * 100) : 0;
+  if (progressText) progressText.textContent = `${collectedTodayCount} / ${totalActive} Collected (${pct}%)`;
+  if (progressFill) progressFill.style.width = `${pct}%`;
+  if (rupeesText) rupeesText.textContent = `${formatMoney(collectedTodayRupees)} Collected Today`;
+
+  if (activeCustomers.length === 0) {
+    container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #94a3b8; background: #fff; border-radius: 12px; border: 1px solid #e2e8f0;">No active customers found for this route.</div>`;
+    return;
+  }
+
+  // Render Run Sheet Cards
+  container.innerHTML = activeCustomers.map((c) => {
+    const stats = getCustomerStats(c);
+    const totalInst = c.totalInstalments || 52;
+    const isDaily = c.frequency === 'Daily' || totalInst === 100;
+    const unitLabel = isDaily ? 'Day' : 'Week';
+
+    // Check if paid today
+    const paidTodayInst = (c.instalments || []).find(
+      (inst) => inst && (inst.status === 'Received' || inst.status === 'Partial') && inst.paidDate === todayStr
+    );
+    const isPaidToday = !!paidTodayInst;
+
+    // Find next pending or partial instalment
+    let nextDueNum = 1;
+    let nextDueAmount = c.instalmentAmount;
+    let isNextPartial = false;
+    for (let i = 1; i <= totalInst; i++) {
+      const inst = (c.instalments && c.instalments[i - 1]);
+      if (!inst || inst.status !== 'Received') {
+        nextDueNum = i;
+        if (inst && inst.status === 'Partial') {
+          isNextPartial = true;
+          nextDueAmount = Math.max(0, c.instalmentAmount - (Number(inst.paidAmount) || 0));
+        } else {
+          nextDueAmount = c.instalmentAmount;
+        }
+        break;
+      }
+    }
+
+    const loanBadgeHtml = (c.loanNumber && c.loanNumber > 1) ? ` <span class="loan-badge">L${c.loanNumber}</span>` : '';
+    const cleanPhone = c.phone ? c.phone.replace(/[^0-9]/g, '') : '';
+
+    return `
+      <div class="runsheet-card ${isPaidToday ? 'is-paid-today' : ''}">
+        <div class="runsheet-header">
+          <div>
+            <div style="font-weight: 700; font-size: 15px; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+              <span style="color: #1e40af;">#${c.customerNumber}</span>${loanBadgeHtml} - ${c.fullName}
+            </div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 2px;">
+              📍 ${c.address || 'No Address'} • <span style="background: #e0f2fe; color: #0369a1; padding: 1px 6px; border-radius: 4px; font-weight: 600;">${c.areaRoute || 'General'}</span>
+            </div>
+          </div>
+          <div>
+            ${isPaidToday
+              ? `<span class="badge-received" style="width: auto; padding: 4px 10px; font-size: 11px;">✓ Paid Today</span>`
+              : (stats.isOverdue
+                  ? `<span class="badge-overdue" style="font-size: 11px;">⚠️ Due ${stats.missedCount}</span>`
+                  : `<span style="font-size: 12px; font-weight: 700; color: #2563eb;">${unitLabel} #${nextDueNum}</span>`)}
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; background: #f8fafc; padding: 10px; border-radius: 8px; font-size: 12px;">
+          <div>
+            <span style="color: #64748b;">Due Now:</span><br>
+            <strong style="color: #1e3a8a; font-size: 14px;">${formatMoney(nextDueAmount)}</strong>
+          </div>
+          <div>
+            <span style="color: #64748b;">Paid:</span><br>
+            <strong style="color: #16a34a;">${stats.paidCount}/${totalInst}</strong>
+          </div>
+          <div>
+            <span style="color: #64748b;">Balance:</span><br>
+            <strong style="color: #b45309;">${formatMoney(stats.balance)}</strong>
+          </div>
+        </div>
+
+        <div class="runsheet-actions">
+          ${isPaidToday
+            ? `<button class="btn btn-sm btn-outline" style="background: #ecfdf5; color: #15803d; border-color: #86efac; flex: 1;" onclick="sendWhatsAppPaymentReceipt('${c.id}', ${paidTodayInst.paidAmount || c.instalmentAmount}, ${paidTodayInst.number})">
+                🧾 Send Receipt
+               </button>`
+            : `<button class="btn btn-sm btn-success" style="flex: 1;" onclick="toggleInstalmentReceived('${c.id}', ${nextDueNum}); renderRunSheet();">
+                ⚡ Collect ${formatMoney(nextDueAmount)}
+               </button>
+               <button class="btn btn-sm btn-outline" style="color: #d97706; border-color: #fde68a;" onclick="openPartialPayModal('${c.id}', ${nextDueNum})">
+                ½ Custom ₹
+               </button>`
+          }
+
+          ${cleanPhone
+            ? `<a href="tel:${cleanPhone}" class="btn btn-sm btn-outline" style="text-decoration: none;" title="Call Customer">
+                📞 Call
+               </a>
+               <button class="btn btn-sm btn-outline" style="color: #16a34a; border-color: #86efac;" onclick="sendWhatsAppDueReminder('${c.id}')" title="Send WhatsApp Reminder">
+                💬 WA
+               </button>`
+            : ''
+          }
+          <button class="btn btn-sm btn-outline" onclick="openCustomerPassbook('${c.id}')" title="View Full Passbook">
+            📖
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ----------------------------------------------------
+// WHATSAPP INTEGRATION (DUE REMINDER & INSTANT RECEIPT)
+// ----------------------------------------------------
+function sendWhatsAppDueReminder(customerId) {
+  const c = state.customers.find((cust) => cust.id === customerId);
+  if (!c) return;
+
+  const phone = c.phone ? c.phone.replace(/[^0-9]/g, '') : '';
+  if (!phone) {
+    alert(`No valid phone number found for ${c.fullName}.`);
+    return;
+  }
+
+  const stats = getCustomerStats(c);
+  const totalInst = c.totalInstalments || 52;
+  const isDaily = c.frequency === 'Daily' || totalInst === 100;
+  const freqLabel = isDaily ? 'daily' : 'weekly';
+
+  const loanSuffix = (c.loanNumber && c.loanNumber > 1) ? ` (Loan #${c.loanNumber})` : '';
+  const message = 
+`*${state.settings.businessName || 'JSR Finance'} - Instalment Due Reminder*
+
+Dear *${c.fullName}* (Cust #${c.customerNumber}${loanSuffix}),
+
+This is a friendly reminder for your *${freqLabel} instalment*:
+• Due Amount: *${formatMoney(c.instalmentAmount)}*
+• Remaining Balance: *${formatMoney(stats.balance)}*
+• Progress: *${stats.paidCount}/${totalInst} instalments paid*
+
+Kindly keep the amount ready for collection. Thank you!
+— *${state.settings.businessName || 'JSR Finance'}*`;
+
+  const url = `https://wa.me/${phone.length === 10 ? '91' + phone : phone}?text=${encodeURIComponent(message)}`;
+  window.open(url, '_blank');
+}
+
+function sendWhatsAppPaymentReceipt(customerId, paidAmount, instNumber) {
+  const c = state.customers.find((cust) => cust.id === customerId);
+  if (!c) return;
+
+  const phone = c.phone ? c.phone.replace(/[^0-9]/g, '') : '';
+  if (!phone) {
+    alert(`No valid phone number found for ${c.fullName}.`);
+    return;
+  }
+
+  const stats = getCustomerStats(c);
+  const totalInst = c.totalInstalments || 52;
+  const amountVal = Number(paidAmount) || c.instalmentAmount;
+  const todayStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const loanSuffix = (c.loanNumber && c.loanNumber > 1) ? ` (Loan #${c.loanNumber})` : '';
+
+  const message =
+`*PAYMENT RECEIPT - ${state.settings.businessName || 'JSR Finance'}*
+━━━━━━━━━━━━━━━━━━━━
+✓ *Payment Received: ${formatMoney(amountVal)}*
+• Customer: *${c.fullName}* (#${c.customerNumber}${loanSuffix})
+• Instalment: *#${instNumber || 1} of ${totalInst}*
+• Date: *${todayStr}*
+• Receipt #: *REC-${c.customerNumber}-${instNumber || 1}*
+• Remaining Balance: *${formatMoney(stats.balance)}*
+━━━━━━━━━━━━━━━━━━━━
+Thank you for your prompt payment!`;
+
+  const url = `https://wa.me/${phone.length === 10 ? '91' + phone : phone}?text=${encodeURIComponent(message)}`;
+  window.open(url, '_blank');
+}
+
+// ----------------------------------------------------
+// MODAL: CUSTOM / PARTIAL PAYMENT HANDLERS
+// ----------------------------------------------------
+function openPartialPayModal(customerId, instNumber) {
+  const c = state.customers.find((cust) => cust.id === customerId);
+  if (!c) return;
+
+  document.getElementById('partial-cust-id').value = customerId;
+  document.getElementById('partial-inst-num').value = instNumber;
+  document.getElementById('partial-modal-cust-name').textContent = `#${c.customerNumber} - ${c.fullName}`;
+
+  const inst = (c.instalments && c.instalments[instNumber - 1]);
+  const scheduled = Number(c.instalmentAmount) || 200;
+  const paidSoFar = Number(inst?.paidAmount) || 0;
+  const remaining = Math.max(1, scheduled - paidSoFar);
+
+  document.getElementById('partial-modal-details').textContent = 
+    `Instalment #${instNumber} | Scheduled: ${formatMoney(scheduled)} | Already Paid: ${formatMoney(paidSoFar)} | Remaining: ${formatMoney(remaining)}`;
+
+  const amountInput = document.getElementById('partial-pay-amount');
+  amountInput.value = remaining;
+  amountInput.max = remaining;
+
+  document.getElementById('modal-partial-pay').classList.add('active');
+  setTimeout(() => amountInput.focus(), 150);
+}
+
+function handlePartialPaySubmit(event) {
+  event.preventDefault();
+  const customerId = document.getElementById('partial-cust-id').value;
+  const instNumber = parseInt(document.getElementById('partial-inst-num').value, 10);
+  const amount = Number(document.getElementById('partial-pay-amount').value);
+
+  if (!amount || amount <= 0) {
+    alert('Please enter a valid payment amount.');
+    return;
+  }
+
+  toggleInstalmentReceived(customerId, instNumber, amount);
+  closeModal('modal-partial-pay');
+}
+
+// ----------------------------------------------------
+// MODAL: CASH TALLY & CURRENCY HANDOVER SLIP
+// ----------------------------------------------------
+function openCashTallyModal() {
+  const stats = getPortfolioStats();
+  const ledgerEl = document.getElementById('tally-ledger-today');
+  if (ledgerEl) ledgerEl.textContent = formatMoney(stats.todayCollected);
+
+  updateCashTallyCalc();
+  document.getElementById('modal-cash-tally').classList.add('active');
+}
+
+function updateCashTallyCalc() {
+  const denoms = [
+    { id: '500', val: 500 },
+    { id: '200', val: 200 },
+    { id: '100', val: 100 },
+    { id: '50', val: 50 },
+    { id: '20', val: 20 },
+    { id: '10', val: 10 },
+  ];
+
+  let totalPhysical = 0;
+  denoms.forEach((d) => {
+    const input = document.getElementById(`tally-${d.id}`);
+    const count = Math.max(0, parseInt(input?.value, 10) || 0);
+    const subtotal = count * d.val;
+    totalPhysical += subtotal;
+
+    const subEl = document.getElementById(`tally-sub-${d.id}`);
+    if (subEl) subEl.textContent = formatMoney(subtotal);
+  });
+
+  const totalEl = document.getElementById('tally-total-counted');
+  if (totalEl) totalEl.textContent = formatMoney(totalPhysical);
+
+  const stats = getPortfolioStats();
+  const ledgerToday = stats.todayCollected;
+  const diff = totalPhysical - ledgerToday;
+  const diffEl = document.getElementById('tally-difference');
+
+  if (diffEl) {
+    if (diff === 0) {
+      diffEl.innerHTML = `<span style="color: #16a34a; font-weight: 700;">✓ Perfectly Balanced (${formatMoney(0)})</span>`;
+    } else if (diff > 0) {
+      diffEl.innerHTML = `<span style="color: #2563eb; font-weight: 700;">+ Surplus ${formatMoney(diff)}</span>`;
+    } else {
+      diffEl.innerHTML = `<span style="color: #dc2626; font-weight: 700;">- Shortage ${formatMoney(Math.abs(diff))}</span>`;
+    }
+  }
+}
+
+function printCashHandoverSlip() {
+  const stats = getPortfolioStats();
+  const todayStr = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
+  const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+  const denoms = [500, 200, 100, 50, 20, 10];
+  let rowsHtml = '';
+  let totalPhysical = 0;
+
+  denoms.forEach((d) => {
+    const count = parseInt(document.getElementById(`tally-${d}`)?.value, 10) || 0;
+    if (count > 0) {
+      const sub = count * d;
+      totalPhysical += sub;
+      rowsHtml += `
+        <tr>
+          <td style="padding: 6px; border-bottom: 1px solid #ddd;">₹ ${d}</td>
+          <td style="padding: 6px; border-bottom: 1px solid #ddd; text-align: center;">× ${count}</td>
+          <td style="padding: 6px; border-bottom: 1px solid #ddd; text-align: right; font-weight: 600;">₹ ${sub.toLocaleString('en-IN')}</td>
+        </tr>
+      `;
+    }
+  });
+
+  const diff = totalPhysical - stats.todayCollected;
+  const diffLabel = diff === 0 ? 'Balanced (₹ 0)' : (diff > 0 ? `+ ₹ ${diff.toLocaleString('en-IN')} (Surplus)` : `- ₹ ${Math.abs(diff).toLocaleString('en-IN')} (Shortage)`);
+
+  const printWindow = window.open('', '_blank', 'width=650,height=750');
+  if (!printWindow) {
+    alert('Please allow popups to print the Cash Handover Slip.');
+    return;
+  }
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>End-of-Day Cash Handover Slip</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px; color: #1e293b; }
+        .slip-box { max-width: 480px; margin: 0 auto; border: 2px solid #0f172a; padding: 20px; border-radius: 8px; }
+        .slip-title { font-size: 18px; font-weight: 800; text-align: center; margin-bottom: 2px; }
+        .slip-sub { font-size: 12px; text-align: center; color: #64748b; margin-bottom: 16px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; }
+        .summary-row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+        .sign-area { display: flex; justify-content: space-between; margin-top: 36px; padding-top: 24px; border-top: 1px dashed #cbd5e1; }
+        .sign-box { text-align: center; font-size: 12px; font-weight: 600; width: 45%; border-top: 1px solid #000; padding-top: 6px; }
+      </style>
+    </head>
+    <body>
+      <div class="slip-box">
+        <div class="slip-title">${state.settings.businessName || 'JSR FINANCE'}</div>
+        <div class="slip-sub">DAILY CASH TALLY & HANDOVER SLIP<br>${todayStr} at ${timeStr}</div>
+
+        <table>
+          <thead>
+            <tr style="background: #f1f5f9;">
+              <th style="padding: 6px; text-align: left;">Note</th>
+              <th style="padding: 6px; text-align: center;">Count</th>
+              <th style="padding: 6px; text-align: right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || '<tr><td colspan="3" style="text-align: center; padding: 10px;">No notes counted</td></tr>'}
+          </tbody>
+        </table>
+
+        <div style="background: #f8fafc; padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+          <div class="summary-row">
+            <span>Total Physical Cash Counted:</span>
+            <strong style="font-size: 15px;">₹ ${totalPhysical.toLocaleString('en-IN')}</strong>
+          </div>
+          <div class="summary-row">
+            <span>Today's Ledger Total:</span>
+            <strong>₹ ${stats.todayCollected.toLocaleString('en-IN')}</strong>
+          </div>
+          <div class="summary-row" style="border-top: 1px dashed #cbd5e1; padding-top: 6px; margin-top: 6px;">
+            <span>Reconciliation Status:</span>
+            <strong style="color: ${diff === 0 ? '#16a34a' : (diff > 0 ? '#2563eb' : '#dc2626')};">${diffLabel}</strong>
+          </div>
+        </div>
+
+        <div class="sign-area">
+          <div class="sign-box">Field Collector Signature</div>
+          <div class="sign-box">Cashier / Manager Signature</div>
+        </div>
+      </div>
+      <script>
+        window.onload = function() { window.print(); }
+      </script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
 }
 
 // Event Listeners Setup
