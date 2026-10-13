@@ -69,6 +69,28 @@ body {
   -webkit-backdrop-filter: blur(12px);
 }
 
+.app-header-top {
+  display: flex;
+  align-items: center;
+}
+
+.mobile-header-actions {
+  display: none;
+}
+
+.settings-layout-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+
+.analytics-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
 .brand-section {
   display: flex;
   align-items: center;
@@ -1244,49 +1266,118 @@ thead th.sticky-col-3 {
 }
 
 @media (max-width: 768px) {
-  /* Collections Header Mobile */
-  .collections-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 12px;
+  /* Enforce native 1:1 scale on phones (disable 90% desktop zoom on mobile) */
+  body {
+    zoom: 1 !important;
   }
 
-  .collections-tools {
+  /* Safe container overflow so sticky header never breaks */
+  html,
+  body {
+    overflow-x: clip;
+    max-width: 100vw;
+  }
+
+  /* Sticky Frosted Mobile Header */
+  .app-header {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 100 !important;
+    padding: 8px 12px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 6px !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border-bottom: 1px solid var(--border) !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04) !important;
+  }
+
+  .app-header-top {
     width: 100%;
-    flex-wrap: wrap;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .brand-section {
     gap: 8px;
   }
 
-  .collections-tools input#global-search-input {
-    flex: 1 1 130px;
-    width: auto !important;
+  .brand-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+    border-radius: 8px;
   }
 
-  .collections-tools select#collection-filter-select {
-    flex: 1 1 150px;
-    max-width: 100%;
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.1;
   }
 
-  .collections-tools .btn-compact {
-    flex: 1 1 auto;
-    justify-content: center;
+  .brand-sub {
+    font-size: 10px;
+    color: #64748b;
+    max-width: 130px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  /* Header Mobile */
-  .app-header {
-    padding: 10px 14px;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
+  /* Mobile Header Quick Actions: Schemes & Settings Relocated */
+  .mobile-header-actions {
+    display: flex !important;
+    gap: 6px;
+    align-items: center;
+    flex-shrink: 0;
   }
 
+  .mobile-header-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #334155;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-header-btn .nav-svg {
+    width: 14px;
+    height: 14px;
+    stroke: #475569;
+  }
+
+  .mobile-header-btn.active {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+  }
+
+  .mobile-header-btn.active .nav-svg {
+    stroke: #2563eb;
+  }
+
+  .mobile-header-btn:active {
+    transform: scale(0.92);
+  }
+
+  /* Header Stat Ticker on Mobile */
   .header-stats {
     width: 100%;
     overflow-x: auto;
     display: flex;
-    gap: 8px;
-    padding-bottom: 4px;
+    gap: 6px;
+    padding-bottom: 2px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
@@ -1295,13 +1386,47 @@ thead th.sticky-col-3 {
   }
 
   .stat-pill {
-    padding: 5px 10px;
-    font-size: 11px;
+    padding: 4px 8px;
+    font-size: 10.5px;
+    border-radius: 8px;
     flex-shrink: 0;
   }
 
   .stat-pill strong {
-    font-size: 12px;
+    font-size: 11.5px;
+  }
+
+  /* View Header on Mobile - Clean 1-line layout (prevents button clipping) */
+  .view-header {
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .view-title {
+    font-size: 16px !important;
+    font-weight: 800 !important;
+    line-height: 1.2 !important;
+  }
+
+  .view-subtitle {
+    display: none !important;
+  }
+
+  .view-header .btn-group {
+    flex-shrink: 0 !important;
+    display: flex !important;
+    gap: 6px !important;
+  }
+
+  .view-header .btn-group .btn {
+    padding: 7px 12px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
   }
 
   /* Hide Desktop Sidebar on Mobile */
@@ -1309,48 +1434,142 @@ thead th.sticky-col-3 {
     display: none !important;
   }
 
-  /* Show Bottom Mobile Nav */
-  .mobile-nav {
-    display: flex !important;
-  }
-
   /* Full-width content with bottom nav clearance & zero horizontal wobble */
   .content-area {
     max-width: 100vw;
-    padding: 14px 12px 92px 12px;
+    padding: 12px 10px calc(72px + env(safe-area-inset-bottom, 8px)) 10px !important;
     overflow-x: hidden;
   }
 
-  .milestone-distribution-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: 12px !important;
-  }
-
-  /* Switch Customer view on Mobile */
-  .desktop-only-table {
-    display: none !important;
-  }
-  .mobile-cards-list {
+  /* Mobile Bottom Navigation (5 core tabs) */
+  .mobile-nav {
     display: flex !important;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding: 0 4px env(safe-area-inset-bottom, 0px) 4px;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    z-index: 100;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.05);
+    justify-content: space-around;
+    align-items: center;
   }
 
-  /* KPI Cards Grid on Mobile (2 columns) */
+  .mobile-nav-item {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 2px;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 8px;
+    gap: 2px;
+    transition: all 0.15s ease;
+  }
+
+  .mobile-nav-item .nav-svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    transition: all 0.15s ease;
+  }
+
+  .mobile-nav-item.active {
+    color: #2563eb;
+    background: #eff6ff;
+  }
+
+  .mobile-nav-item.active .nav-svg {
+    stroke: #2563eb;
+    filter: drop-shadow(0 0 4px rgba(37, 99, 235, 0.35));
+  }
+
+  .mobile-nav-item:active {
+    transform: scale(0.92);
+  }
+
+  /* 2-Column KPI Cards Grid on Mobile across ALL screen sizes */
   .cards-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-    margin-bottom: 16px;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+    margin-bottom: 14px !important;
   }
 
   .card {
-    padding: 14px;
+    padding: 12px 14px !important;
+    border-radius: 12px !important;
+  }
+
+  .card.kpi-card-featured {
+    grid-column: 1 / -1 !important;
+    background: linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%) !important;
+    border: 1px solid #bfdbfe !important;
   }
 
   .kpi-title {
-    font-size: 11px;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
   }
 
   .kpi-value {
-    font-size: 20px;
+    font-size: 20px !important;
+    font-weight: 800 !important;
+    margin: 3px 0 2px 0 !important;
+  }
+
+  .kpi-sub {
+    font-size: 11px !important;
+  }
+
+  /* Milestone distribution grid on mobile */
+  .milestone-distribution-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* Collections Header Mobile */
+  .collections-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .collections-tools {
+    width: 100% !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  .collections-tools input#global-search-input {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+
+  .collections-tools select#collection-filter-select {
+    flex: 1 1 100% !important;
+    max-width: 100% !important;
+  }
+
+  .collections-tools .btn-compact {
+    flex: 1 1 calc(33.33% - 4px) !important;
+    justify-content: center !important;
+    padding: 7px 8px !important;
+    font-size: 11.5px !important;
   }
 
   /* Show horizontal swipe hint on Mobile */
@@ -1371,8 +1590,7 @@ thead th.sticky-col-3 {
     box-shadow: none;
   }
 
-  /* Only Cust # (48px) and Customer Name (105px) remain sticky on mobile (Total ~153px) */
-  /* This leaves >60% of the mobile viewport completely open for scrolling through weeks! */
+  /* Only Cust # (48px) and Customer Name (105px) remain sticky on mobile */
   .sticky-col-1 {
     min-width: 48px !important;
     width: 48px !important;
@@ -1398,7 +1616,6 @@ thead th.sticky-col-3 {
     max-width: 95px;
   }
 
-  /* Unfreeze sticky-col-3 on mobile so it scrolls naturally with the rest of the sheet */
   .sticky-col-3 {
     position: static !important;
     box-shadow: none !important;
@@ -1427,7 +1644,6 @@ thead th.sticky-col-3 {
     padding: 4px 2px !important;
   }
 
-  /* Touch-friendly Instalment Cells on Mobile (ONLY in matrix grid table cells) */
   .matrix-table td .badge-received,
   .matrix-table td .badge-pending,
   .matrix-table td .badge-partial {
@@ -1437,7 +1653,6 @@ thead th.sticky-col-3 {
     padding: 0 !important;
   }
 
-  /* Safety: All semantic status badges and pills keep natural width to display Active, Completed, Received */
   .badge-status,
   .status-pill,
   .badge-received:not(.matrix-table td .badge-received) {
@@ -1449,26 +1664,106 @@ thead th.sticky-col-3 {
 
   /* Mobile Quick Entry Bar */
   .quick-entry-bar {
-    padding: 12px;
-    gap: 10px;
-    flex-direction: column;
-    align-items: stretch;
+    padding: 12px !important;
+    border-radius: 12px !important;
+    background: #eff6ff !important;
+    border: 1px solid #bfdbfe !important;
+    gap: 8px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
   }
 
   .quick-entry-bar .input-group {
-    width: 100%;
-    justify-content: space-between;
+    width: 100% !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
   }
 
   .quick-entry-bar .input-group input {
-    flex: 1;
+    flex: 1 !important;
     width: auto !important;
   }
 
   .quick-entry-bar .btn {
-    width: 100%;
-    padding: 10px;
-    font-size: 13px;
+    width: 100% !important;
+    padding: 10px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+  }
+
+  /* Run Sheet Checklist on Mobile */
+  .runsheet-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .runsheet-card {
+    padding: 14px !important;
+    border-radius: 12px !important;
+  }
+
+  .runsheet-actions {
+    display: flex !important;
+    gap: 6px !important;
+  }
+
+  .runsheet-actions .btn {
+    flex: 1 1 calc(50% - 4px) !important;
+    padding: 9px 8px !important;
+    font-size: 12px !important;
+    justify-content: center !important;
+  }
+
+  /* Switch Customer view on Mobile */
+  .desktop-only-table {
+    display: none !important;
+  }
+  .mobile-cards-list {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .customer-card {
+    padding: 14px !important;
+    border-radius: 12px !important;
+  }
+
+  .customer-card-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .customer-card-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  .customer-card-actions .btn {
+    flex: 1 1 calc(33.33% - 4px) !important;
+    padding: 7px 6px !important;
+    font-size: 11.5px !important;
+    justify-content: center !important;
+  }
+
+  /* Analytics Grid on Mobile */
+  .analytics-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .analytics-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  /* Settings Grid on Mobile (Fixes media_1791897867213.png squishing!) */
+  .settings-layout-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
   }
 
   /* Modals as Full Bottom Sheets on Mobile with Smooth Scrolling */
@@ -1524,23 +1819,15 @@ thead th.sticky-col-3 {
     padding: 12px 16px;
     flex-shrink: 0;
   }
-
-  .analytics-grid {
-    grid-template-columns: 1fr !important;
-  }
 }
 
 @media (max-width: 480px) {
   .brand-title {
-    font-size: 17px;
+    font-size: 15px;
   }
 
   .view-title {
-    font-size: 19px;
-  }
-
-  .cards-grid {
-    grid-template-columns: 1fr;
+    font-size: 16px;
   }
 }
 
