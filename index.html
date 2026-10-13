@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body>
 
@@ -46,6 +46,16 @@
       <button class="sound-toggle-btn" id="btn-sound-toggle" onclick="toggleSoundEffect()" title="Toggle Cash Audio Chime">
         🔔 Sound: On
       </button>
+      <div class="stat-pill" style="padding: 4px 10px; background: #eff6ff; border-color: #bfdbfe;" title="Adjust Screen Zoom">
+        <span style="font-size: 11px; color: #1e40af; font-weight: 600;">🔍 Zoom:</span>
+        <select id="screen-zoom-select" onchange="applyScreenZoom(this.value)" style="border: none; background: transparent; font-size: 11px; font-weight: 700; color: #1e40af; cursor: pointer; outline: none; padding: 0 2px;">
+          <option value="0.8">80%</option>
+          <option value="0.85">85%</option>
+          <option value="0.9" selected>90% (Default)</option>
+          <option value="0.95">95%</option>
+          <option value="1">100%</option>
+        </select>
+      </div>
     </div>
   </header>
 
@@ -604,6 +614,18 @@
                   <input type="text" id="setting-currency" class="form-control" required style="width: 100%;">
                 </div>
 
+                <div>
+                  <label class="form-label">Default Screen Zoom / Display Scale:</label>
+                  <select id="setting-screen-zoom" class="form-control" onchange="applyScreenZoom(this.value)" style="width: 100%;">
+                    <option value="0.8">80% Compact</option>
+                    <option value="0.85">85% Compact</option>
+                    <option value="0.9" selected>90% (Recommended - Full System Fit)</option>
+                    <option value="0.95">95% Regular</option>
+                    <option value="1">100% Standard</option>
+                  </select>
+                  <div class="form-help">Zooms the entire screen to fit full matrices and charts</div>
+                </div>
+
                 <div class="form-full">
                   <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 10px 0;">
                   <h4 style="font-size: 14px; margin-bottom: 12px; color: #334155;">Business Details (Printed on Passbooks & Receipts)</h4>
@@ -1011,8 +1033,8 @@
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=14"></script>
-  <script src="firebase-sync.js?v=14"></script>
-  <script src="app.js?v=14"></script>
+  <script src="firebase-config.js?v=15"></script>
+  <script src="firebase-sync.js?v=15"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>
