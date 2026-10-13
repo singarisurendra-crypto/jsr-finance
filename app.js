@@ -626,22 +626,6 @@ function renderAnalytics() {
 function renderCollectionMatrix() {
   const tableHead = document.getElementById('matrix-table-head');
   const tableBody = document.getElementById('matrix-table-body');
-  const maxInst = 52; // standard 52 instalments
-
-  // Generate Header Row
-  let headHtml = `
-    <tr>
-      <th class="sticky-col-1">Cust #</th>
-      <th class="sticky-col-2">Customer Name</th>
-      <th class="sticky-col-3">Given / Inst</th>
-      <th style="min-width: 90px;">Paid / Bal</th>
-  `;
-
-  for (let w = 1; w <= maxInst; w++) {
-    headHtml += `<th class="inst-col" style="min-width: 44px;">Wk ${w}</th>`;
-  }
-  headHtml += `</tr>`;
-  tableHead.innerHTML = headHtml;
 
   // Filter Customers
   const query = state.searchQuery.toLowerCase().trim();
@@ -656,8 +640,44 @@ function renderCollectionMatrix() {
     if (!matchesSearch) return false;
     if (state.filterStatus === 'active') return !stats.isCompleted;
     if (state.filterStatus === 'completed') return stats.isCompleted;
+    if (state.filterStatus === 'weekly') return c.frequency !== 'Daily' && (c.totalInstalments || 52) !== 100;
+    if (state.filterStatus === 'daily') return c.frequency === 'Daily' || c.totalInstalments === 100;
     return true;
   });
+
+  // Calculate dynamic maximum columns (52 for standard weekly, 100 for daily)
+  let maxInst = 52;
+  filtered.forEach((cust) => {
+    const instCount = cust.totalInstalments || 52;
+    if (instCount > maxInst) maxInst = instCount;
+  });
+
+  // Adaptive column header labels (Day vs Wk vs #)
+  const hasDaily = filtered.some((c) => c.frequency === 'Daily' || c.totalInstalments === 100);
+  const hasWeekly = filtered.some((c) => c.frequency !== 'Daily' && c.totalInstalments !== 100);
+
+  let colPrefix = 'Wk';
+  if (hasDaily && !hasWeekly) {
+    colPrefix = 'Day';
+  } else if (hasDaily && hasWeekly) {
+    colPrefix = '#'; // Mixed: display #1, #2, etc.
+  }
+
+  // Generate Header Row
+  let headHtml = `
+    <tr>
+      <th class="sticky-col-1">Cust #</th>
+      <th class="sticky-col-2">Customer Name</th>
+      <th class="sticky-col-3">Given / Inst</th>
+      <th style="min-width: 90px;">Paid / Bal</th>
+  `;
+
+  for (let w = 1; w <= maxInst; w++) {
+    const label = colPrefix === '#' ? `#${w}` : `${colPrefix} ${w}`;
+    headHtml += `<th class="inst-col" style="min-width: 44px;">${label}</th>`;
+  }
+  headHtml += `</tr>`;
+  tableHead.innerHTML = headHtml;
 
   if (filtered.length === 0) {
     tableBody.innerHTML = `<tr><td colspan="${maxInst + 4}" style="text-align:center; padding:40px; color:#94a3b8;">No customers match the current search or filter.</td></tr>`;
@@ -669,6 +689,12 @@ function renderCollectionMatrix() {
   filtered.forEach((cust) => {
     const stats = getCustomerStats(cust);
     const instCount = cust.totalInstalments || 52;
+    const isDaily = cust.frequency === 'Daily' || cust.totalInstalments === 100;
+    const freqUnit = isDaily ? '/day' : '/wk';
+    const freqBadge = isDaily
+      ? '<span style="font-size:10px; background:#fef3c7; color:#b45309; padding:1px 5px; border-radius:4px; font-weight:700;">Daily</span>'
+      : '<span style="font-size:10px; background:#eff6ff; color:#1d4ed8; padding:1px 5px; border-radius:4px; font-weight:700;">Weekly</span>';
+    const unitLabel = isDaily ? 'Day' : 'Week';
 
     bodyHtml += `
       <tr data-customer-id="${cust.id}">
@@ -684,7 +710,10 @@ function renderCollectionMatrix() {
         </td>
         <td class="sticky-col-3">
           <div style="font-weight:600; color:#0f172a;">${formatMoney(cust.givenAmount)}</div>
-          <div style="font-size:11px; color:#2563eb;">${formatMoney(cust.instalmentAmount)} /wk</div>
+          <div style="font-size:11px; color:#2563eb; display:flex; align-items:center; gap:4px;">
+            <span>${formatMoney(cust.instalmentAmount)} ${freqUnit}</span>
+            ${freqBadge}
+          </div>
         </td>
         <td>
           <div style="font-weight:600;">${stats.paidCount}/${instCount}</div>
@@ -704,7 +733,7 @@ function renderCollectionMatrix() {
       bodyHtml += `
         <td class="inst-cell" 
             onclick="toggleInstalmentReceived('${cust.id}', ${w})" 
-            title="Customer #${cust.customerNumber}${cust.loanNumber > 1 ? ` (Loan ${cust.loanNumber})` : ''} - Week ${w}: ${isReceived ? 'Received on ' + (inst.paidDate || 'Today') : 'Click to mark Received'}">
+            title="Customer #${cust.customerNumber}${cust.loanNumber > 1 ? ` (Loan ${cust.loanNumber})` : ''} - ${unitLabel} ${w}: ${isReceived ? 'Received on ' + (inst.paidDate || 'Today') : 'Click to mark Received'}">
           ${
             isReceived
               ? `<span class="badge-received">✓</span>`
@@ -838,9 +867,11 @@ function handleQuickReceive(event) {
   custNumInput.focus();
 
   // Show brief feedback toast with multi-loan guidance
+  const isDaily = customer.frequency === 'Daily' || customer.totalInstalments === 100;
+  const unitLabel = isDaily ? 'Day' : 'Week';
   const loanTag = (customer.loanNumber && customer.loanNumber > 1) || matches.length > 1 ? ` L${customer.loanNumber || 1}` : '';
   const multiTip = matches.length > 1 ? ` (Tip: type ${targetCustNum}-2 for Loan 2)` : '';
-  showToast(`Received Week #${nextPending} for #${customer.customerNumber}${loanTag} (${customer.fullName})${multiTip}`);
+  showToast(`Received ${unitLabel} #${nextPending} for #${customer.customerNumber}${loanTag} (${customer.fullName})${multiTip}`);
 }
 
 // ----------------------------------------------------
@@ -885,7 +916,12 @@ function renderCustomersTable() {
         <td>${c.phone || '-'}</td>
         <td><span style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-size:11px;">${c.areaRoute || 'General'}</span></td>
         <td><strong>${formatMoney(c.givenAmount)}</strong></td>
-        <td>${formatMoney(c.instalmentAmount)} /wk</td>
+        <td>
+          <div style="font-weight:600;">${formatMoney(c.instalmentAmount)} ${c.frequency === 'Daily' || totalInst === 100 ? '/day' : '/wk'}</div>
+          ${c.frequency === 'Daily' || totalInst === 100 
+            ? '<span style="background:#fef3c7; color:#b45309; padding:1px 5px; border-radius:3px; font-size:10px; font-weight:700;">Daily</span>'
+            : '<span style="background:#eff6ff; color:#1d4ed8; padding:1px 5px; border-radius:3px; font-size:10px; font-weight:700;">Weekly</span>'}
+        </td>
         <td><strong>${formatMoney(stats.totalPayable)}</strong></td>
         <td>
           <strong style="color: #7c3aed;">+ ${formatMoney(stats.expectedProfit)}</strong>
@@ -1038,10 +1074,18 @@ function setMarginPreset(pct) {
 
 function setInstalmentsPreset(count) {
   const instInput = document.getElementById('cust-form-instalments');
-  if (instInput) {
-    instInput.value = count;
-    calculateFromMargin();
-  }
+  const freqInput = document.getElementById('cust-form-frequency');
+  const amountLabel = document.getElementById('cust-form-amount-label');
+  const freqHelp = document.getElementById('cust-form-freq-help');
+
+  if (instInput) instInput.value = count;
+
+  const isDaily = count === 100;
+  if (freqInput) freqInput.value = isDaily ? 'Daily' : 'Weekly';
+  if (amountLabel) amountLabel.textContent = isDaily ? 'Instalment Amount (₹ / day):' : 'Instalment Amount (₹ / week):';
+  if (freqHelp) freqHelp.textContent = isDaily ? 'Daily collection schedule (100 Days)' : `Weekly collection schedule (${count} Weeks)`;
+
+  calculateFromMargin();
 }
 
 // Multi-Loan Handling Mode Switcher
@@ -1179,6 +1223,13 @@ function openAddCustomerModal() {
   document.getElementById('cust-form-amount').value = state.settings.defaultInstalmentAmount || 200;
   document.getElementById('cust-form-date').value = new Date().toISOString().split('T')[0];
 
+  const freqInput = document.getElementById('cust-form-frequency');
+  const amountLabel = document.getElementById('cust-form-amount-label');
+  const freqHelp = document.getElementById('cust-form-freq-help');
+  if (freqInput) freqInput.value = 'Weekly';
+  if (amountLabel) amountLabel.textContent = 'Instalment Amount (₹ / week):';
+  if (freqHelp) freqHelp.textContent = 'Weekly collection schedule';
+
   calculateFromMargin();
   document.getElementById('modal-customer').classList.add('active');
 }
@@ -1189,6 +1240,8 @@ function openEditCustomerModal(customerId) {
   if (!c) return;
 
   const loanNum = c.loanNumber || 1;
+  const isDaily = c.frequency === 'Daily' || (c.totalInstalments === 100);
+
   document.getElementById('modal-customer-title').textContent = `Edit Customer #${c.customerNumber} (Loan #${loanNum})`;
   document.getElementById('form-customer-id').value = c.id;
   document.getElementById('cust-form-loan-number').value = loanNum;
@@ -1204,6 +1257,13 @@ function openEditCustomerModal(customerId) {
   document.getElementById('cust-form-amount').value = c.instalmentAmount || 200;
   document.getElementById('cust-form-date').value = c.startDate || new Date().toISOString().split('T')[0];
 
+  const freqInput = document.getElementById('cust-form-frequency');
+  const amountLabel = document.getElementById('cust-form-amount-label');
+  const freqHelp = document.getElementById('cust-form-freq-help');
+  if (freqInput) freqInput.value = isDaily ? 'Daily' : 'Weekly';
+  if (amountLabel) amountLabel.textContent = isDaily ? 'Instalment Amount (₹ / day):' : 'Instalment Amount (₹ / week):';
+  if (freqHelp) freqHelp.textContent = isDaily ? 'Daily collection schedule (100 Days)' : `Weekly collection schedule (${c.totalInstalments || 52} Weeks)`;
+
   const wrap = document.getElementById('existing-customer-selector-wrap');
   if (wrap) wrap.style.display = 'none';
 
@@ -1211,7 +1271,7 @@ function openEditCustomerModal(customerId) {
   document.getElementById('modal-customer').classList.add('active');
 }
 
-// Save Customer (Create or Update with Multi-Loan support)
+// Save Customer (Create or Update with Multi-Loan & Frequency support)
 function handleSaveCustomer(event) {
   event.preventDefault();
 
@@ -1226,6 +1286,7 @@ function handleSaveCustomer(event) {
   const totalInstalments = Number(document.getElementById('cust-form-instalments').value) || 52;
   const instalmentAmount = Number(document.getElementById('cust-form-amount').value) || 200;
   const startDate = document.getElementById('cust-form-date').value;
+  const frequency = document.getElementById('cust-form-frequency')?.value || (totalInstalments === 100 ? 'Daily' : 'Weekly');
 
   if (!fullName) {
     alert('Please enter Customer Full Name');
@@ -1259,6 +1320,7 @@ function handleSaveCustomer(event) {
       existing.instalmentAmount = instalmentAmount;
       existing.totalPayable = totalInstalments * instalmentAmount;
       existing.startDate = startDate;
+      existing.frequency = frequency;
     }
   } else {
     // Create new customer or additional loan
@@ -1287,6 +1349,7 @@ function handleSaveCustomer(event) {
       totalPayable: totalInstalments * instalmentAmount,
       startDate,
       status: 'Active',
+      frequency,
       instalments,
       createdAt: new Date().toISOString(),
     });
@@ -1336,6 +1399,12 @@ function openCustomerPassbook(customerId) {
 
   const stats = getCustomerStats(c);
   const totalInst = c.totalInstalments || 52;
+  const isDaily = c.frequency === 'Daily' || totalInst === 100;
+  const unitLabel = isDaily ? 'Day' : 'Week';
+  const unitRate = isDaily ? '/day' : '/wk';
+  const planBadge = isDaily 
+    ? '<span style="background:#fef3c7; color:#b45309; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700;">100-Day Daily Plan</span>'
+    : `<span style="background:#eff6ff; color:#1d4ed8; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700;">${totalInst}-Week Plan</span>`;
 
   const loanSuffix = (c.loanNumber && c.loanNumber > 1) ? ` (Loan #${c.loanNumber})` : '';
   const loanBadgeHtml = (c.loanNumber && c.loanNumber > 1) ? ` <span class="loan-badge">L${c.loanNumber}</span>` : '';
@@ -1346,17 +1415,17 @@ function openCustomerPassbook(customerId) {
       <div><span style="color:#64748b; font-size:12px;">Customer:</span><br><strong>#${c.customerNumber}${loanBadgeHtml} - ${c.fullName}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Phone:</span><br><strong>${c.phone || 'N/A'}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Given Amount:</span><br><strong style="color:#1e3a8a;">${formatMoney(c.givenAmount)}</strong></div>
-      <div><span style="color:#64748b; font-size:12px;">Instalment:</span><br><strong>${formatMoney(c.instalmentAmount)} /wk</strong></div>
+      <div><span style="color:#64748b; font-size:12px;">Instalment:</span><br><strong>${formatMoney(c.instalmentAmount)} ${unitRate}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Total Repayable:</span><br><strong style="color:#1e293b;">${formatMoney(stats.totalPayable)}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Total Paid:</span><br><strong style="color:#16a34a;">${formatMoney(stats.totalPaid)} (${stats.paidCount}/${totalInst})</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Balance Due:</span><br><strong style="color:#b45309;">${formatMoney(stats.balance)}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Expected Net Profit:</span><br><strong style="color:#7c3aed;">+ ${formatMoney(stats.expectedProfit)} (${stats.profitReturnPercent}%)</strong></div>
-      <div><span style="color:#64748b; font-size:12px;">Profit Earned:</span><br><strong style="color:#16a34a;">${formatMoney(stats.realizedProfit)}</strong></div>
+      <div><span style="color:#64748b; font-size:12px;">Plan Frequency:</span><br>${planBadge}</div>
       <div><span style="color:#64748b; font-size:12px;">Status:</span><br><span class="badge-received" style="width:auto; padding:2px 8px;">${stats.isCompleted ? 'Completed' : 'Active'}</span></div>
     </div>
   `;
 
-  // Render 52 rows
+  // Render rows dynamically for all instalments
   const tbody = document.getElementById('passbook-table-body');
   let rowsHtml = '';
   for (let w = 1; w <= totalInst; w++) {
@@ -1365,7 +1434,7 @@ function openCustomerPassbook(customerId) {
 
     rowsHtml += `
       <tr>
-        <td><strong>Week #${w}</strong></td>
+        <td><strong>${unitLabel} #${w}</strong></td>
         <td>${formatMoney(c.instalmentAmount)}</td>
         <td>
           ${isReceived ? `<span class="badge-received" style="width:auto; padding:2px 8px;">✓ Received</span>` : `<span style="color:#94a3b8;">Pending</span>`}
@@ -1385,7 +1454,7 @@ function openCustomerPassbook(customerId) {
   // Setup WhatsApp share button
   const shareBtn = document.getElementById('passbook-whatsapp-btn');
   const msg = encodeURIComponent(
-    `*${state.settings.businessName}*\nCustomer: #${c.customerNumber}${loanSuffix} - ${c.fullName}\nGiven Amount: ${formatMoney(c.givenAmount)}\nInstalments Paid: ${stats.paidCount}/${totalInst}\nTotal Paid: ${formatMoney(stats.totalPaid)}\nBalance Remaining: ${formatMoney(stats.balance)}\nThank you!`
+    `*${state.settings.businessName}*\nCustomer: #${c.customerNumber}${loanSuffix} - ${c.fullName}\nPlan: ${isDaily ? '100-Day Daily Plan' : totalInst + '-Week Plan'}\nGiven Amount: ${formatMoney(c.givenAmount)}\nInstalment: ${formatMoney(c.instalmentAmount)} ${unitRate}\nInstalments Paid: ${stats.paidCount}/${totalInst}\nTotal Paid: ${formatMoney(stats.totalPaid)}\nBalance Remaining: ${formatMoney(stats.balance)}\nThank you!`
   );
   shareBtn.onclick = () => window.open(`https://wa.me/${c.phone ? c.phone.replace(/[^0-9]/g, '') : ''}?text=${msg}`, '_blank');
 
@@ -1503,16 +1572,28 @@ function importDataBackup(event) {
 
 // Export Collection Sheet as CSV
 function exportCollectionSheetCSV() {
-  let csv = 'Cust Number,Customer Name,Phone,Given Amount,Instalment Amount,Paid Count,Balance';
-  for (let i = 1; i <= 52; i++) csv += `,Week ${i}`;
+  let maxInst = 52;
+  state.customers.forEach((c) => {
+    const instCount = c.totalInstalments || 52;
+    if (instCount > maxInst) maxInst = instCount;
+  });
+
+  let csv = 'Cust Number,Customer Name,Phone,Plan,Given Amount,Instalment Amount,Paid Count,Balance';
+  for (let i = 1; i <= maxInst; i++) csv += `,Instalment ${i}`;
   csv += '\n';
 
   state.customers.forEach((c) => {
     const s = getCustomerStats(c);
-    let row = `"${c.customerNumber}","${c.fullName}","${c.phone || ''}",${c.givenAmount},${c.instalmentAmount},${s.paidCount},${s.balance}`;
-    for (let i = 1; i <= 52; i++) {
-      const inst = (c.instalments && c.instalments[i - 1]) || {};
-      row += `,"${inst.status === 'Received' ? 'Received' : 'Pending'}"`;
+    const plan = c.frequency === 'Daily' || (c.totalInstalments === 100) ? 'Daily' : 'Weekly';
+    let row = `"${c.customerNumber}","${c.fullName}","${c.phone || ''}","${plan}",${c.givenAmount},${c.instalmentAmount},${s.paidCount},${s.balance}`;
+    const totalInst = c.totalInstalments || 52;
+    for (let i = 1; i <= maxInst; i++) {
+      if (i > totalInst) {
+        row += `,"-"`;
+      } else {
+        const inst = (c.instalments && c.instalments[i - 1]) || {};
+        row += `,"${inst.status === 'Received' ? 'Received' : 'Pending'}"`;
+      }
     }
     csv += row + '\n';
   });
