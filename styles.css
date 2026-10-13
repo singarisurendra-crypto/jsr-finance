@@ -43,6 +43,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+body {
+  zoom: 0.9;
+}
+
 /* ==================================================== */
 /* HIGH-TECH HEADER                                     */
 /* ==================================================== */
@@ -1545,6 +1549,7 @@ thead th.sticky-col-3 {
 /* ==================================================== */
 @media print {
   body {
+    zoom: 1 !important;
     background: white !important;
   }
   .app-header,
