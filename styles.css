@@ -30,10 +30,14 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+html,
 body {
   background-color: var(--bg-main);
   color: var(--text-main);
   min-height: 100vh;
+  max-width: 100%;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
@@ -739,6 +743,64 @@ thead th.sticky-col-3 {
   font-weight: 700;
 }
 
+/* Semantic Status Badges & Pills (Always auto-sized to fit text like Active, Completed, Received) */
+.badge-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 10px !important;
+  border-radius: 9999px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  width: auto !important;
+  min-width: fit-content !important;
+  max-width: none !important;
+  height: auto !important;
+  min-height: 22px !important;
+  white-space: nowrap !important;
+  letter-spacing: 0.2px;
+}
+
+.badge-status.badge-status-completed,
+.badge-status-completed {
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 1px 4px rgba(22, 163, 74, 0.3) !important;
+}
+
+.badge-status.badge-status-active,
+.badge-status-active {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border: 1px solid #86efac !important;
+  box-shadow: 0 1px 2px rgba(22, 163, 74, 0.1) !important;
+}
+
+.badge-status.badge-status-success,
+.badge-status-success {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border: 1px solid #86efac !important;
+  box-shadow: 0 1px 2px rgba(22, 163, 74, 0.1) !important;
+}
+
+.badge-status.badge-status-partial,
+.badge-status-partial {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border: 1px solid #fde68a !important;
+}
+
+.badge-status.badge-status-overdue,
+.badge-status-overdue {
+  background: #fee2e2 !important;
+  color: #dc2626 !important;
+  border: 1px solid #fecaca !important;
+}
+
 /* Quick Entry Toolbar */
 .quick-entry-bar {
   background: #ffffff;
@@ -788,7 +850,9 @@ thead th.sticky-col-3 {
   background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 12px;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
   box-shadow: var(--shadow-sm);
 }
 
@@ -1090,13 +1154,16 @@ thead th.sticky-col-3 {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 10px;
   margin-bottom: 10px;
 }
 
 .customer-card-title {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .customer-card-num {
@@ -1106,12 +1173,14 @@ thead th.sticky-col-3 {
   font-size: 12px;
   padding: 3px 8px;
   border-radius: 6px;
+  flex-shrink: 0;
 }
 
 .customer-card-name {
   font-size: 15px;
   font-weight: 700;
   color: #0f172a;
+  word-break: break-word;
 }
 
 .customer-card-meta {
@@ -1145,12 +1214,14 @@ thead th.sticky-col-3 {
 
 .customer-card-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   margin-top: 12px;
+  flex-wrap: wrap;
 }
 
 .customer-card-actions .btn {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: fit-content;
   padding: 8px 10px;
   font-size: 12px;
 }
@@ -1239,10 +1310,16 @@ thead th.sticky-col-3 {
     display: flex !important;
   }
 
-  /* Full-width content with bottom nav clearance */
+  /* Full-width content with bottom nav clearance & zero horizontal wobble */
   .content-area {
     max-width: 100vw;
-    padding: 14px 12px 84px 12px;
+    padding: 14px 12px 92px 12px;
+    overflow-x: hidden;
+  }
+
+  .milestone-distribution-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
   }
 
   /* Switch Customer view on Mobile */
@@ -1346,11 +1423,24 @@ thead th.sticky-col-3 {
     padding: 4px 2px !important;
   }
 
-  .badge-received,
-  .badge-pending {
+  /* Touch-friendly Instalment Cells on Mobile (ONLY in matrix grid table cells) */
+  .matrix-table td .badge-received,
+  .matrix-table td .badge-pending,
+  .matrix-table td .badge-partial {
     width: 32px !important;
     height: 26px !important;
     font-size: 11px !important;
+    padding: 0 !important;
+  }
+
+  /* Safety: All semantic status badges and pills keep natural width to display Active, Completed, Received */
+  .badge-status,
+  .status-pill,
+  .badge-received:not(.matrix-table td .badge-received) {
+    width: auto !important;
+    height: auto !important;
+    min-height: 22px !important;
+    white-space: nowrap !important;
   }
 
   /* Mobile Quick Entry Bar */
