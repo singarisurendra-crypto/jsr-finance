@@ -288,6 +288,85 @@ body {
   flex-wrap: wrap;
 }
 
+/* Specialized Header for Collections / Instalment Sheet */
+.collections-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: nowrap;
+}
+
+.collections-title-block {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.collections-title-block .view-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.collections-title-block .view-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.collections-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.collections-tools input#global-search-input {
+  width: 165px;
+  height: 34px;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  transition: width 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.collections-tools input#global-search-input:focus {
+  width: 205px;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.collections-tools select#collection-filter-select {
+  height: 34px;
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  width: auto;
+  max-width: 185px;
+  cursor: pointer;
+}
+
+.collections-tools .btn-compact {
+  height: 34px;
+  padding: 0 11px;
+  font-size: 12px;
+  border-radius: 7px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 /* ==================================================== */
 /* BUTTONS & CONTROLS                                   */
 /* ==================================================== */
@@ -1079,7 +1158,46 @@ thead th.sticky-col-3 {
 /* ==================================================== */
 /* RESPONSIVE BREAKPOINTS (MOBILE & TABLET)             */
 /* ==================================================== */
+@media (max-width: 1024px) {
+  .collections-header {
+    flex-wrap: wrap !important;
+  }
+  .collections-tools {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}
+
 @media (max-width: 768px) {
+  /* Collections Header Mobile */
+  .collections-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .collections-tools {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .collections-tools input#global-search-input {
+    flex: 1 1 130px;
+    width: auto !important;
+  }
+
+  .collections-tools select#collection-filter-select {
+    flex: 1 1 150px;
+    max-width: 100%;
+  }
+
+  .collections-tools .btn-compact {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
   /* Header Mobile */
   .app-header {
     padding: 10px 14px;
@@ -1343,6 +1461,7 @@ thead th.sticky-col-3 {
   .sidebar,
   .mobile-nav,
   .btn-group,
+  .collections-tools,
   .quick-entry-bar,
   .modal-overlay {
     display: none !important;
