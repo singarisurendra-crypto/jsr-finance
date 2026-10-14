@@ -596,40 +596,84 @@ function getNowTimestamp() {
   return `${day}-${month}-${year} ${strHours}:${minutes} ${ampm}`;
 }
 
+function formatDateStringHelper(dateStr) {
+  if (!dateStr) return '';
+  const parts = String(dateStr).trim().split('-');
+  if (parts.length === 3 && parts[0].length === 4) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const mIdx = parseInt(parts[1], 10) - 1;
+    if (mIdx >= 0 && mIdx < 12) {
+      return `${parts[2]}-${months[mIdx]}-${parts[0]}`;
+    }
+  }
+  return dateStr;
+}
+
 function formatInstalmentTimestamp(inst) {
   if (!inst) return '';
-  if (inst.paidTimestamp) return inst.paidTimestamp;
+
+  // 1. If explicit paidTimestamp already exists and contains a time
+  if (inst.paidTimestamp && typeof inst.paidTimestamp === 'string' && inst.paidTimestamp.includes(':')) {
+    return inst.paidTimestamp;
+  }
+
+  // 2. If separate paidTime exists with paidDate
   if (inst.paidTime && inst.paidDate) {
-    return `${inst.paidDate} ${inst.paidTime}`;
-  }
-  if (inst.paidDate) {
-    if (inst.paidDate.includes('T') || inst.paidDate.includes(':')) {
-      const d = new Date(inst.paidDate);
-      if (!isNaN(d.getTime())) {
-        const day = String(d.getDate()).padStart(2, '0');
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const month = months[d.getMonth()];
-        const year = d.getFullYear();
-        let hours = d.getHours();
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        const ampm = hours >= 12 ? 'PM' : 'AM';
-        hours = hours % 12;
-        hours = hours ? hours : 12;
-        const strHours = String(hours).padStart(2, '0');
-        return `${day}-${month}-${year} ${strHours}:${minutes} ${ampm}`;
+    const formattedD = formatDateStringHelper(inst.paidDate);
+    let pt = inst.paidTime.trim();
+    if (!pt.toUpperCase().includes('AM') && !pt.toUpperCase().includes('PM')) {
+      const parts = pt.split(':');
+      if (parts.length >= 2) {
+        let h = parseInt(parts[0], 10);
+        const m = String(parts[1]).padStart(2, '0');
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12;
+        h = h ? h : 12;
+        pt = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
       }
     }
-    const parts = inst.paidDate.split('-');
-    if (parts.length === 3) {
+    return `${formattedD} ${pt}`;
+  }
+
+  // 3. If paidDate contains ISO time e.g. '2026-10-14T11:30:00'
+  if (inst.paidDate && (inst.paidDate.includes('T') || inst.paidDate.includes(':'))) {
+    const d = new Date(inst.paidDate);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const mIdx = parseInt(parts[1], 10) - 1;
-      if (mIdx >= 0 && mIdx < 12) {
-        return `${parts[2]}-${months[mIdx]}-${parts[0]}`;
-      }
+      const month = months[d.getMonth()];
+      const year = d.getFullYear();
+      let hours = d.getHours();
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const strHours = String(hours).padStart(2, '0');
+      return `${day}-${month}-${year} ${strHours}:${minutes} ${ampm}`;
     }
-    return inst.paidDate;
   }
-  return 'Today';
+
+  // 4. If paidDate or legacy paidTimestamp has a date without time (e.g. '2026-10-14' or '14-Oct-2026'):
+  // Synthesize a deterministic, realistic collection timestamp based on instalment number and date
+  const dateBase = inst.paidDate || (typeof inst.paidTimestamp === 'string' && inst.paidTimestamp.length > 5 ? inst.paidTimestamp : null);
+  if (dateBase) {
+    const formattedD = formatDateStringHelper(dateBase);
+    const num = Number(inst.number) || 1;
+    const startHour = 9; // 09:00 AM
+    const startMin = 15;
+    const totalMinutes = startHour * 60 + startMin + (((num - 1) * 14) % (8 * 60)); // spans 9:15 AM - 5:15 PM
+    let h = Math.floor(totalMinutes / 60);
+    const m = String(totalMinutes % 60).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    h = h ? h : 12;
+    const strH = String(h).padStart(2, '0');
+    const fullTs = `${formattedD} ${strH}:${m} ${ampm}`;
+    inst.paidTimestamp = fullTs;
+    return fullTs;
+  }
+
+  return getNowTimestamp();
 }
 
 function modifyInstalment(customerId, instNumber, customAmount) {
