@@ -114,16 +114,8 @@
         </div>
       </div>
 
-      <!-- Mobile Quick Actions: Schemes, Settings, & Logout Relocated to Header -->
+      <!-- Mobile Quick Actions: Settings & Logout Relocated to Header -->
       <div class="mobile-header-actions">
-        <button class="mobile-header-btn" data-tab="schemes" onclick="switchTab('schemes')" title="Schemes Master">
-          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-            <polyline points="2 17 12 22 22 17"/>
-            <polyline points="2 12 12 17 22 12"/>
-          </svg>
-          <span>Schemes</span>
-        </button>
         <button class="mobile-header-btn" data-tab="settings" onclick="switchTab('settings')" title="Settings & Config">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -132,7 +124,12 @@
           <span>Settings</span>
         </button>
         <button class="mobile-header-btn" onclick="handleLogout()" title="Logout" style="color: #dc2626; border-color: #fecaca; background: #fef2f2;">
-          <span>🚪</span>
+          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span>Logout</span>
         </button>
       </div>
     </div>
@@ -162,6 +159,14 @@
         <span>💵 Cash Tally:</span>
         <strong style="color: #b45309;">Count Notes ↵</strong>
       </button>
+      <button class="stat-pill btn-header-logout" onclick="handleLogout()" style="cursor: pointer; background: #fef2f2; border-color: #fecaca; color: #dc2626; display: inline-flex; align-items: center; gap: 6px;" title="Sign out of operator session">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #dc2626;">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        <strong style="color: #dc2626;">Logout</strong>
+      </button>
     </div>
   </header>
 
@@ -187,13 +192,6 @@
         </svg>
         <span class="nav-text">Instalment Sheet</span>
       </a>
-      <a class="nav-link" data-tab="runsheet">
-        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 11l3 3L22 4"/>
-          <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-        </svg>
-        <span class="nav-text">Field Run Sheet</span>
-      </a>
       <a class="nav-link" data-tab="customers">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
@@ -211,20 +209,20 @@
         </svg>
         <span class="nav-text">Analytics & Insights</span>
       </a>
-      <a class="nav-link" data-tab="schemes">
-        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-          <polyline points="2 17 12 22 22 17"/>
-          <polyline points="2 12 12 17 22 12"/>
-        </svg>
-        <span class="nav-text">Schemes Master</span>
-      </a>
       <a class="nav-link" data-tab="settings">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
         <span class="nav-text">Settings & Config</span>
+      </a>
+      <a class="nav-link nav-logout" onclick="handleLogout()" title="Sign Out" style="margin-top: auto; border-top: 1px solid #f1f5f9; color: #dc2626; cursor: pointer;">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #dc2626;">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        <span class="nav-text" style="color: #dc2626; font-weight: 600;">Logout</span>
       </a>
     </aside>
 
@@ -350,8 +348,8 @@
       <section id="view-collections" class="screen-view">
         <div class="view-header collections-header">
           <div class="collections-title-block">
-            <h1 class="view-title">Instalment Sheet</h1>
-            <p class="view-subtitle">Live collection ledger</p>
+            <h1 class="view-title">Customer instalments</h1>
+            <p class="view-subtitle">Tap a customer to expand or collapse 52 weeks</p>
           </div>
           <div class="collections-tools">
             <input type="text" id="global-search-input" class="form-control" placeholder="🔍 Search # / Name...">
@@ -392,13 +390,25 @@
           </span>
         </form>
 
-        <!-- Sheet Info Strip & Mobile Swipe Indicator -->
+        <!-- Sheet Info Strip & Legend -->
         <div class="sheet-info-strip">
-          <div class="sheet-badges">
-            <span class="sheet-badge">📋 52 Weeks Grid</span>
-            <span class="sheet-badge green">✓ Click / Tap to Mark Paid</span>
+          <div class="schedule-legend" style="margin-bottom: 0;">
+            <div class="sched-legend-item">
+              <span class="sched-legend-box paid">✓</span>
+              <span>Paid</span>
+            </div>
+            <div class="sched-legend-item">
+              <span class="sched-legend-box pending"> </span>
+              <span>Pending</span>
+            </div>
+            <div class="sched-legend-item">
+              <span class="sched-legend-box partial">-</span>
+              <span>Partial</span>
+            </div>
           </div>
-          <div class="mobile-swipe-hint">👉 Swipe right to view all 52 weeks 👈</div>
+          <div style="font-size: 12px; color: #64748b; font-weight: 500;">
+            💡 Tap any customer row or "Expand all" to view/hide 52-week schedule
+          </div>
         </div>
 
         <!-- The 52-Column Spreadhseet Matrix -->
@@ -414,44 +424,6 @@
         </div>
       </section>
 
-      <!-- ============================================== -->
-      <!-- SCREEN: FIELD COLLECTION RUN SHEET             -->
-      <!-- ============================================== -->
-      <section id="view-runsheet" class="screen-view">
-        <div class="view-header">
-          <div>
-            <h1 class="view-title">Field Collection Run Sheet</h1>
-            <p class="view-subtitle">Optimized field agent route checklist with 1-tap collection and direct WhatsApp / Call.</p>
-          </div>
-          <div class="btn-group">
-            <select id="runsheet-route-filter" class="form-control" style="width: 180px;" onchange="renderRunSheet()">
-              <option value="all">All Routes / Areas</option>
-            </select>
-            <input type="text" id="runsheet-search-input" class="form-control" placeholder="🔍 Search in route..." style="width: 180px;" oninput="renderRunSheet()">
-            <button class="btn btn-outline" onclick="window.print()">🖨️ Print Run Sheet</button>
-          </div>
-        </div>
-
-        <!-- Field Run Progress Strip -->
-        <div class="card" style="margin-bottom: 20px; padding: 14px 18px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="font-size: 14px; font-weight: 700; color: #1e293b;">
-              Today's Field Collection Progress: <span id="runsheet-progress-text" style="color: #2563eb;">0 / 0 Collected</span>
-            </div>
-            <div style="font-size: 14px; font-weight: 700; color: #16a34a;" id="runsheet-collected-rupees">
-              ₹ 0 Collected
-            </div>
-          </div>
-          <div class="progress-bar-bg" style="height: 10px;">
-            <div id="runsheet-progress-fill" class="progress-bar-fill" style="width: 0%; background: linear-gradient(90deg, #10b981, #059669);"></div>
-          </div>
-        </div>
-
-        <!-- Run Sheet Cards Grid -->
-        <div id="runsheet-cards-container" class="runsheet-grid">
-          <!-- Populated dynamically by app.js -->
-        </div>
-      </section>
 
       <!-- ============================================== -->
       <!-- SCREEN 3: CUSTOMER MASTER                      -->
@@ -476,6 +448,7 @@
                 <th>Full Name</th>
                 <th>Phone</th>
                 <th>Area / Route</th>
+                <th style="text-align: center;">Loans</th>
                 <th>Given Amount</th>
                 <th>Instalment</th>
                 <th>Repayable</th>
@@ -649,37 +622,6 @@
         </div>
       </section>
 
-      <!-- ============================================== -->
-      <!-- SCREEN 4: SCHEMES & INSTALMENTS MASTER         -->
-      <!-- ============================================== -->
-      <section id="view-schemes" class="screen-view">
-        <div class="view-header">
-          <div>
-            <h1 class="view-title">Schemes & Instalments Master</h1>
-            <p class="view-subtitle">Configure loan plans, number of instalments, and default repayment amounts.</p>
-          </div>
-        </div>
-
-        <div class="data-table-container">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Scheme Code</th>
-                <th>Scheme Name</th>
-                <th>Instalments</th>
-                <th>Frequency</th>
-                <th>Standard Given</th>
-                <th>Instalment Amount</th>
-                <th>Total Repayable</th>
-                <th>Default Status</th>
-              </tr>
-            </thead>
-            <tbody id="schemes-table-body">
-              <!-- Populated by app.js -->
-            </tbody>
-          </table>
-        </div>
-      </section>
 
       <!-- ============================================== -->
       <!-- SCREEN 5: SETTINGS & CONFIGURATION             -->
@@ -777,82 +719,36 @@
           </div>
         </div>
 
-        <!-- Display Zoom & Sound Preferences Card -->
+        <!-- Collection Sound Preferences Card -->
         <div class="card" style="margin-top: 24px;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
             <div>
               <h3 style="font-size: 16px; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 8px;">
-                <span>🖥️</span> Display Zoom & Collection Sound Preferences
+                <span>🔔</span> Collection Sound Preferences
               </h3>
               <p style="font-size: 13px; color: #64748b; margin: 4px 0 0 0;">
-                Zoom in or out to fit your screen size, and toggle audio cash chime for payment collections.
+                Toggle audio cash chime for real-time payment collections and daily reconciliation.
               </p>
             </div>
+            <span id="setting-sound-status-badge" style="background: #dcfce7; color: #15803d; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 700;">Sound: ON</span>
           </div>
 
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
-            <!-- Zoom Controls -->
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span style="font-weight: 700; font-size: 14px; color: #1e293b;">🔍 Screen Zoom In / Out</span>
-                <span id="current-zoom-badge" style="background: #eff6ff; color: #1d4ed8; padding: 3px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700;">90%</span>
-              </div>
-              <p style="font-size: 12px; color: #64748b; margin-bottom: 14px;">
-                Adjust display scale so tables, collection sheets, and analytics fit comfortably on your display.
-              </p>
+          <div style="max-width: 520px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px;">
+            <p style="font-size: 13px; color: #64748b; margin-bottom: 16px;">
+              Plays an authentic cash register chime whenever an instalment is marked paid or cash is collected.
+            </p>
 
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-                <button type="button" class="btn btn-outline" onclick="stepScreenZoom(-0.05)" title="Zoom Out (Make display smaller to fit more data)" style="font-weight: 700;">
-                  ➖ Zoom Out
-                </button>
-
-                <select id="setting-screen-zoom" class="form-control" onchange="applyScreenZoom(this.value)" style="flex: 1; font-weight: 600; cursor: pointer;">
-                  <option value="0.75">75% (Ultra Compact)</option>
-                  <option value="0.8">80% (Compact)</option>
-                  <option value="0.85">85% (Compact)</option>
-                  <option value="0.9" selected>90% (Default - Full Fit)</option>
-                  <option value="0.95">95% (Medium)</option>
-                  <option value="1">100% (Standard 1:1)</option>
-                  <option value="1.05">105% (Slightly Larger)</option>
-                  <option value="1.1">110% (Large)</option>
-                  <option value="1.2">120% (Extra Large)</option>
-                </select>
-
-                <button type="button" class="btn btn-outline" onclick="stepScreenZoom(0.05)" title="Zoom In (Make text & buttons larger)" style="font-weight: 700;">
-                  ➕ Zoom In
-                </button>
-              </div>
-
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <button type="button" class="btn btn-outline btn-sm" onclick="applyScreenZoom('0.9')" style="font-size: 12px; color: #475569;">
-                  ↺ Reset to Default (90%)
-                </button>
-                <span style="font-size: 11px; color: #94a3b8;">Instantly applied</span>
-              </div>
+            <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+              <button type="button" id="setting-sound-toggle-btn" class="btn btn-primary" onclick="toggleSoundEffect()" style="flex: 1; justify-content: center; gap: 8px;">
+                🔔 Sound: ON (Click to Mute)
+              </button>
+              <button type="button" class="btn btn-outline" onclick="playCashChime()" title="Test Cash Register Audio Chime" style="padding: 8px 16px;">
+                🔊 Test Chime
+              </button>
             </div>
 
-            <!-- Sound Controls -->
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span style="font-weight: 700; font-size: 14px; color: #1e293b;">🔔 Collection Audio Chime</span>
-                <span id="setting-sound-status-badge" style="background: #dcfce7; color: #15803d; padding: 3px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700;">Sound: ON</span>
-              </div>
-              <p style="font-size: 12px; color: #64748b; margin-bottom: 14px;">
-                Plays a cash register chime whenever an instalment is received or cash is reconciled.
-              </p>
-
-              <div style="display: flex; gap: 10px; margin-bottom: 12px;">
-                <button type="button" id="setting-sound-toggle-btn" class="btn btn-primary" onclick="toggleSoundEffect()" style="flex: 1; justify-content: center; gap: 8px;">
-                  🔔 Sound: ON (Click to Mute)
-                </button>
-                <button type="button" class="btn btn-outline" onclick="playCashChime()" title="Test Cash Register Audio Chime" style="padding: 8px 14px;">
-                  🔊 Test Chime
-                </button>
-              </div>
-
-              <div style="font-size: 11px; color: #64748b;">
-                Zero external sound files — synthesized live using the browser Web Audio API.
-              </div>
+            <div style="font-size: 11px; color: #94a3b8;">
+              Zero external sound files — synthesized live using browser Web Audio API.
             </div>
           </div>
         </div>
@@ -1169,13 +1065,6 @@
       </svg>
       <span class="label">Instalments</span>
     </button>
-    <button class="mobile-nav-item" data-tab="runsheet">
-      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 11l3 3L22 4"/>
-        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-      </svg>
-      <span class="label">Run Sheet</span>
-    </button>
     <button class="mobile-nav-item" data-tab="customers">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
@@ -1195,11 +1084,14 @@
     </button>
   </nav>
 
+  <!-- Loans Breakdown Tooltip Popover -->
+  <div id="loans-tooltip-popover" class="loans-tooltip-popover" style="display: none;"></div>
+
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=20"></script>
-  <script src="firebase-sync.js?v=20"></script>
-  <script src="app.js?v=20"></script>
+  <script src="firebase-config.js?v=21"></script>
+  <script src="firebase-sync.js?v=21"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>
