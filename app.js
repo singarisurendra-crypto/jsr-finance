@@ -67,6 +67,8 @@ let state = {
   activeTab: 'summary',
   searchQuery: '',
   filterStatus: 'all',
+  expandedCustomerIds: new Set(),
+  allExpanded: false,
 };
 
 // Web Audio API Cash Register Chime & Sound Effects (Zero External Files)
@@ -173,8 +175,154 @@ function stepScreenZoom(delta) {
   showToast(`Screen Zoom set to ${Math.round(next * 100)}%`);
 }
 
+// ====================================================
+// AUTHENTICATION & SESSION MANAGEMENT
+// ====================================================
+const AUTH_KEY = 'jsr_auth_session';
+
+function checkAuthSession() {
+  const loginOverlay = document.getElementById('view-login');
+  if (!loginOverlay) return false;
+  try {
+    const session = localStorage.getItem(AUTH_KEY) || sessionStorage.getItem(AUTH_KEY);
+    if (session) {
+      const parsed = JSON.parse(session);
+      if (parsed && parsed.user) {
+        loginOverlay.style.display = 'none';
+        return true;
+      }
+    }
+  } catch (err) {
+    console.warn('Error reading auth session', err);
+  }
+  loginOverlay.style.display = 'flex';
+  return false;
+}
+
+function handleLogin(event) {
+  if (event) event.preventDefault();
+  const usernameInput = document.getElementById('login-username');
+  const passwordInput = document.getElementById('login-password');
+  const errorAlert = document.getElementById('login-error-alert');
+  const loginOverlay = document.getElementById('view-login');
+
+  const user = (usernameInput?.value || '').trim();
+  const pass = (passwordInput?.value || '').trim();
+
+  // Allow standard admin or operator login credentials
+  const isValidAdmin = (user === 'admin' && pass === 'admin123');
+  const isValidMobile = (user.length >= 4 && (pass === '1234' || pass === 'admin123'));
+
+  if (isValidAdmin || isValidMobile) {
+    if (errorAlert) errorAlert.style.display = 'none';
+    const rememberMe = document.getElementById('login-remember')?.checked !== false;
+    const sessionData = {
+      user: user || 'admin',
+      role: 'Operator',
+      loginTime: new Date().toISOString()
+    };
+    if (rememberMe) {
+      localStorage.setItem(AUTH_KEY, JSON.stringify(sessionData));
+    } else {
+      sessionStorage.setItem(AUTH_KEY, JSON.stringify(sessionData));
+    }
+    playCashChime();
+    showToast(`Welcome back, ${user || 'admin'}! Signed in successfully.`);
+    if (loginOverlay) {
+      loginOverlay.style.opacity = '0';
+      loginOverlay.style.transition = 'opacity 0.25s ease';
+      setTimeout(() => {
+        loginOverlay.style.display = 'none';
+        loginOverlay.style.opacity = '1';
+      }, 250);
+    }
+  } else {
+    if (errorAlert) {
+      errorAlert.textContent = '❌ Invalid Operator ID or PIN. (Default: admin / admin123 or use 1-Tap Quick Demo)';
+      errorAlert.style.display = 'flex';
+    }
+  }
+}
+
+function handleQuickDemoLogin() {
+  const usernameInput = document.getElementById('login-username');
+  const passwordInput = document.getElementById('login-password');
+  if (usernameInput) usernameInput.value = 'admin';
+  if (passwordInput) passwordInput.value = 'admin123';
+  handleLogin();
+}
+
+function handleLogout() {
+  if (confirm('Are you sure you want to log out of JSR Finance?')) {
+    localStorage.removeItem(AUTH_KEY);
+    sessionStorage.removeItem(AUTH_KEY);
+    const loginOverlay = document.getElementById('view-login');
+    if (loginOverlay) {
+      loginOverlay.style.display = 'flex';
+      const usernameInput = document.getElementById('login-username');
+      const passwordInput = document.getElementById('login-password');
+      if (usernameInput) usernameInput.value = '';
+      if (passwordInput) passwordInput.value = '';
+      const errorAlert = document.getElementById('login-error-alert');
+      if (errorAlert) errorAlert.style.display = 'none';
+    }
+    showToast('Signed out successfully.');
+  }
+}
+
+function togglePasswordVisibility() {
+  const pwdInput = document.getElementById('login-password');
+  if (!pwdInput) return;
+  pwdInput.type = pwdInput.type === 'password' ? 'text' : 'password';
+}
+
+// ====================================================
+// EXPANDABLE SCHEDULE DRAWER CONTROLLERS
+// ====================================================
+function toggleCustomerSchedule(customerId, event) {
+  if (event) {
+    event.stopPropagation();
+  }
+  if (!state.expandedCustomerIds) {
+    state.expandedCustomerIds = new Set();
+  }
+  if (state.expandedCustomerIds.has(customerId)) {
+    state.expandedCustomerIds.delete(customerId);
+  } else {
+    state.expandedCustomerIds.add(customerId);
+  }
+  renderCollectionMatrix();
+}
+
+function toggleExpandAllSchedules() {
+  if (!state.expandedCustomerIds) {
+    state.expandedCustomerIds = new Set();
+  }
+  state.allExpanded = !state.allExpanded;
+  const btn = document.getElementById('btn-expand-all');
+
+  if (state.allExpanded) {
+    state.customers.forEach((c) => {
+      state.expandedCustomerIds.add(c.id);
+    });
+    if (btn) btn.textContent = 'Collapse all';
+  } else {
+    state.expandedCustomerIds.clear();
+    if (btn) btn.textContent = 'Expand all';
+  }
+  renderCollectionMatrix();
+}
+
+function handleInstalmentClick(customerId, instNumber, event) {
+  if (event) {
+    event.stopPropagation();
+  }
+  toggleInstalmentReceived(customerId, instNumber);
+}
+
 // Initialize App
 function initApp() {
+  checkAuthSession();
   applyScreenZoom();
   loadData();
   setupEventListeners();
@@ -772,6 +920,12 @@ function renderCollectionMatrix() {
   const tableHead = document.getElementById('matrix-table-head');
   const tableBody = document.getElementById('matrix-table-body');
 
+  // Synchronize Expand All / Collapse All button text if present
+  const btnExpandAll = document.getElementById('btn-expand-all');
+  if (btnExpandAll) {
+    btnExpandAll.textContent = state.allExpanded ? 'Collapse all' : 'Expand all';
+  }
+
   // Filter Customers
   const query = state.searchQuery.toLowerCase().trim();
   const filtered = state.customers.filter((c) => {
@@ -816,7 +970,7 @@ function renderCollectionMatrix() {
       <th class="sticky-col-1">Cust #</th>
       <th class="sticky-col-2">Customer Name</th>
       <th class="sticky-col-3">Given / Inst</th>
-      <th style="min-width: 90px;">Paid / Bal</th>
+      <th style="min-width: 95px;">Paid / Bal</th>
   `;
 
   for (let w = 1; w <= maxInst; w++) {
@@ -842,6 +996,7 @@ function renderCollectionMatrix() {
       ? '<span style="font-size:10px; background:#fef3c7; color:#b45309; padding:1px 5px; border-radius:4px; font-weight:700;">Daily</span>'
       : '<span style="font-size:10px; background:#eff6ff; color:#1d4ed8; padding:1px 5px; border-radius:4px; font-weight:700;">Weekly</span>';
     const unitLabel = isDaily ? 'Day' : 'Week';
+    const isExpanded = !!(state.expandedCustomerIds && state.expandedCustomerIds.has(cust.id));
 
     bodyHtml += `
       <tr data-customer-id="${cust.id}">
@@ -863,9 +1018,14 @@ function renderCollectionMatrix() {
             ${freqBadge}
           </div>
         </td>
-        <td>
-          <div style="font-weight:600;">${stats.paidCount}/${instCount}</div>
-          <div style="font-size:11px; color:#b45309;">Bal: ${formatMoney(stats.balance)}</div>
+        <td class="clickable-paid-bal ${isExpanded ? 'expanded' : ''}" 
+            onclick="toggleCustomerSchedule('${cust.id}', event)" 
+            title="Click to ${isExpanded ? 'collapse' : 'expand'} ${instCount}-${isDaily ? 'day' : 'week'} schedule drawer">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+            <div style="font-weight:700; color:#1e40af;">${stats.paidCount}/${instCount}</div>
+            <span class="sched-chevron ${isExpanded ? 'rotated' : ''}">▼</span>
+          </div>
+          <div style="font-size:11px; color:#b45309; font-weight:600;">Bal: ${formatMoney(stats.balance)}</div>
         </td>
     `;
 
@@ -903,6 +1063,86 @@ function renderCollectionMatrix() {
     }
 
     bodyHtml += `</tr>`;
+
+    // Render Expandable Interactive Schedule Drawer if expanded
+    if (isExpanded) {
+      const completionPct = instCount > 0 ? Math.round((stats.paidCount / instCount) * 100) : 0;
+      let squaresHtml = '';
+      for (let sq = 1; sq <= instCount; sq++) {
+        const sqInst = (cust.instalments && cust.instalments[sq - 1]) || { number: sq, status: 'Pending' };
+        const isReceived = sqInst.status === 'Received';
+        const isPartial = sqInst.status === 'Partial';
+        let sqClass = 'is-pending';
+        let sqContent = `${sq}`;
+        let sqTitle = `Instalment #${sq}: Pending ₹${cust.instalmentAmount}. Tap to mark paid.`;
+
+        if (isReceived) {
+          sqClass = 'is-paid';
+          sqContent = '✓';
+          sqTitle = `Instalment #${sq}: Paid ₹${sqInst.paidAmount || cust.instalmentAmount} on ${sqInst.paidDate || 'Today'}. Tap to undo.`;
+        } else if (isPartial) {
+          sqClass = 'is-partial';
+          sqContent = `₹${sqInst.paidAmount}`;
+          sqTitle = `Instalment #${sq}: Partial ₹${sqInst.paidAmount} paid. Tap to complete.`;
+        }
+
+        squaresHtml += `
+          <button type="button" 
+                  class="sched-square ${sqClass}" 
+                  onclick="handleInstalmentClick('${cust.id}', ${sq}, event)" 
+                  title="${sqTitle}">
+            ${sqContent}
+          </button>
+        `;
+      }
+
+      const hasPartialInCust = (cust.instalments || []).some(i => i && i.status === 'Partial');
+
+      bodyHtml += `
+        <tr class="schedule-drawer-row" data-drawer-customer="${cust.id}">
+          <td colspan="${maxInst + 4}" class="schedule-drawer-cell">
+            <div class="schedule-panel">
+              <div class="schedule-panel-header">
+                <div class="schedule-panel-title">
+                  <span>📅</span>
+                  <span>${instCount}-${isDaily ? 'day' : 'week'} schedule (#${cust.customerNumber} - ${cust.fullName})</span>
+                </div>
+                <div class="schedule-panel-hint">
+                  <span>👆 Tap to toggle</span>
+                </div>
+              </div>
+
+              <div class="schedule-progress-bar-row">
+                <div class="schedule-progress-track">
+                  <div class="schedule-progress-fill" style="width: ${completionPct}%;"></div>
+                </div>
+                <div class="schedule-progress-pct">${completionPct}%</div>
+              </div>
+
+              <div class="schedule-legend">
+                <div class="sched-legend-item">
+                  <span class="sched-legend-box paid">✓</span>
+                  <span>Paid (${stats.paidCount})</span>
+                </div>
+                <div class="sched-legend-item">
+                  <span class="sched-legend-box pending"> </span>
+                  <span>Pending (${instCount - stats.paidCount})</span>
+                </div>
+                ${hasPartialInCust ? `
+                <div class="sched-legend-item">
+                  <span class="sched-legend-box partial">-</span>
+                  <span>Partial</span>
+                </div>` : ''}
+              </div>
+
+              <div class="schedule-squares-grid">
+                ${squaresHtml}
+              </div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
   });
 
   tableBody.innerHTML = bodyHtml;
