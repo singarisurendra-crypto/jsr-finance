@@ -580,6 +580,58 @@ function handleInstalmentClick(customerId, instNumber, event) {
   });
 }
 
+// Format Instalment Timestamp for Schedule Tooltip & Passbook
+function getNowTimestamp() {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, '0');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[now.getMonth()];
+  const year = now.getFullYear();
+  let hours = now.getHours();
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const strHours = String(hours).padStart(2, '0');
+  return `${day}-${month}-${year} ${strHours}:${minutes} ${ampm}`;
+}
+
+function formatInstalmentTimestamp(inst) {
+  if (!inst) return '';
+  if (inst.paidTimestamp) return inst.paidTimestamp;
+  if (inst.paidTime && inst.paidDate) {
+    return `${inst.paidDate} ${inst.paidTime}`;
+  }
+  if (inst.paidDate) {
+    if (inst.paidDate.includes('T') || inst.paidDate.includes(':')) {
+      const d = new Date(inst.paidDate);
+      if (!isNaN(d.getTime())) {
+        const day = String(d.getDate()).padStart(2, '0');
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const month = months[d.getMonth()];
+        const year = d.getFullYear();
+        let hours = d.getHours();
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        const strHours = String(hours).padStart(2, '0');
+        return `${day}-${month}-${year} ${strHours}:${minutes} ${ampm}`;
+      }
+    }
+    const parts = inst.paidDate.split('-');
+    if (parts.length === 3) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const mIdx = parseInt(parts[1], 10) - 1;
+      if (mIdx >= 0 && mIdx < 12) {
+        return `${parts[2]}-${months[mIdx]}-${parts[0]}`;
+      }
+    }
+    return inst.paidDate;
+  }
+  return 'Today';
+}
+
 function modifyInstalment(customerId, instNumber, customAmount) {
   const customer = state.customers.find(c => c.id === customerId);
   if (!customer) return;
@@ -607,8 +659,53 @@ function modifyInstalment(customerId, instNumber, customAmount) {
   }
 
   const inst = insts[instNumber - 1];
+  const totalInst = customer.totalInstalments || 52;
+  const unitLabel = (customer.frequency === 'Daily' || totalInst === 100) ? 'Day' : 'Week';
+
+  // Determine sequence bounds: next due (first unreceived) and last paid (highest paid)
+  let nextDueNumber = 0;
+  for (let i = 1; i <= totalInst; i++) {
+    const itm = insts[i - 1];
+    if (!itm || itm.status !== 'Received') {
+      nextDueNumber = i;
+      break;
+    }
+  }
+
+  let lastPaidNumber = 0;
+  for (let i = totalInst; i >= 1; i--) {
+    const itm = insts[i - 1];
+    if (itm && (itm.status === 'Received' || itm.status === 'Partial')) {
+      lastPaidNumber = i;
+      break;
+    }
+  }
+
+  // STRICT SEQUENTIAL VALIDATION:
+  if (inst.status === 'Pending') {
+    // Only the next sequential pending instalment can be paid (e.g. #3 if #1 and #2 are paid)
+    if (nextDueNumber > 0 && instNumber !== nextDueNumber) {
+      showToast(`⚠️ Out of sequence: Please pay ${unitLabel} #${nextDueNumber} before #${instNumber}.`, 4000);
+      return;
+    }
+  } else if (inst.status === 'Received') {
+    // Only the highest paid instalment can be undone in reverse sequence (e.g. #3 before #2 or #1)
+    if (lastPaidNumber > 0 && instNumber !== lastPaidNumber) {
+      showToast(`⚠️ Out of sequence: Please undo ${unitLabel} #${lastPaidNumber} first before undoing #${instNumber}.`, 4000);
+      return;
+    }
+  } else if (inst.status === 'Partial') {
+    // Partial payment must be completed before advancing
+    if (nextDueNumber > 0 && instNumber !== nextDueNumber) {
+      showToast(`⚠️ Out of sequence: Please complete partial ${unitLabel} #${nextDueNumber} before #${instNumber}.`, 4000);
+      return;
+    }
+  }
+
   const scheduledAmount = Number(customer.instalmentAmount) || 200;
-  const todayStr = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const timestampStr = getNowTimestamp();
 
   if (customAmount !== undefined && customAmount !== null && !isNaN(customAmount) && Number(customAmount) > 0) {
     const amt = Number(customAmount);
@@ -618,11 +715,13 @@ function modifyInstalment(customerId, instNumber, customAmount) {
       inst.status = 'Received';
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
+      inst.paidTimestamp = timestampStr;
       inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
     } else {
       inst.status = 'Partial';
       inst.paidAmount = newTotal;
       inst.paidDate = todayStr;
+      inst.paidTimestamp = timestampStr;
       inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}-P`;
     }
   } else {
@@ -630,17 +729,20 @@ function modifyInstalment(customerId, instNumber, customAmount) {
     if (inst.status === 'Received') {
       inst.status = 'Pending';
       inst.paidDate = null;
+      inst.paidTimestamp = null;
       inst.paidAmount = 0;
       inst.receiptNumber = null;
     } else if (inst.status === 'Partial') {
       inst.status = 'Received';
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
+      inst.paidTimestamp = timestampStr;
       inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
     } else {
       inst.status = 'Received';
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
+      inst.paidTimestamp = timestampStr;
       inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
     }
   }
@@ -1379,6 +1481,25 @@ function renderCollectionMatrix() {
       const completionPct = instCount > 0 ? Math.round((effectiveStats.paidCount / instCount) * 100) : 0;
       const activeInstalments = (pendingMod && pendingMod.modifiedInstalments) ? pendingMod.modifiedInstalments : (cust.instalments || []);
 
+      // Determine sequence bounds: next due (first unreceived) and last paid (highest paid)
+      let nextDueNumber = 0;
+      for (let i = 1; i <= instCount; i++) {
+        const itm = activeInstalments[i - 1];
+        if (!itm || itm.status !== 'Received') {
+          nextDueNumber = i;
+          break;
+        }
+      }
+
+      let lastPaidNumber = 0;
+      for (let i = instCount; i >= 1; i--) {
+        const itm = activeInstalments[i - 1];
+        if (itm && (itm.status === 'Received' || itm.status === 'Partial')) {
+          lastPaidNumber = i;
+          break;
+        }
+      }
+
       let squaresHtml = '';
       for (let sq = 1; sq <= instCount; sq++) {
         const sqInst = activeInstalments[sq - 1] || { number: sq, status: 'Pending' };
@@ -1386,16 +1507,32 @@ function renderCollectionMatrix() {
         const isPartial = sqInst.status === 'Partial';
         let sqClass = 'is-pending';
         let sqContent = `${sq}`;
-        let sqTitle = `${unitLabel} #${sq}: Pending ${formatMoney(cust.instalmentAmount)}. Tap to mark paid.`;
+        let sqTitle = '';
+
+        const ts = formatInstalmentTimestamp(sqInst);
 
         if (isReceived) {
           sqClass = 'is-paid';
           sqContent = '✓';
-          sqTitle = `${unitLabel} #${sq}: Paid ${formatMoney(sqInst.paidAmount || cust.instalmentAmount)} on ${sqInst.paidDate || 'Today'}. Tap to undo.`;
+          if (sq === lastPaidNumber) {
+            sqTitle = `${unitLabel} #${sq}: Paid on ${ts}. Tap to undo.`;
+          } else {
+            sqClass += ' is-locked-paid';
+            sqTitle = `${unitLabel} #${sq}: Paid on ${ts}. (Undo #${lastPaidNumber} first to undo this).`;
+          }
         } else if (isPartial) {
           sqClass = 'is-partial';
           sqContent = `₹${sqInst.paidAmount}`;
-          sqTitle = `${unitLabel} #${sq}: Partial ${formatMoney(sqInst.paidAmount)} paid. Tap to complete.`;
+          sqTitle = `${unitLabel} #${sq}: Partial (₹${sqInst.paidAmount}) on ${ts}. Tap to complete.`;
+        } else {
+          // Pending
+          if (sq === nextDueNumber) {
+            sqClass = 'is-pending is-next-due';
+            sqTitle = `${unitLabel} #${sq}: Next due ${unitLabel.toLowerCase()}. Tap to mark paid.`;
+          } else {
+            sqClass = 'is-pending is-locked';
+            sqTitle = `${unitLabel} #${sq}: Locked. Complete ${unitLabel} #${nextDueNumber} first.`;
+          }
         }
 
         squaresHtml += `
@@ -1505,7 +1642,49 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
   }
 
   const inst = customer.instalments[instNumber - 1];
-  const todayStr = new Date().toISOString().split('T')[0];
+  const totalInst = customer.totalInstalments || 52;
+  const unitLabel = (customer.frequency === 'Daily' || totalInst === 100) ? 'Day' : 'Week';
+
+  // Determine sequence bounds
+  let nextDueNumber = 0;
+  for (let i = 1; i <= totalInst; i++) {
+    const itm = customer.instalments[i - 1];
+    if (!itm || itm.status !== 'Received') {
+      nextDueNumber = i;
+      break;
+    }
+  }
+
+  let lastPaidNumber = 0;
+  for (let i = totalInst; i >= 1; i--) {
+    const itm = customer.instalments[i - 1];
+    if (itm && (itm.status === 'Received' || itm.status === 'Partial')) {
+      lastPaidNumber = i;
+      break;
+    }
+  }
+
+  // STRICT SEQUENTIAL VALIDATION:
+  if (inst.status === 'Pending') {
+    if (nextDueNumber > 0 && instNumber !== nextDueNumber) {
+      showToast(`⚠️ Out of sequence: Please pay ${unitLabel} #${nextDueNumber} before #${instNumber}.`, 4000);
+      return;
+    }
+  } else if (inst.status === 'Received') {
+    if (lastPaidNumber > 0 && instNumber !== lastPaidNumber) {
+      showToast(`⚠️ Out of sequence: Please undo ${unitLabel} #${lastPaidNumber} first before undoing #${instNumber}.`, 4000);
+      return;
+    }
+  } else if (inst.status === 'Partial') {
+    if (nextDueNumber > 0 && instNumber !== nextDueNumber) {
+      showToast(`⚠️ Out of sequence: Please complete partial ${unitLabel} #${nextDueNumber} before #${instNumber}.`, 4000);
+      return;
+    }
+  }
+
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const timestampStr = getNowTimestamp();
   const scheduledAmount = Number(customer.instalmentAmount) || 200;
 
   if (customAmount !== undefined && customAmount !== null && !isNaN(customAmount) && Number(customAmount) > 0) {
@@ -1518,6 +1697,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       inst.status = 'Received';
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
+      inst.paidTimestamp = timestampStr;
       inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
       playCashChime();
       showToast(`✓ Received Full #${instNumber} (${formatMoney(scheduledAmount)}) for #${customer.customerNumber}`);
@@ -1525,6 +1705,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       inst.status = 'Partial';
       inst.paidAmount = newTotalPaid;
       inst.paidDate = todayStr;
+      inst.paidTimestamp = timestampStr;
       inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}-P`;
       playCashChime();
       showToast(`½ Partial payment of ₹${amountVal} recorded for #${instNumber} (₹${scheduledAmount - newTotalPaid} due) for #${customer.customerNumber}`);
@@ -1535,6 +1716,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       // Undo
       inst.status = 'Pending';
       inst.paidDate = null;
+      inst.paidTimestamp = null;
       inst.paidAmount = 0;
       inst.receiptNumber = null;
     } else if (inst.status === 'Partial') {
@@ -1542,6 +1724,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       inst.status = 'Received';
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
+      inst.paidTimestamp = timestampStr;
       inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
       playCashChime();
       showToast(`✓ Completed remaining balance for #${instNumber} (${formatMoney(scheduledAmount)}) for #${customer.customerNumber}`);
@@ -1549,6 +1732,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       // Mark Received full
       inst.status = 'Received';
       inst.paidDate = todayStr;
+      inst.paidTimestamp = timestampStr;
       inst.paidAmount = scheduledAmount;
       inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
       playCashChime();
