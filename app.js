@@ -78,6 +78,9 @@ function playCashChime() {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
+    if (ctx.state === 'suspended') {
+      ctx.resume();
+    }
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
@@ -1024,99 +1027,101 @@ function renderCollectionMatrix() {
     btnExpandAll.textContent = state.allExpanded ? 'Collapse all' : 'Expand all';
   }
 
-  // Group Customers by customerNumber (One single row per customer)
-  const grouped = getGroupedCustomers();
-
-  // Filter Customers
+  // Filter Customers across all loans
   const query = state.searchQuery.toLowerCase().trim();
-  const filtered = grouped.filter((g) => {
-    const cust = g.activeLoan;
+  const filtered = state.customers.filter((c) => {
     const matchesSearch =
-      g.customerNumber.toString().toLowerCase().includes(query) ||
-      g.fullName.toLowerCase().includes(query) ||
-      (g.phone && g.phone.includes(query)) ||
-      (g.areaRoute && g.areaRoute.toLowerCase().includes(query));
+      c.customerNumber.toString().toLowerCase().includes(query) ||
+      c.fullName.toLowerCase().includes(query) ||
+      (c.phone && c.phone.includes(query)) ||
+      (c.areaRoute && c.areaRoute.toLowerCase().includes(query));
 
     if (!matchesSearch) return false;
 
-    const stats = getCustomerStats(cust);
+    const stats = getCustomerStats(c);
     if (state.filterStatus === 'active') return !stats.isCompleted;
     if (state.filterStatus === 'overdue') return stats.isOverdue;
-    if (state.filterStatus === 'partial') return (cust.instalments || []).some(i => i && i.status === 'Partial');
+    if (state.filterStatus === 'partial') return (c.instalments || []).some(i => i && i.status === 'Partial');
     if (state.filterStatus === 'completed') return stats.isCompleted;
-    if (state.filterStatus === 'weekly') return cust.frequency !== 'Daily' && (cust.totalInstalments || 52) !== 100;
-    if (state.filterStatus === 'daily') return cust.frequency === 'Daily' || cust.totalInstalments === 100;
+    if (state.filterStatus === 'weekly') return c.frequency !== 'Daily' && (c.totalInstalments || 52) !== 100;
+    if (state.filterStatus === 'daily') return c.frequency === 'Daily' || c.totalInstalments === 100;
     return true;
   });
 
-  // Render 6 Clean Table Headers (Cust # | Customer Name | Loans | Given / Inst | Paid / Bal | Schedule)
+  // Sort customers by customerNumber numerically, and then by loanNumber (L1, then L2)
+  filtered.sort((a, b) => {
+    const numA = Number(a.customerNumber) || 0;
+    const numB = Number(b.customerNumber) || 0;
+    if (numA !== numB) return numA - numB;
+    return (Number(a.loanNumber) || 1) - (Number(b.loanNumber) || 1);
+  });
+
+  // Full Screen 5-Column Table Header (spanning 100% desktop width)
   tableHead.innerHTML = `
     <tr>
-      <th style="width: 80px;">Cust #</th>
-      <th style="min-width: 150px;">Customer Name</th>
-      <th style="width: 110px; text-align: center;">Loans</th>
-      <th style="min-width: 120px;">Given / Inst</th>
-      <th style="min-width: 120px;">Paid / Bal</th>
-      <th style="width: 130px; text-align: center;">Schedule</th>
+      <th style="width: 12%; min-width: 90px; text-align: left; padding-left: 20px;">Cust #</th>
+      <th style="width: 32%; min-width: 200px; text-align: left;">Customer Name</th>
+      <th style="width: 20%; min-width: 150px; text-align: left;">Given / Inst</th>
+      <th style="width: 20%; min-width: 150px; text-align: left;">Paid / Bal</th>
+      <th style="width: 16%; min-width: 120px; text-align: center; padding-right: 20px;">Schedule</th>
     </tr>
   `;
 
   if (filtered.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#94a3b8;">No customers match the current search or filter.</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#94a3b8;">No customers match the current search or filter.</td></tr>`;
     return;
   }
 
-  // Generate Body Rows (1 single row per customer)
+  // Generate Body Rows (Each loan shown with L1, L2 and independent expand/collapse)
   let bodyHtml = '';
-  filtered.forEach((group) => {
-    const cust = group.activeLoan;
+  filtered.forEach((cust) => {
     const stats = getCustomerStats(cust);
     const instCount = cust.totalInstalments || 52;
     const isDaily = cust.frequency === 'Daily' || cust.totalInstalments === 100;
     const freqUnit = isDaily ? '/day' : '/wk';
+    const unitWord = isDaily ? 'Days' : 'Wks';
+    const unitLabel = isDaily ? 'Day' : 'Week';
     const freqBadge = isDaily
       ? '<span style="font-size:10px; background:#fef3c7; color:#b45309; padding:1px 5px; border-radius:4px; font-weight:700;">Daily</span>'
       : '<span style="font-size:10px; background:#eff6ff; color:#1d4ed8; padding:1px 5px; border-radius:4px; font-weight:700;">Weekly</span>';
     const isExpanded = !!(state.expandedCustomerIds && state.expandedCustomerIds.has(cust.id));
 
+    // Multi-loan identifier badge e.g. L1, L2
+    const customerLoanCount = state.customers.filter(c => c.customerNumber.toString() === cust.customerNumber.toString()).length;
+    const hasMultipleLoans = customerLoanCount > 1 || (cust.loanNumber && cust.loanNumber > 1);
+    const loanBadgeHtml = hasMultipleLoans ? ` <span class="loan-badge">L${cust.loanNumber || 1}</span>` : '';
+
     bodyHtml += `
       <tr data-customer-id="${cust.id}" class="customer-row-main ${isExpanded ? 'row-expanded' : ''}" style="cursor: pointer;" onclick="toggleCustomerSchedule('${cust.id}', event)">
-        <td>
-          <span style="font-weight:700; color:#1e3a8a; font-size:14px;">#${group.customerNumber}</span>
+        <td style="padding-left: 18px; text-align: left;">
+          <span style="font-weight:700; color:#1e3a8a; font-size:14px;">#${cust.customerNumber}</span>${loanBadgeHtml}
           ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="${stats.missedCount} instalments behind schedule">⚠️ Due ${stats.missedCount}</span>` : ''}
         </td>
-        <td>
-          <div style="font-weight:700; color:#0f172a; font-size:14px;">${group.fullName}</div>
-          <div style="font-size:12px; color:#64748b;">${group.phone || 'No Phone'}</div>
+        <td style="text-align: left;">
+          <div style="font-weight:700; color:#0f172a; font-size:14px;">${cust.fullName}</div>
+          <div style="font-size:12px; color:#64748b;">${cust.phone || 'No Phone'}</div>
         </td>
-        <td style="text-align: center;" onclick="event.stopPropagation()">
-          <button type="button" class="loans-badge" onclick="toggleLoansTooltip(event, '${group.customerNumber}')" title="Click to view all loans for #${group.customerNumber}">
-            <span>💳</span>
-            <span>${group.loans.length} ${group.loans.length === 1 ? 'Loan' : 'Loans'}</span>
-            <span style="font-size:10px;">▾</span>
-          </button>
-        </td>
-        <td>
+        <td style="text-align: left;">
           <div style="font-weight:700; color:#0f172a;">${formatMoney(cust.givenAmount)}</div>
           <div style="font-size:11px; color:#2563eb; display:flex; align-items:center; gap:4px; margin-top:2px;">
             <span>${formatMoney(cust.instalmentAmount)} ${freqUnit}</span>
             ${freqBadge}
           </div>
         </td>
-        <td>
+        <td style="text-align: left;">
           <div style="font-weight:700; color:#1e40af; font-size:14px;">${stats.paidCount}/${instCount}</div>
           <div style="font-size:11px; color:#b45309; font-weight:600; margin-top:2px;">Bal: ${formatMoney(stats.balance)}</div>
         </td>
-        <td style="text-align: center;" onclick="event.stopPropagation()">
+        <td style="text-align: center; padding-right: 18px;" onclick="event.stopPropagation()">
           <button type="button" class="btn-schedule-toggle ${isExpanded ? 'expanded' : ''}" onclick="toggleCustomerSchedule('${cust.id}', event)">
-            <span>${isExpanded ? 'Hide' : `${instCount} Wks`}</span>
+            <span>${isExpanded ? 'Hide' : `${instCount} ${unitWord}`}</span>
             <span class="sched-chevron ${isExpanded ? 'rotated' : ''}">▼</span>
           </button>
         </td>
       </tr>
     `;
 
-    // Render Expandable Interactive Schedule Drawer if expanded (Matching media_1791962217864.png)
+    // Render Expandable Interactive Schedule Drawer if expanded
     if (isExpanded) {
       const completionPct = instCount > 0 ? Math.round((stats.paidCount / instCount) * 100) : 0;
       let squaresHtml = '';
@@ -1126,16 +1131,16 @@ function renderCollectionMatrix() {
         const isPartial = sqInst.status === 'Partial';
         let sqClass = 'is-pending';
         let sqContent = `${sq}`;
-        let sqTitle = `Instalment #${sq}: Pending ${formatMoney(cust.instalmentAmount)}. Tap to mark paid.`;
+        let sqTitle = `${unitLabel} #${sq}: Pending ${formatMoney(cust.instalmentAmount)}. Tap to mark paid.`;
 
         if (isReceived) {
           sqClass = 'is-paid';
           sqContent = '✓';
-          sqTitle = `Instalment #${sq}: Paid ${formatMoney(sqInst.paidAmount || cust.instalmentAmount)} on ${sqInst.paidDate || 'Today'}. Tap to undo.`;
+          sqTitle = `${unitLabel} #${sq}: Paid ${formatMoney(sqInst.paidAmount || cust.instalmentAmount)} on ${sqInst.paidDate || 'Today'}. Tap to undo.`;
         } else if (isPartial) {
           sqClass = 'is-partial';
           sqContent = `₹${sqInst.paidAmount}`;
-          sqTitle = `Instalment #${sq}: Partial ${formatMoney(sqInst.paidAmount)} paid. Tap to complete.`;
+          sqTitle = `${unitLabel} #${sq}: Partial ${formatMoney(sqInst.paidAmount)} paid. Tap to complete.`;
         }
 
         squaresHtml += `
@@ -1150,7 +1155,7 @@ function renderCollectionMatrix() {
 
       bodyHtml += `
         <tr class="schedule-drawer-row" data-drawer-customer="${cust.id}">
-          <td colspan="6" class="schedule-drawer-cell">
+          <td colspan="5" class="schedule-drawer-cell">
             <div class="schedule-card-container">
               <!-- Top Customer Info Bar -->
               <div class="schedule-card-top">
@@ -1163,14 +1168,14 @@ function renderCollectionMatrix() {
                   </div>
                   <div>
                     <div class="sched-user-name">
-                      <span>${group.fullName}</span>
+                      <span>${cust.fullName}</span>
                       <span class="loan-badge-pill">L${cust.loanNumber || 1}</span>
                     </div>
                     <div class="sched-user-sub">
-                      CUS${String(group.customerNumber).padStart(3, '0')} • ${group.phone || 'No Phone'}
+                      CUS${String(cust.customerNumber).padStart(3, '0')} • ${cust.phone || 'No Phone'}
                     </div>
                     <div class="sched-user-amt">
-                      ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)} / ${isDaily ? 'Day' : 'Week'}
+                      ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)} / ${unitLabel}
                     </div>
                   </div>
                 </div>
@@ -1438,17 +1443,20 @@ function renderCustomersTable() {
   if (!tbody) return;
   const query = state.searchQuery.toLowerCase().trim();
 
-  // Group customers by customerNumber (One single row per customer)
-  const grouped = getGroupedCustomers();
-
-  const filtered = grouped.filter((g) => {
-    const c = g.activeLoan;
+  const filtered = state.customers.filter((c) => {
     return (
-      g.customerNumber.toString().toLowerCase().includes(query) ||
-      g.fullName.toLowerCase().includes(query) ||
-      (g.phone && g.phone.includes(query)) ||
-      (g.areaRoute && g.areaRoute.toLowerCase().includes(query))
+      c.customerNumber.toString().toLowerCase().includes(query) ||
+      c.fullName.toLowerCase().includes(query) ||
+      (c.phone && c.phone.includes(query)) ||
+      (c.areaRoute && c.areaRoute.toLowerCase().includes(query))
     );
+  });
+
+  filtered.sort((a, b) => {
+    const numA = Number(a.customerNumber) || 0;
+    const numB = Number(b.customerNumber) || 0;
+    if (numA !== numB) return numA - numB;
+    return (Number(b.loanNumber) || 1) - (Number(a.loanNumber) || 1);
   });
 
   if (filtered.length === 0) {
@@ -1460,26 +1468,29 @@ function renderCustomersTable() {
     return;
   }
 
-  tbody.innerHTML = filtered.map((g) => {
-    const c = g.activeLoan;
+  tbody.innerHTML = filtered.map((c) => {
     const stats = getCustomerStats(c);
     const totalInst = c.totalInstalments || 52;
+    const allLoans = state.customers.filter(x => x.customerNumber.toString() === c.customerNumber.toString());
+    const hasMultipleLoans = allLoans.length > 1 || (c.loanNumber && c.loanNumber > 1);
+    const loanBadgeHtml = hasMultipleLoans ? ` <span class="loan-badge">L${c.loanNumber || 1}</span>` : '';
+
     return `
       <tr>
         <td>
-          <strong style="color:#1e3a8a; font-size:14px;">#${g.customerNumber}</strong>
+          <strong style="color:#1e3a8a; font-size:14px;">#${c.customerNumber}</strong>${loanBadgeHtml}
           ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="${stats.missedCount} instalments behind schedule">⚠️ Due ${stats.missedCount}</span>` : ''}
         </td>
         <td>
-          <div style="font-weight:600;">${g.fullName}</div>
+          <div style="font-weight:600;">${c.fullName}</div>
           <div style="font-size:12px; color:#64748b;">${c.address || 'No Address'}</div>
         </td>
-        <td>${g.phone || '-'}</td>
-        <td><span style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-size:11px;">${g.areaRoute || 'General'}</span></td>
+        <td>${c.phone || '-'}</td>
+        <td><span style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-size:11px;">${c.areaRoute || 'General'}</span></td>
         <td style="text-align: center;">
-          <button type="button" class="loans-badge" onclick="toggleLoansTooltip(event, '${g.customerNumber}')" title="Click to view all loans for #${g.customerNumber}">
+          <button type="button" class="loans-badge" onclick="toggleLoansTooltip(event, '${c.customerNumber}')" title="Click to view all loans for #${c.customerNumber}">
             <span>💳</span>
-            <span>${g.loans.length} ${g.loans.length === 1 ? 'Loan' : 'Loans'}</span>
+            <span>${allLoans.length} ${allLoans.length === 1 ? 'Loan' : 'Loans'}</span>
             <span style="font-size:10px;">▾</span>
           </button>
         </td>
@@ -1505,7 +1516,7 @@ function renderCustomersTable() {
         <td>
           <div class="btn-group">
             <button class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
-            <button class="btn btn-outline btn-sm" onclick="openAddLoanForCustomer('${g.customerNumber}')" title="Issue additional loan to customer" style="color: #2563eb; font-weight: 600;">+ Loan</button>
+            <button class="btn btn-outline btn-sm" onclick="openAddLoanForCustomer('${c.customerNumber}')" title="Issue additional loan to customer" style="color: #2563eb; font-weight: 600;">+ Loan</button>
             <button class="btn btn-outline btn-sm" style="color: #16a34a; border-color: #86efac;" onclick="sendWhatsAppDueReminder('${c.id}')" title="Send WhatsApp Due Reminder">💬 WA</button>
             <button class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${c.id}')">Edit</button>
             <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" title="Delete">Delete</button>
@@ -1518,24 +1529,28 @@ function renderCustomersTable() {
   // Mobile Customer Touch-Cards Render
   const mobileContainer = document.getElementById('customers-mobile-cards');
   if (mobileContainer) {
-    mobileContainer.innerHTML = filtered.map((g) => {
-      const c = g.activeLoan;
+    mobileContainer.innerHTML = filtered.map((c) => {
       const stats = getCustomerStats(c);
       const totalInst = c.totalInstalments || 52;
+      const allLoans = state.customers.filter(x => x.customerNumber.toString() === c.customerNumber.toString());
+      const hasMultipleLoans = allLoans.length > 1 || (c.loanNumber && c.loanNumber > 1);
+      const loanBadgeHtml = hasMultipleLoans ? `<span class="loan-badge">L${c.loanNumber || 1}</span>` : '';
+
       return `
         <div class="customer-card">
           <div class="customer-card-header">
             <div class="customer-card-title">
-              <span class="customer-card-num">#${g.customerNumber}</span>
+              <span class="customer-card-num">#${c.customerNumber}</span>
+              ${loanBadgeHtml}
               <div>
-                <div class="customer-card-name">${g.fullName}</div>
-                <div class="customer-card-meta">${g.phone || 'No Phone'} • <span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-size:11px;">${g.areaRoute || 'General'}</span></div>
+                <div class="customer-card-name">${c.fullName}</div>
+                <div class="customer-card-meta">${c.phone || 'No Phone'} • <span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-size:11px;">${c.areaRoute || 'General'}</span></div>
               </div>
             </div>
             <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
-              <button type="button" class="loans-badge" onclick="toggleLoansTooltip(event, '${g.customerNumber}')" title="Click to view all loans for #${g.customerNumber}">
+              <button type="button" class="loans-badge" onclick="toggleLoansTooltip(event, '${c.customerNumber}')" title="Click to view all loans for #${c.customerNumber}">
                 <span>💳</span>
-                <span>${g.loans.length} ${g.loans.length === 1 ? 'Loan' : 'Loans'}</span>
+                <span>${allLoans.length} ${allLoans.length === 1 ? 'Loan' : 'Loans'}</span>
                 <span style="font-size:10px;">▾</span>
               </button>
               <span class="badge-status ${stats.isCompleted ? 'badge-status-completed' : 'badge-status-active'}">${stats.isCompleted ? '✓ Completed' : '● Active'}</span>
@@ -1582,7 +1597,7 @@ function renderCustomersTable() {
 
           <div class="customer-card-actions">
             <button class="btn btn-outline" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
-            <button class="btn btn-outline" onclick="openAddLoanForCustomer('${g.customerNumber}')" style="color: #2563eb; font-weight: 600;">+ Loan</button>
+            <button class="btn btn-outline" onclick="openAddLoanForCustomer('${c.customerNumber}')" style="color: #2563eb; font-weight: 600;">+ Loan</button>
             <button class="btn btn-outline" style="color: #16a34a; border-color: #86efac;" onclick="sendWhatsAppDueReminder('${c.id}')">💬 WA</button>
             <button class="btn btn-outline" onclick="openEditCustomerModal('${c.id}')">Edit</button>
             <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" style="flex:0; padding:8px 12px;">Delete</button>
