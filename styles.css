@@ -3165,4 +3165,192 @@ thead th.sticky-col-3 {
   background: #15803d;
 }
 
+/* ==================================================== */
+/* MOBILE INSTALMENT CARDS (Matching media_1791982219543)*/
+/* ==================================================== */
+.desktop-only-collections {
+  display: block;
+}
+
+.mobile-only-collections {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .desktop-only-collections {
+    display: none !important;
+  }
+
+  .mobile-only-collections {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+  }
+
+  /* Fix: Hide duplicate second logout button in stats pill on mobile */
+  .btn-header-logout {
+    display: none !important;
+  }
+
+  /* Full Width Rounded Mobile Search Input matching Image 2 */
+  .collections-tools input#global-search-input {
+    border-radius: 9999px !important;
+    padding: 10px 18px !important;
+    height: 42px !important;
+    font-size: 13.5px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+  }
+
+  .collections-tools input#global-search-input:focus {
+    border-color: #10b981 !important;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15) !important;
+  }
+}
+
+.mobile-cust-card {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  cursor: pointer;
+}
+
+.mobile-cust-card.card-expanded {
+  border-color: #10b981;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.08);
+}
+
+.mobile-cust-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  user-select: none;
+}
+
+.mobile-cust-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mobile-cust-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.mobile-cust-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobile-cust-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.mobile-cust-sub {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.mobile-cust-amt {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-top: 2px;
+}
+
+.mobile-cust-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-cust-paid {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mobile-cust-chevron {
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-cust-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mobile-cust-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: #f1f5f9;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.mobile-cust-progress-fill {
+  height: 100%;
+  background: #10b981;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+.mobile-cust-progress-pct {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  min-width: 32px;
+  text-align: right;
+}
+
+.mobile-cust-drawer-body {
+  margin-top: 4px;
+  animation: scheduleDrawerOpen 0.2s ease-out;
+}
+
+.mobile-sched-grid {
+  display: grid;
+  grid-template-columns: repeat(13, 1fr) !important;
+  gap: 4px !important;
+}
+
+.mobile-sched-grid .sched-square {
+  height: 28px !important;
+  font-size: 10px !important;
+  border-radius: 4px !important;
+}
+
+@media (max-width: 480px) {
+  .mobile-sched-grid {
+    gap: 3px !important;
+  }
+  .mobile-sched-grid .sched-square {
+    height: 26px !important;
+    font-size: 9px !important;
+  }
+}
+
+
 
