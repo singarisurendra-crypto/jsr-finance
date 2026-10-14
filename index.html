@@ -352,7 +352,7 @@
             <p class="view-subtitle">Tap a customer to expand or collapse 52 weeks</p>
           </div>
           <div class="collections-tools">
-            <input type="text" id="global-search-input" class="form-control" placeholder="🔍 Search # / Name...">
+            <input type="text" id="global-search-input" class="form-control" placeholder="Search customer / ID / mobile">
             <select id="collection-filter-select" class="form-control">
               <option value="active" selected>Active Only</option>
               <option value="all">All Loans (Weekly & Daily)</option>
@@ -411,8 +411,8 @@
           </div>
         </div>
 
-        <!-- The 52-Column Spreadhseet Matrix -->
-        <div class="collection-table-container">
+        <!-- The 52-Column Spreadhseet Matrix (Desktop Only) -->
+        <div class="collection-table-container desktop-only-collections">
           <table class="matrix-table">
             <thead id="matrix-table-head">
               <!-- Dynamically rendered with sticky customer columns and Weeks 1-52 -->
@@ -421,6 +421,11 @@
               <!-- Dynamically populated customer rows -->
             </tbody>
           </table>
+        </div>
+
+        <!-- Mobile Customer Cards List (Mobile Only <= 900px, matching media_1791982219543.png) -->
+        <div id="collection-cards-mobile" class="mobile-only-collections">
+          <!-- Dynamically populated customer cards -->
         </div>
       </section>
 
