@@ -64,11 +64,13 @@ let state = {
   settings: { ...DEFAULT_SETTINGS },
   schemes: [...DEFAULT_SCHEMES],
   customers: [],
-  activeTab: 'summary',
+  activeTab: 'collections',
   searchQuery: '',
-  filterStatus: 'all',
+  filterStatus: 'active',
   expandedCustomerIds: new Set(),
   allExpanded: false,
+  pendingModifications: {},
+  unsavedPromptCallback: null,
 };
 
 // Web Audio API Cash Register Chime & Sound Effects (Zero External Files)
@@ -378,47 +380,289 @@ function togglePasswordVisibility() {
 }
 
 // ====================================================
-// EXPANDABLE SCHEDULE DRAWER CONTROLLERS
+// EXPANDABLE SCHEDULE DRAWER & SAVE CONTROLLERS
 // ====================================================
-function toggleCustomerSchedule(customerId, event) {
-  if (event) {
-    event.stopPropagation();
+
+function showCollectionSuccessBanner(customer, amount) {
+  const banner = document.getElementById('collection-success-banner');
+  const title = document.getElementById('collection-banner-title');
+  const subtitle = document.getElementById('collection-banner-subtitle');
+  if (!banner) return;
+
+  const stats = getCustomerStats(customer);
+  const loanTag = (customer.loanNumber && customer.loanNumber > 1) ? ` L${customer.loanNumber}` : '';
+  if (title) title.textContent = `✓ Collected ${formatMoney(amount)} Successfully!`;
+  if (subtitle) subtitle.textContent = `Customer #${customer.customerNumber}${loanTag} (${customer.fullName}) • Remaining Balance: ${formatMoney(stats.balance)}`;
+
+  banner.style.display = 'block';
+  playCashChime();
+
+  if (window._bannerTimer) clearTimeout(window._bannerTimer);
+  window._bannerTimer = setTimeout(() => {
+    closeCollectionBanner();
+  }, 6000);
+}
+
+function closeCollectionBanner() {
+  const banner = document.getElementById('collection-success-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+function checkAndPromptUnsaved(targetCustomerId, onProceed) {
+  const pendingIds = Object.keys(state.pendingModifications || {});
+  const pendingId = pendingIds.length > 0 ? pendingIds[0] : null;
+
+  if (!pendingId || pendingId === targetCustomerId) {
+    if (onProceed) onProceed();
+    return;
   }
-  if (!state.expandedCustomerIds) {
-    state.expandedCustomerIds = new Set();
+
+  const pending = state.pendingModifications[pendingId];
+  if (!pending || !pending.sessionAmount) {
+    delete state.pendingModifications[pendingId];
+    if (onProceed) onProceed();
+    return;
   }
-  if (state.expandedCustomerIds.has(customerId)) {
-    state.expandedCustomerIds.delete(customerId);
+
+  const cust = state.customers.find(c => c.id === pendingId);
+  const name = cust ? cust.fullName : 'Customer';
+  const num = cust ? `#${cust.customerNumber}` : '';
+
+  const modal = document.getElementById('modal-unsaved-prompt');
+  const msg = document.getElementById('unsaved-prompt-message');
+  const amt = document.getElementById('unsaved-prompt-amount');
+
+  if (msg) msg.textContent = `You have unsaved collections of ${formatMoney(pending.sessionAmount)} marked for ${name} (${num}). Would you like to save before continuing?`;
+  if (amt) amt.textContent = formatMoney(pending.sessionAmount);
+
+  state.unsavedPromptCallback = {
+    pendingId,
+    onProceed
+  };
+
+  if (modal) modal.classList.add('active');
+}
+
+function handleUnsavedPromptSave() {
+  const cb = state.unsavedPromptCallback;
+  closeModal('modal-unsaved-prompt');
+  if (cb && cb.pendingId) {
+    saveCustomerModifications(cb.pendingId);
+  }
+  if (cb && cb.onProceed) {
+    cb.onProceed();
+  }
+  state.unsavedPromptCallback = null;
+}
+
+function handleUnsavedPromptDiscard() {
+  const cb = state.unsavedPromptCallback;
+  closeModal('modal-unsaved-prompt');
+  if (cb && cb.pendingId) {
+    discardCustomerModifications(cb.pendingId);
+  }
+  if (cb && cb.onProceed) {
+    cb.onProceed();
+  }
+  state.unsavedPromptCallback = null;
+}
+
+function saveCustomerModifications(customerId) {
+  const pending = state.pendingModifications && state.pendingModifications[customerId];
+  const customer = state.customers.find(c => c.id === customerId);
+  if (!customer) return;
+
+  const collectedAmount = pending ? (Number(pending.sessionAmount) || 0) : 0;
+  if (pending && pending.modifiedInstalments) {
+    customer.instalments = pending.modifiedInstalments;
+  }
+
+  delete state.pendingModifications[customerId];
+  saveData();
+
+  if (typeof syncCustomerToFirestore === 'function') {
+    syncCustomerToFirestore(customer);
+  }
+
+  if (collectedAmount > 0) {
+    showCollectionSuccessBanner(customer, collectedAmount);
   } else {
-    state.expandedCustomerIds.add(customerId);
+    showToast(`✓ Changes saved for #${customer.customerNumber}`);
+  }
+
+  renderCollectionMatrix();
+  if (state.activeTab === 'summary') renderDashboard();
+  updateHeaderStats();
+}
+
+function discardCustomerModifications(customerId) {
+  if (state.pendingModifications) {
+    delete state.pendingModifications[customerId];
   }
   renderCollectionMatrix();
 }
 
-function toggleExpandAllSchedules() {
-  if (!state.expandedCustomerIds) {
-    state.expandedCustomerIds = new Set();
-  }
-  state.allExpanded = !state.allExpanded;
-  const btn = document.getElementById('btn-expand-all');
+function getCustomerEffectiveStats(customer) {
+  const pending = state.pendingModifications && state.pendingModifications[customer.id];
+  const insts = pending ? pending.modifiedInstalments : (customer.instalments || []);
+  const totalInst = customer.totalInstalments || 52;
+  const instAmt = Number(customer.instalmentAmount) || 200;
+  const totalPayable = totalInst * instAmt;
 
-  if (state.allExpanded) {
-    state.customers.forEach((c) => {
-      state.expandedCustomerIds.add(c.id);
-    });
-    if (btn) btn.textContent = 'Collapse all';
-  } else {
-    state.expandedCustomerIds.clear();
-    if (btn) btn.textContent = 'Expand all';
+  let paidCount = 0;
+  let totalPaidAmount = 0;
+  insts.forEach((inst) => {
+    if (!inst) return;
+    if (inst.status === 'Received') {
+      paidCount++;
+      totalPaidAmount += Number(inst.dueAmount || instAmt);
+    } else if (inst.status === 'Partial') {
+      totalPaidAmount += Number(inst.paidAmount || 0);
+    }
+  });
+
+  const balance = Math.max(0, totalPayable - totalPaidAmount);
+  const isCompleted = paidCount >= totalInst || balance === 0;
+
+  return {
+    paidCount,
+    totalPaidAmount,
+    balance,
+    isCompleted,
+    insts
+  };
+}
+
+function toggleCustomerSchedule(customerId, event) {
+  if (event) {
+    event.stopPropagation();
   }
-  renderCollectionMatrix();
+  checkAndPromptUnsaved(customerId, () => {
+    if (!state.expandedCustomerIds) {
+      state.expandedCustomerIds = new Set();
+    }
+    if (state.expandedCustomerIds.has(customerId)) {
+      state.expandedCustomerIds.delete(customerId);
+    } else {
+      state.expandedCustomerIds.add(customerId);
+    }
+    renderCollectionMatrix();
+  });
+}
+
+function toggleExpandAllSchedules() {
+  checkAndPromptUnsaved(null, () => {
+    if (!state.expandedCustomerIds) {
+      state.expandedCustomerIds = new Set();
+    }
+    state.allExpanded = !state.allExpanded;
+    const btn = document.getElementById('btn-expand-all');
+
+    if (state.allExpanded) {
+      state.customers.forEach((c) => {
+        state.expandedCustomerIds.add(c.id);
+      });
+      if (btn) btn.textContent = 'Collapse all';
+    } else {
+      state.expandedCustomerIds.clear();
+      if (btn) btn.textContent = 'Expand all';
+    }
+    renderCollectionMatrix();
+  });
 }
 
 function handleInstalmentClick(customerId, instNumber, event) {
   if (event) {
     event.stopPropagation();
   }
-  toggleInstalmentReceived(customerId, instNumber);
+  checkAndPromptUnsaved(customerId, () => {
+    modifyInstalment(customerId, instNumber);
+  });
+}
+
+function modifyInstalment(customerId, instNumber, customAmount) {
+  const customer = state.customers.find(c => c.id === customerId);
+  if (!customer) return;
+
+  if (!state.pendingModifications) state.pendingModifications = {};
+  if (!state.pendingModifications[customerId]) {
+    const currentInstalments = (customer.instalments || []).map(i => ({ ...i }));
+    if (currentInstalments.length === 0) {
+      for (let i = 1; i <= (customer.totalInstalments || 52); i++) {
+        currentInstalments.push({ number: i, status: 'Pending', dueAmount: customer.instalmentAmount, paidAmount: 0 });
+      }
+    }
+    state.pendingModifications[customerId] = {
+      initialInstalments: (customer.instalments || []).map(i => ({ ...i })),
+      modifiedInstalments: currentInstalments,
+      sessionAmount: 0
+    };
+  }
+
+  const pending = state.pendingModifications[customerId];
+  const insts = pending.modifiedInstalments;
+
+  while (insts.length < instNumber) {
+    insts.push({ number: insts.length + 1, status: 'Pending', dueAmount: customer.instalmentAmount, paidAmount: 0 });
+  }
+
+  const inst = insts[instNumber - 1];
+  const scheduledAmount = Number(customer.instalmentAmount) || 200;
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (customAmount !== undefined && customAmount !== null && !isNaN(customAmount) && Number(customAmount) > 0) {
+    const amt = Number(customAmount);
+    const existing = Number(inst.paidAmount) || 0;
+    const newTotal = existing + amt;
+    if (newTotal >= scheduledAmount) {
+      inst.status = 'Received';
+      inst.paidAmount = scheduledAmount;
+      inst.paidDate = todayStr;
+      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+    } else {
+      inst.status = 'Partial';
+      inst.paidAmount = newTotal;
+      inst.paidDate = todayStr;
+      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}-P`;
+    }
+  } else {
+    // 1-click toggle
+    if (inst.status === 'Received') {
+      inst.status = 'Pending';
+      inst.paidDate = null;
+      inst.paidAmount = 0;
+      inst.receiptNumber = null;
+    } else if (inst.status === 'Partial') {
+      inst.status = 'Received';
+      inst.paidAmount = scheduledAmount;
+      inst.paidDate = todayStr;
+      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+    } else {
+      inst.status = 'Received';
+      inst.paidAmount = scheduledAmount;
+      inst.paidDate = todayStr;
+      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+    }
+  }
+
+  playCashChime();
+
+  // Calculate session difference
+  let initialTotal = 0;
+  pending.initialInstalments.forEach(i => {
+    if (i.status === 'Received') initialTotal += Number(i.dueAmount || customer.instalmentAmount);
+    else if (i.status === 'Partial') initialTotal += Number(i.paidAmount || 0);
+  });
+
+  let currentTotal = 0;
+  insts.forEach(i => {
+    if (i.status === 'Received') currentTotal += Number(i.dueAmount || customer.instalmentAmount);
+    else if (i.status === 'Partial') currentTotal += Number(i.paidAmount || 0);
+  });
+
+  pending.sessionAmount = Math.max(0, currentTotal - initialTotal);
+
+  renderCollectionMatrix();
 }
 
 // Initialize App
@@ -430,7 +674,7 @@ function initApp() {
   setupEventListeners();
   updateHeaderStats();
   updateSoundToggleButton();
-  switchTab('summary');
+  switchTab('collections');
   if (typeof initGoogleCloudDatabase === 'function') {
     initGoogleCloudDatabase();
   }
@@ -641,36 +885,38 @@ function updateHeaderStats() {
 
 // Navigation & Tab Switching
 function switchTab(tabName) {
-  state.activeTab = tabName;
+  checkAndPromptUnsaved(null, () => {
+    state.activeTab = tabName;
 
-  document.querySelectorAll('.nav-link').forEach((link) => {
-    link.classList.toggle('active', link.dataset.tab === tabName);
+    document.querySelectorAll('.nav-link').forEach((link) => {
+      link.classList.toggle('active', link.dataset.tab === tabName);
+    });
+
+    document.querySelectorAll('.mobile-nav-item').forEach((item) => {
+      item.classList.toggle('active', item.dataset.tab === tabName);
+    });
+
+    document.querySelectorAll('.mobile-header-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+
+    document.querySelectorAll('.screen-view').forEach((view) => {
+      view.classList.toggle('active', view.id === `view-${tabName}`);
+    });
+
+    const sidebar = document.getElementById('app-sidebar');
+    if (sidebar) {
+      sidebar.classList.add('force-collapsed');
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    if (tabName === 'summary') renderDashboard();
+    if (tabName === 'collections') renderCollectionMatrix();
+    if (tabName === 'customers') renderCustomersTable();
+    if (tabName === 'analytics') renderAnalytics();
+    if (tabName === 'settings') renderSettings();
   });
-
-  document.querySelectorAll('.mobile-nav-item').forEach((item) => {
-    item.classList.toggle('active', item.dataset.tab === tabName);
-  });
-
-  document.querySelectorAll('.mobile-header-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.tab === tabName);
-  });
-
-  document.querySelectorAll('.screen-view').forEach((view) => {
-    view.classList.toggle('active', view.id === `view-${tabName}`);
-  });
-
-  const sidebar = document.getElementById('app-sidebar');
-  if (sidebar) {
-    sidebar.classList.add('force-collapsed');
-  }
-
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-
-  if (tabName === 'summary') renderDashboard();
-  if (tabName === 'collections') renderCollectionMatrix();
-  if (tabName === 'customers') renderCustomersTable();
-  if (tabName === 'analytics') renderAnalytics();
-  if (tabName === 'settings') renderSettings();
 }
 
 // ----------------------------------------------------
@@ -1056,13 +1302,13 @@ function renderCollectionMatrix() {
     return (Number(a.loanNumber) || 1) - (Number(b.loanNumber) || 1);
   });
 
-  // Full Screen 5-Column Table Header (spanning 100% desktop width)
+  // Full Screen 5-Column Table Header matching screenshot: Cust #, Customer Name, Given / Inst, Paid / Bal, Schedule
   tableHead.innerHTML = `
     <tr>
       <th style="width: 12%; min-width: 90px; text-align: left; padding-left: 20px;">Cust #</th>
-      <th style="width: 32%; min-width: 200px; text-align: left;">Customer Name</th>
-      <th style="width: 20%; min-width: 150px; text-align: left;">Given / Inst</th>
-      <th style="width: 20%; min-width: 150px; text-align: left;">Paid / Bal</th>
+      <th style="width: 32%; min-width: 190px; text-align: left;">Customer Name</th>
+      <th style="width: 20%; min-width: 140px; text-align: left;">Given / Inst</th>
+      <th style="width: 20%; min-width: 130px; text-align: left;">Paid / Bal</th>
       <th style="width: 16%; min-width: 120px; text-align: center; padding-right: 20px;">Schedule</th>
     </tr>
   `;
@@ -1086,15 +1332,15 @@ function renderCollectionMatrix() {
       : '<span style="font-size:10px; background:#eff6ff; color:#1d4ed8; padding:1px 5px; border-radius:4px; font-weight:700;">Weekly</span>';
     const isExpanded = !!(state.expandedCustomerIds && state.expandedCustomerIds.has(cust.id));
 
-    // Multi-loan identifier badge e.g. L1, L2
-    const customerLoanCount = state.customers.filter(c => c.customerNumber.toString() === cust.customerNumber.toString()).length;
-    const hasMultipleLoans = customerLoanCount > 1 || (cust.loanNumber && cust.loanNumber > 1);
-    const loanBadgeHtml = hasMultipleLoans ? ` <span class="loan-badge">L${cust.loanNumber || 1}</span>` : '';
+    const pendingMod = state.pendingModifications && state.pendingModifications[cust.id];
+    const hasPendingMod = pendingMod && (Number(pendingMod.sessionAmount) > 0 || (pendingMod.modifiedInstalments && pendingMod.sessionAmount !== undefined));
+    const effectiveStats = getCustomerEffectiveStats(cust);
 
     bodyHtml += `
       <tr data-customer-id="${cust.id}" class="customer-row-main ${isExpanded ? 'row-expanded' : ''}" style="cursor: pointer;" onclick="toggleCustomerSchedule('${cust.id}', event)">
-        <td style="padding-left: 18px; text-align: left;">
-          <span style="font-weight:700; color:#1e3a8a; font-size:14px;">#${cust.customerNumber}</span>${loanBadgeHtml}
+        <td style="padding-left: 20px; text-align: left;">
+          <span style="font-weight:700; color:#1e3a8a; font-size:14px;">#${cust.customerNumber}</span>
+          <span class="loan-badge" style="margin-left: 5px;">L${cust.loanNumber || 1}</span>
           ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="${stats.missedCount} instalments behind schedule">⚠️ Due ${stats.missedCount}</span>` : ''}
         </td>
         <td style="text-align: left;">
@@ -1109,24 +1355,33 @@ function renderCollectionMatrix() {
           </div>
         </td>
         <td style="text-align: left;">
-          <div style="font-weight:700; color:#1e40af; font-size:14px;">${stats.paidCount}/${instCount}</div>
-          <div style="font-size:11px; color:#b45309; font-weight:600; margin-top:2px;">Bal: ${formatMoney(stats.balance)}</div>
+          <div style="font-weight:700; color:#1e40af; font-size:14px;">${effectiveStats.paidCount}/${instCount}</div>
+          <div style="font-size:11px; color:#b45309; font-weight:600; margin-top:2px;">Bal: ${formatMoney(effectiveStats.balance)}</div>
         </td>
-        <td style="text-align: center; padding-right: 18px;" onclick="event.stopPropagation()">
-          <button type="button" class="btn-schedule-toggle ${isExpanded ? 'expanded' : ''}" onclick="toggleCustomerSchedule('${cust.id}', event)">
-            <span>${isExpanded ? 'Hide' : `${instCount} ${unitWord}`}</span>
-            <span class="sched-chevron ${isExpanded ? 'rotated' : ''}">▼</span>
-          </button>
+        <td style="text-align: center; padding-right: 20px;" onclick="event.stopPropagation()">
+          ${hasPendingMod && pendingMod.sessionAmount > 0 ? `
+            <button type="button" class="btn-row-save" onclick="saveCustomerModifications('${cust.id}')" title="Click to Save Collections">
+              <span>💾 Save</span>
+              <span style="background:rgba(255,255,255,0.25); padding:1px 5px; border-radius:4px; font-size:11px;">${formatMoney(pendingMod.sessionAmount)}</span>
+            </button>
+          ` : `
+            <button type="button" class="btn-schedule-toggle ${isExpanded ? 'expanded' : ''}" onclick="toggleCustomerSchedule('${cust.id}', event)">
+              <span>${isExpanded ? 'Hide' : `${instCount} ${unitWord}`}</span>
+              <span class="sched-chevron ${isExpanded ? 'rotated' : ''}">▼</span>
+            </button>
+          `}
         </td>
       </tr>
     `;
 
     // Render Expandable Interactive Schedule Drawer if expanded
     if (isExpanded) {
-      const completionPct = instCount > 0 ? Math.round((stats.paidCount / instCount) * 100) : 0;
+      const completionPct = instCount > 0 ? Math.round((effectiveStats.paidCount / instCount) * 100) : 0;
+      const activeInstalments = (pendingMod && pendingMod.modifiedInstalments) ? pendingMod.modifiedInstalments : (cust.instalments || []);
+
       let squaresHtml = '';
       for (let sq = 1; sq <= instCount; sq++) {
-        const sqInst = (cust.instalments && cust.instalments[sq - 1]) || { number: sq, status: 'Pending' };
+        const sqInst = activeInstalments[sq - 1] || { number: sq, status: 'Pending' };
         const isReceived = sqInst.status === 'Received';
         const isPartial = sqInst.status === 'Partial';
         let sqClass = 'is-pending';
@@ -1180,7 +1435,7 @@ function renderCollectionMatrix() {
                   </div>
                 </div>
                 <div class="sched-card-summary">
-                  <div class="sched-paid-stat">${stats.paidCount}/${instCount} paid</div>
+                  <div class="sched-paid-stat">${effectiveStats.paidCount}/${instCount} paid</div>
                   <button type="button" class="sched-card-collapse-btn" onclick="toggleCustomerSchedule('${cust.id}', event)" title="Collapse schedule">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
                   </button>
@@ -1206,10 +1461,22 @@ function renderCollectionMatrix() {
                 ${squaresHtml}
               </div>
 
-              <!-- Bottom Note -->
-              <div class="sched-card-footer">
-                <span>ⓘ Tap any square to toggle payment status in real-time.</span>
-              </div>
+              <!-- Bottom Bar: If modified, prominent Save button! -->
+              ${hasPendingMod && pendingMod.sessionAmount > 0 ? `
+                <div class="sched-modified-bar">
+                  <div>
+                    <strong style="color: #166534; font-size: 14px;">Unsaved Collection:</strong>
+                    <span style="color: #15803d; font-size: 17px; font-weight: 800; margin-left: 6px;">+ ${formatMoney(pendingMod.sessionAmount)}</span>
+                  </div>
+                  <button type="button" class="btn-drawer-save" onclick="saveCustomerModifications('${cust.id}')">
+                    💾 Save Collection (${formatMoney(pendingMod.sessionAmount)})
+                  </button>
+                </div>
+              ` : `
+                <div class="sched-card-footer">
+                  <span>ⓘ Tap any square to toggle payment status. Click Save when finished.</span>
+                </div>
+              `}
             </div>
           </td>
         </tr>
@@ -1389,8 +1656,8 @@ function handleQuickReceive(event) {
   } else {
     // Multiple loans exist for this customer: select first with pending instalment
     const pendingLoans = matches.filter((c) => {
-      const stats = getCustomerStats(c);
-      return stats.pendingCount > 0;
+      const stats = getCustomerEffectiveStats(c);
+      return !stats.isCompleted;
     });
 
     if (pendingLoans.length === 0) {
@@ -1401,38 +1668,47 @@ function handleQuickReceive(event) {
     customer = pendingLoans[0]; // defaults to lowest active loan
   }
 
-  // Find next pending or partial instalment
-  const totalInst = customer.totalInstalments || 52;
-  if (!customer.instalments) customer.instalments = [];
-
-  let nextPending = 0;
-  for (let i = 1; i <= totalInst; i++) {
-    const inst = customer.instalments[i - 1];
-    if (!inst || inst.status !== 'Received') {
-      nextPending = i;
-      break;
-    }
-  }
-
-  if (nextPending === 0) {
-    alert(`Customer #${customer.customerNumber} Loan #${customer.loanNumber || 1} (${customer.fullName}) has already paid all ${totalInst} instalments!`);
-    return;
-  }
-
   const customAmountVal = customAmountInput && customAmountInput.value ? Number(customAmountInput.value) : null;
-  toggleInstalmentReceived(customer.id, nextPending, customAmountVal);
 
-  // Clear inputs and refocus
-  custNumInput.value = '';
-  if (customAmountInput) customAmountInput.value = '';
-  custNumInput.focus();
+  // Intercept if another customer currently has unsaved modifications:
+  checkAndPromptUnsaved(customer.id, () => {
+    // Find next pending or partial instalment in active modified state
+    const pendingObj = state.pendingModifications && state.pendingModifications[customer.id];
+    const insts = pendingObj ? pendingObj.modifiedInstalments : (customer.instalments || []);
+    const totalInst = customer.totalInstalments || 52;
 
-  // Show brief feedback toast with multi-loan guidance
-  const isDaily = customer.frequency === 'Daily' || customer.totalInstalments === 100;
-  const unitLabel = isDaily ? 'Day' : 'Week';
-  const loanTag = (customer.loanNumber && customer.loanNumber > 1) || matches.length > 1 ? ` L${customer.loanNumber || 1}` : '';
-  const multiTip = matches.length > 1 ? ` (Tip: type ${targetCustNum}-2 for Loan 2)` : '';
-  showToast(`Received ${unitLabel} #${nextPending} for #${customer.customerNumber}${loanTag} (${customer.fullName})${multiTip}`);
+    let nextPending = 0;
+    for (let i = 1; i <= totalInst; i++) {
+      const inst = insts[i - 1];
+      if (!inst || inst.status !== 'Received') {
+        nextPending = i;
+        break;
+      }
+    }
+
+    if (nextPending === 0) {
+      alert(`Customer #${customer.customerNumber} Loan #${customer.loanNumber || 1} (${customer.fullName}) has already paid all ${totalInst} instalments!`);
+      return;
+    }
+
+    // Automatically expand this customer row
+    if (!state.expandedCustomerIds) state.expandedCustomerIds = new Set();
+    state.expandedCustomerIds.add(customer.id);
+
+    // Apply modification
+    modifyInstalment(customer.id, nextPending, customAmountVal);
+
+    // Clear inputs and refocus
+    custNumInput.value = '';
+    if (customAmountInput) customAmountInput.value = '';
+    custNumInput.focus();
+
+    // Show brief feedback toast
+    const isDaily = customer.frequency === 'Daily' || customer.totalInstalments === 100;
+    const unitLabel = isDaily ? 'Day' : 'Week';
+    const loanTag = (customer.loanNumber && customer.loanNumber > 1) || matches.length > 1 ? ` L${customer.loanNumber || 1}` : '';
+    showToast(`✓ Marked ${unitLabel} #${nextPending} for #${customer.customerNumber}${loanTag} (${customer.fullName}). Click Save when done.`);
+  });
 }
 
 // ----------------------------------------------------
@@ -1630,11 +1906,11 @@ function updateCustomerModalProfitCalc() {
 // Bi-directional Auto Calculation: Margin % -> Instalment Amount
 function calculateFromMargin() {
   const given = Number(document.getElementById('cust-form-given')?.value) || 0;
-  const marginPct = Number(document.getElementById('cust-form-margin')?.value) || 0;
+  const marginPct = Number(document.getElementById('cust-form-margin')?.value) || 4.0;
   const instalments = Number(document.getElementById('cust-form-instalments')?.value) || 52;
   if (given > 0 && instalments > 0) {
     const repayable = Math.round(given * (1 + marginPct / 100));
-    const instAmount = Math.round(repayable / instalments);
+    const instAmount = Math.ceil(repayable / instalments);
     const amountInput = document.getElementById('cust-form-amount');
     if (amountInput) amountInput.value = instAmount;
   }
@@ -3266,12 +3542,15 @@ function setupEventListeners() {
     });
   }
 
-  // Filter selector
+  // Filter selector (Default to Active Only)
   const filterSelect = document.getElementById('collection-filter-select');
   if (filterSelect) {
+    filterSelect.value = state.filterStatus || 'active';
     filterSelect.addEventListener('change', (e) => {
-      state.filterStatus = e.target.value;
-      renderCollectionMatrix();
+      checkAndPromptUnsaved(null, () => {
+        state.filterStatus = e.target.value;
+        renderCollectionMatrix();
+      });
     });
   }
 
