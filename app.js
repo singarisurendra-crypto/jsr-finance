@@ -1417,11 +1417,16 @@ function renderCollectionMatrix() {
 
   if (filtered.length === 0) {
     tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#94a3b8;">No customers match the current search or filter.</td></tr>`;
+    const mobileContainer = document.getElementById('collection-cards-mobile');
+    if (mobileContainer) {
+      mobileContainer.innerHTML = `<div style="text-align:center; padding:40px 16px; color:#94a3b8; background:#ffffff; border-radius:12px; border:1px solid #e2e8f0;">No customers match the current search or filter.</div>`;
+    }
     return;
   }
 
-  // Generate Body Rows (Each loan shown with L1, L2 and independent expand/collapse)
+  // Generate Body Rows (Desktop table & Mobile cards)
   let bodyHtml = '';
+  let mobileHtml = '';
   filtered.forEach((cust) => {
     const stats = getCustomerStats(cust);
     const instCount = cust.totalInstalments || 52;
@@ -1476,11 +1481,12 @@ function renderCollectionMatrix() {
       </tr>
     `;
 
+    const completionPct = instCount > 0 ? Math.round((effectiveStats.paidCount / instCount) * 100) : 0;
+    const activeInstalments = (pendingMod && pendingMod.modifiedInstalments) ? pendingMod.modifiedInstalments : (cust.instalments || []);
+    let squaresHtml = '';
+
     // Render Expandable Interactive Schedule Drawer if expanded
     if (isExpanded) {
-      const completionPct = instCount > 0 ? Math.round((effectiveStats.paidCount / instCount) * 100) : 0;
-      const activeInstalments = (pendingMod && pendingMod.modifiedInstalments) ? pendingMod.modifiedInstalments : (cust.instalments || []);
-
       // Determine sequence bounds: next due (first unreceived) and last paid (highest paid)
       let nextDueNumber = 0;
       for (let i = 1; i <= instCount; i++) {
@@ -1500,7 +1506,6 @@ function renderCollectionMatrix() {
         }
       }
 
-      let squaresHtml = '';
       for (let sq = 1; sq <= instCount; sq++) {
         const sqInst = activeInstalments[sq - 1] || { number: sq, status: 'Pending' };
         const isReceived = sqInst.status === 'Received';
@@ -1619,9 +1624,91 @@ function renderCollectionMatrix() {
         </tr>
       `;
     }
+
+    // Build Mobile Customer Card (Matching Image 2 media_1791982219543.png)
+    mobileHtml += `
+      <div class="mobile-cust-card ${isExpanded ? 'card-expanded' : ''}" data-customer-id="${cust.id}">
+        <!-- Top Header: Tap anywhere on header to expand / collapse -->
+        <div class="mobile-cust-header" onclick="toggleCustomerSchedule('${cust.id}', event)">
+          <div class="mobile-cust-user">
+            <div class="mobile-cust-avatar">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            </div>
+            <div>
+              <div class="mobile-cust-name-row">
+                <span class="mobile-cust-name">${cust.fullName}</span>
+                <span class="loan-badge">L${cust.loanNumber || 1}</span>
+                ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 5px; margin-left:4px;">⚠️ Due ${stats.missedCount}</span>` : ''}
+              </div>
+              <div class="mobile-cust-sub">
+                CUS${String(cust.customerNumber).padStart(3, '0')} • ${cust.phone || 'No Phone'}
+              </div>
+              <div class="mobile-cust-amt">
+                ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)} / ${unitLabel}
+              </div>
+            </div>
+          </div>
+          <div class="mobile-cust-right">
+            <div class="mobile-cust-paid">${effectiveStats.paidCount}/${instCount} paid</div>
+            <div class="mobile-cust-chevron">
+              ${isExpanded ? `
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"></polyline></svg>
+              ` : `
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              `}
+            </div>
+          </div>
+        </div>
+
+        <!-- Progress Bar (Always visible in collapsed & expanded cards) -->
+        <div class="mobile-cust-progress-wrap" onclick="toggleCustomerSchedule('${cust.id}', event)">
+          <div class="mobile-cust-progress-bar">
+            <div class="mobile-cust-progress-fill" style="width: ${completionPct}%;"></div>
+          </div>
+          <span class="mobile-cust-progress-pct">${completionPct}%</span>
+        </div>
+
+        <!-- Expanded Drawer Content (Only rendered when expanded) -->
+        ${isExpanded ? `
+          <div class="mobile-cust-drawer-body" onclick="event.stopPropagation()">
+            <div class="sched-grid-header" style="margin-top: 14px; margin-bottom: 8px;">
+              <span class="sched-grid-title" style="font-size: 13px;">${instCount}-${isDaily ? 'day' : 'week'} schedule</span>
+              <span class="sched-grid-action" style="font-size: 11px;">Tap to toggle</span>
+            </div>
+
+            <div class="sched-13col-grid mobile-sched-grid">
+              ${squaresHtml}
+            </div>
+
+            ${hasPendingMod && pendingMod.sessionAmount > 0 ? `
+              <div class="sched-modified-bar" style="margin-top: 12px; padding: 10px 14px; border-radius: 8px;">
+                <div>
+                  <strong style="color: #166534; font-size: 13px;">Unsaved:</strong>
+                  <span style="color: #15803d; font-size: 15px; font-weight: 800; margin-left: 4px;">+ ${formatMoney(pendingMod.sessionAmount)}</span>
+                </div>
+                <button type="button" class="btn-drawer-save" onclick="saveCustomerModifications('${cust.id}')" style="padding: 6px 12px; font-size: 12px;">
+                  💾 Save (${formatMoney(pendingMod.sessionAmount)})
+                </button>
+              </div>
+            ` : `
+              <div class="sched-card-footer" style="margin-top: 10px; font-size: 11px;">
+                <span>ⓘ Tap any square to toggle payment status in real-time.</span>
+              </div>
+            `}
+          </div>
+        ` : ''}
+      </div>
+    `;
   });
 
   tableBody.innerHTML = bodyHtml;
+  const mobileContainer = document.getElementById('collection-cards-mobile');
+  if (mobileContainer) {
+    mobileContainer.innerHTML = mobileHtml;
+  }
 }
 
 // 1-Click Toggle / Partial Instalment
