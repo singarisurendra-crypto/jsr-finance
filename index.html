@@ -173,16 +173,7 @@
   <div class="app-layout">
     <!-- Sidebar Navigation -->
     <aside class="sidebar" id="app-sidebar">
-      <a class="nav-link active" data-tab="summary">
-        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect width="7" height="9" x="3" y="3" rx="1.5"/>
-          <rect width="7" height="5" x="14" y="3" rx="1.5"/>
-          <rect width="7" height="9" x="14" y="12" rx="1.5"/>
-          <rect width="7" height="5" x="3" y="16" rx="1.5"/>
-        </svg>
-        <span class="nav-text">Summary Dashboard</span>
-      </a>
-      <a class="nav-link" data-tab="collections">
+      <a class="nav-link active" data-tab="collections">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect width="18" height="18" x="3" y="3" rx="2"/>
           <path d="M3 9h18"/>
@@ -191,6 +182,15 @@
           <path d="M15 3v18"/>
         </svg>
         <span class="nav-text">Instalment Sheet</span>
+      </a>
+      <a class="nav-link" data-tab="summary">
+        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="7" height="9" x="3" y="3" rx="1.5"/>
+          <rect width="7" height="5" x="14" y="3" rx="1.5"/>
+          <rect width="7" height="9" x="14" y="12" rx="1.5"/>
+          <rect width="7" height="5" x="3" y="16" rx="1.5"/>
+        </svg>
+        <span class="nav-text">Summary Dashboard</span>
       </a>
       <a class="nav-link" data-tab="customers">
         <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -232,7 +232,7 @@
       <!-- ============================================== -->
       <!-- SCREEN 1: SUMMARY / DASHBOARD VIEW             -->
       <!-- ============================================== -->
-      <section id="view-summary" class="screen-view active">
+      <section id="view-summary" class="screen-view">
         <div class="view-header">
           <div>
             <h1 class="view-title">Financial Summary & Overview</h1>
@@ -345,7 +345,7 @@
       <!-- ============================================== -->
       <!-- SCREEN 2: 52-INSTALMENT COLLECTION SHEET       -->
       <!-- ============================================== -->
-      <section id="view-collections" class="screen-view">
+      <section id="view-collections" class="screen-view active">
         <div class="view-header collections-header">
           <div class="collections-title-block">
             <h1 class="view-title">Customer instalments</h1>
@@ -354,8 +354,8 @@
           <div class="collections-tools">
             <input type="text" id="global-search-input" class="form-control" placeholder="🔍 Search # / Name...">
             <select id="collection-filter-select" class="form-control">
+              <option value="active" selected>Active Only</option>
               <option value="all">All Loans (Weekly & Daily)</option>
-              <option value="active">Active Only</option>
               <option value="overdue">⚠️ Overdue (Behind ≥2)</option>
               <option value="partial">½ Partial Payments</option>
               <option value="completed">Completed Only</option>
@@ -824,19 +824,7 @@
               <input type="number" id="cust-form-given" class="form-control" value="10000" required style="width: 100%;" oninput="calculateFromMargin()">
             </div>
 
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <label class="form-label" style="margin: 0;">Profit Margin (%):</label>
-                <div style="display: flex; gap: 4px;">
-                  <button type="button" class="preset-pill" onclick="setMarginPreset(4)">4%</button>
-                  <button type="button" class="preset-pill" onclick="setMarginPreset(10)">10%</button>
-                  <button type="button" class="preset-pill" onclick="setMarginPreset(15)">15%</button>
-                  <button type="button" class="preset-pill" onclick="setMarginPreset(20)">20%</button>
-                </div>
-              </div>
-              <input type="number" step="0.1" id="cust-form-margin" class="form-control" value="4.0" style="width: 100%;" oninput="calculateFromMargin()">
-              <div class="form-help">Auto-calculates Instalment Amount</div>
-            </div>
+            <input type="hidden" id="cust-form-margin" value="4.0">
 
             <div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -862,23 +850,17 @@
               <input type="date" id="cust-form-date" class="form-control" required style="width: 100%;">
             </div>
 
-            <!-- Live Loan Profit Breakdown -->
-            <div class="form-full" style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 12px; margin-top: 4px;">
-              <div style="font-weight: 700; font-size: 13px; color: #6d28d9; margin-bottom: 6px;">
-                💰 Expected Loan Profit (Auto-Calculated):
-              </div>
-              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-size: 13px;">
+            <!-- Simple Clear Loan Summary (4% Fixed Margin) -->
+            <div class="form-full" style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-top: 4px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div>
-                  <span style="color: #64748b; font-size: 11px;">Total Repayable:</span><br>
-                  <strong id="cust-form-calc-repayable" style="color: #1e3a8a;">₹ 10,400</strong>
+                  <span style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700;">Total to Collect (4% Margin):</span><br>
+                  <strong id="cust-form-calc-repayable" style="color: #15803d; font-size: 17px;">₹ 10,400</strong>
                 </div>
                 <div>
-                  <span style="color: #64748b; font-size: 11px;">Expected Net Profit:</span><br>
-                  <strong id="cust-form-calc-profit" style="color: #7c3aed; font-size: 15px;">₹ 400</strong>
-                </div>
-                <div>
-                  <span style="color: #64748b; font-size: 11px;">Profit Return (%):</span><br>
-                  <strong id="cust-form-calc-profit-pct" style="color: #16a34a;">4.0%</strong>
+                  <span style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700;">Profit:</span><br>
+                  <strong id="cust-form-calc-profit" style="color: #7c3aed; font-size: 17px;">+ ₹ 400</strong>
+                  <span id="cust-form-calc-profit-pct" style="display: none;">4.0%</span>
                 </div>
               </div>
             </div>
@@ -1041,21 +1023,49 @@
     </div>
   </div>
 
+  <!-- Prominent Collection Success Banner (Visible to Application User) -->
+  <div id="collection-success-banner" class="collection-success-banner" style="display: none;">
+    <div class="collection-banner-inner">
+      <div class="collection-banner-icon">✓</div>
+      <div class="collection-banner-details">
+        <div class="collection-banner-title" id="collection-banner-title">Saved Collection Successfully!</div>
+        <div class="collection-banner-subtitle" id="collection-banner-subtitle">Collected ₹ 400 from #1 Sri Ram</div>
+      </div>
+      <button type="button" class="collection-banner-close" onclick="closeCollectionBanner()">&times;</button>
+    </div>
+  </div>
+
+  <!-- Modal: Unsaved Collection Confirmation Dialog -->
+  <div id="modal-unsaved-prompt" class="modal-overlay">
+    <div class="modal-dialog prompt-dialog" style="max-width: 440px;">
+      <div class="modal-header" style="background: #eff6ff; border-bottom: 1px solid #bfdbfe;">
+        <h3 class="modal-title" style="color: #1e40af; font-size: 16px; display: flex; align-items: center; gap: 8px;">
+          <span>💾</span> Save Pending Collection?
+        </h3>
+        <button class="modal-close" onclick="closeModal('modal-unsaved-prompt')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <div style="font-size: 14px; color: #334155; line-height: 1.5;" id="unsaved-prompt-message">
+          You have unsaved instalments marked for this customer.
+        </div>
+        <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 14px 16px; margin-top: 14px; display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 13px; color: #166534; font-weight: 700;">Total to Save:</span>
+          <strong id="unsaved-prompt-amount" style="font-size: 20px; color: #15803d;">₹ 0</strong>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: 12px 20px; background: #f8fafc; gap: 10px; justify-content: flex-end;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="handleUnsavedPromptDiscard()">Discard</button>
+        <button type="button" class="btn btn-success btn-sm" id="btn-unsaved-prompt-save" onclick="handleUnsavedPromptSave()">💾 Save & Continue</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div id="app-toast" style="display: none; position: fixed; bottom: 24px; right: 24px; background: #1e293b; color: #ffffff; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); z-index: 200;"></div>
 
   <!-- Mobile Bottom Navigation Bar (High-Tech Mobile Experience) -->
   <nav class="mobile-nav" id="mobile-nav">
-    <button class="mobile-nav-item active" data-tab="summary">
-      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect width="7" height="9" x="3" y="3" rx="1.5"/>
-        <rect width="7" height="5" x="14" y="3" rx="1.5"/>
-        <rect width="7" height="9" x="14" y="12" rx="1.5"/>
-        <rect width="7" height="5" x="3" y="16" rx="1.5"/>
-      </svg>
-      <span class="label">Summary</span>
-    </button>
-    <button class="mobile-nav-item" data-tab="collections">
+    <button class="mobile-nav-item active" data-tab="collections">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect width="18" height="18" x="3" y="3" rx="2"/>
         <path d="M3 9h18"/>
@@ -1064,6 +1074,15 @@
         <path d="M15 3v18"/>
       </svg>
       <span class="label">Instalments</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="summary">
+      <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect width="7" height="9" x="3" y="3" rx="1.5"/>
+        <rect width="7" height="5" x="14" y="3" rx="1.5"/>
+        <rect width="7" height="9" x="14" y="12" rx="1.5"/>
+        <rect width="7" height="5" x="3" y="16" rx="1.5"/>
+      </svg>
+      <span class="label">Summary</span>
     </button>
     <button class="mobile-nav-item" data-tab="customers">
       <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
