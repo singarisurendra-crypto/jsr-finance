@@ -1658,19 +1658,18 @@ function renderCollectionMatrix() {
     return (Number(a.loanNumber) || 1) - (Number(b.loanNumber) || 1);
   });
 
-  // Full Screen 5-Column Table Header matching screenshot: Cust #, Customer Name, Given / Inst, Paid / Bal, Schedule
+  // Clean 4-Column Table Header: Cust #, Customer Name, Loan Number, Paid
   tableHead.innerHTML = `
     <tr>
-      <th style="width: 12%; min-width: 90px; text-align: left; padding-left: 20px;">Cust #</th>
-      <th style="width: 32%; min-width: 190px; text-align: left;">Customer Name</th>
-      <th style="width: 20%; min-width: 140px; text-align: left;">Given / Inst</th>
-      <th style="width: 20%; min-width: 130px; text-align: left;">Paid / Bal</th>
-      <th style="width: 16%; min-width: 120px; text-align: center; padding-right: 20px;">Schedule</th>
+      <th style="width: 15%; min-width: 90px; text-align: left; padding-left: 20px;">Cust #</th>
+      <th style="width: 40%; min-width: 200px; text-align: left;">Customer Name</th>
+      <th style="width: 20%; min-width: 130px; text-align: center;">Loan Number</th>
+      <th style="width: 25%; min-width: 140px; text-align: center; padding-right: 20px;">Paid</th>
     </tr>
   `;
 
   if (filtered.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#94a3b8;">No customers match the current search or filter.</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No customers match the current search or filter.</td></tr>`;
     const mobileContainer = document.getElementById('collection-cards-mobile');
     if (mobileContainer) {
       mobileContainer.innerHTML = `<div style="text-align:center; padding:40px 16px; color:#94a3b8; background:#ffffff; border-radius:12px; border:1px solid #e2e8f0;">No customers match the current search or filter.</div>`;
@@ -1701,23 +1700,14 @@ function renderCollectionMatrix() {
       <tr data-customer-id="${cust.id}" class="customer-row-main ${isExpanded ? 'row-expanded' : ''}" style="cursor: pointer;" onclick="toggleCustomerSchedule('${cust.id}', event)">
         <td style="padding-left: 20px; text-align: left;">
           <span style="font-weight:700; color:#1e3a8a; font-size:14px;">#${cust.customerNumber}</span>
-          <span class="loan-badge" style="margin-left: 5px;">L${cust.loanNumber || 1}</span>
           ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="${stats.missedCount} instalments behind schedule">⚠️ Due ${stats.missedCount}</span>` : ''}
         </td>
         <td style="text-align: left;">
           <div style="font-weight:700; color:#0f172a; font-size:14px;">${cust.fullName}</div>
-          <div style="font-size:12px; color:#64748b;">${cust.phone || 'No Phone'}</div>
+          <div style="font-size:12px; color:#64748b;">${cust.phone || 'No Phone'}${cust.areaRoute ? ` • ${cust.areaRoute}` : ''}</div>
         </td>
-        <td style="text-align: left;">
-          <div style="font-weight:700; color:#0f172a;">${formatMoney(cust.givenAmount)}</div>
-          <div style="font-size:11px; color:#2563eb; display:flex; align-items:center; gap:4px; margin-top:2px;">
-            <span>${formatMoney(cust.instalmentAmount)} ${freqUnit}</span>
-            ${freqBadge}
-          </div>
-        </td>
-        <td style="text-align: left;">
-          <div style="font-weight:700; color:#1e40af; font-size:14px;">${effectiveStats.paidCount}/${instCount}</div>
-          <div style="font-size:11px; color:#b45309; font-weight:600; margin-top:2px;">Bal: ${formatMoney(effectiveStats.balance)}</div>
+        <td style="text-align: center;">
+          <span class="loan-badge" style="font-size:13px; font-weight:700; padding:3px 10px;">Loan #${cust.loanNumber || 1}</span>
         </td>
         <td style="text-align: center; padding-right: 20px;" onclick="event.stopPropagation()">
           ${hasPendingMod && pendingMod.sessionAmount > 0 ? `
@@ -1726,10 +1716,10 @@ function renderCollectionMatrix() {
               <span style="background:rgba(255,255,255,0.25); padding:1px 5px; border-radius:4px; font-size:11px;">${formatMoney(pendingMod.sessionAmount)}</span>
             </button>
           ` : `
-            <button type="button" class="btn-schedule-toggle ${isExpanded ? 'expanded' : ''}" onclick="toggleCustomerSchedule('${cust.id}', event)">
-              <span>${isExpanded ? 'Hide' : `${instCount} ${unitWord}`}</span>
-              <span class="sched-chevron ${isExpanded ? 'rotated' : ''}">▼</span>
-            </button>
+            <div style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCustomerSchedule('${cust.id}', event)">
+              <span style="font-weight:700; color:#1e40af; font-size:14px;">${effectiveStats.paidCount}/${instCount}</span>
+              <span class="sched-chevron ${isExpanded ? 'rotated' : ''}" style="font-size:11px; color:#64748b; transition:transform 0.2s;">▼</span>
+            </div>
           `}
         </td>
       </tr>
@@ -1806,7 +1796,7 @@ function renderCollectionMatrix() {
 
       bodyHtml += `
         <tr class="schedule-drawer-row" data-drawer-customer="${cust.id}">
-          <td colspan="5" class="schedule-drawer-cell">
+          <td colspan="4" class="schedule-drawer-cell">
             <div class="schedule-card-container">
               <!-- Top Customer Info Bar -->
               <div class="schedule-card-top">
@@ -2526,7 +2516,7 @@ function updateCustomerModalProfitCalc() {
 // Bi-directional Auto Calculation: Margin % -> Instalment Amount
 function calculateFromMargin() {
   const given = Number(document.getElementById('cust-form-given')?.value) || 0;
-  const marginPct = Number(document.getElementById('cust-form-margin')?.value) || 30.0;
+  const marginPct = Number(document.getElementById('cust-form-margin')?.value) || 4.0;
   const instalments = Number(document.getElementById('cust-form-instalments')?.value) || 52;
   if (given > 0 && instalments > 0) {
     const repayable = Math.round(given * (1 + marginPct / 100));
@@ -2712,9 +2702,9 @@ function openAddCustomerModal() {
   document.getElementById('cust-form-address').value = '';
   document.getElementById('cust-form-area').value = 'Main Area';
   document.getElementById('cust-form-given').value = state.settings.defaultGivenAmount || 10000;
-  document.getElementById('cust-form-margin').value = '30.0';
+  document.getElementById('cust-form-margin').value = '4.0';
   document.getElementById('cust-form-instalments').value = state.settings.defaultInstalments || 52;
-  document.getElementById('cust-form-amount').value = state.settings.defaultInstalmentAmount || 250;
+  document.getElementById('cust-form-amount').value = state.settings.defaultInstalmentAmount || 200;
   document.getElementById('cust-form-date').value = getISTDateString();
 
   const freqInput = document.getElementById('cust-form-frequency');
