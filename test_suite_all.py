@@ -34,11 +34,11 @@ def test_pr3_customer_lifecycle():
     with open('index.html', 'r', encoding='utf-8') as f:
         html_content = f.read()
 
-    # 30% margin defaults
-    assert 'margin: 30' in app_content or 'marginPct: 30' in app_content or 'defaultMarginPct: 30' in app_content or '30.0' in app_content, "Default margin 30% missing in app.js"
-    assert 'id="cust-form-margin" value="30.0"' in html_content, "Default margin input not 30.0 in index.html"
-    assert 'id="cust-form-amount" class="form-control" value="250"' in html_content, "Default instalment amount not 250 in index.html"
-    assert 'Total to Collect (30% Margin):' in html_content, "Summary card missing 30% Margin text"
+    # 4% margin defaults (as requested by user)
+    assert '4.0' in app_content, "Default margin 4% missing in app.js"
+    assert 'id="cust-form-margin" value="4.0"' in html_content, "Default margin input not 4.0 in index.html"
+    assert 'id="cust-form-amount" class="form-control" value="200"' in html_content, "Default instalment amount not 200 in index.html"
+    assert 'Total to Collect (4% Margin):' in html_content, "Summary card missing 4% Margin text"
 
     # Revision floor invariant
     assert 'highestPaidNumber' in app_content, "Revision floor check (highestPaidNumber) missing in app.js"
