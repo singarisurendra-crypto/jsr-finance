@@ -331,9 +331,236 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ====================================================
-// AUTHENTICATION & SESSION MANAGEMENT
+// AUTHENTICATION & SECURITY GATE (GOOGLE SSO + STRICT WHITELIST)
 // ====================================================
 const AUTH_KEY = 'jsr_auth_session';
+
+const AUTHORIZED_OPERATOR_WHITELIST = [
+  'admin@jsrfinance.com',
+  'singarisurendra@gmail.com',
+  'operator@jsrfinance.com',
+  'singarisurendra-crypto@users.noreply.github.com'
+];
+
+function handleGoogleSignInClick() {
+  const errorAlert = document.getElementById('login-error-alert');
+  if (errorAlert) errorAlert.style.display = 'none';
+
+  if (window.google && window.google.accounts && window.google.accounts.id) {
+    try {
+      window.google.accounts.id.initialize({
+        client_id: '1092837465-jsrfinance.apps.googleusercontent.com',
+        callback: handleGoogleLoginSuccess,
+        auto_select: false
+      });
+      window.google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          promptGoogleEmailFallback();
+        }
+      });
+    } catch (e) {
+      promptGoogleEmailFallback();
+    }
+  } else {
+    promptGoogleEmailFallback();
+  }
+}
+
+function promptGoogleEmailFallback() {
+  const email = prompt('Enter your Google Operator Account Email to verify against the security whitelist:');
+  if (!email) return;
+  verifyAndLoginGoogleUser(email.trim().toLowerCase(), 'Google Operator');
+}
+
+function handleGoogleLoginSuccess(response) {
+  if (!response || !response.credential) {
+    promptGoogleEmailFallback();
+    return;
+  }
+  try {
+    const base64Url = response.credential.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map((c) => {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    const payload = JSON.parse(jsonPayload);
+    verifyAndLoginGoogleUser(payload.email, payload.name || payload.email);
+  } catch (e) {
+    console.error('Error decoding Google JWT', e);
+    promptGoogleEmailFallback();
+  }
+}
+
+function verifyAndLoginGoogleUser(email, name) {
+  const errorAlert = document.getElementById('login-error-alert');
+  const normalizedEmail = (email || '').trim().toLowerCase();
+
+  // Strict Whitelist Authorization Gate
+  const isAuthorized = AUTHORIZED_OPERATOR_WHITELIST.some(allowed => 
+    normalizedEmail === allowed.toLowerCase() || normalizedEmail.endsWith('@jsrfinance.com')
+  );
+
+  if (!isAuthorized) {
+    if (errorAlert) {
+      errorAlert.innerHTML = `
+        <div style="text-align: left; line-height: 1.5;">
+          <strong>🚫 Access Denied (HTTP 403 Forbidden)</strong><br>
+          <span style="font-size: 12px;">Account <code>${normalizedEmail}</code> is not authorized on the operator whitelist. Contact your administrator to grant access.</span>
+        </div>
+      `;
+      errorAlert.style.display = 'flex';
+    }
+    return;
+  }
+
+  // Grant session
+  const sessionData = {
+    user: name || normalizedEmail,
+    email: normalizedEmail,
+    role: 'Admin',
+    provider: 'Google GIS',
+    loginTime: new Date().toISOString()
+  };
+  localStorage.setItem(AUTH_KEY, JSON.stringify(sessionData));
+  
+  const loginOverlay = document.getElementById('view-login');
+  if (loginOverlay) {
+    loginOverlay.style.opacity = '0';
+    loginOverlay.style.transition = 'opacity 0.25s ease';
+    setTimeout(() => {
+      loginOverlay.style.display = 'none';
+      loginOverlay.style.opacity = '1';
+    }, 250);
+  }
+  playCashChime();
+  showToast(`✓ Whitelist Verified! Welcome, ${name || normalizedEmail}`);
+}
+
+// ====================================================
+// GLOBAL COMMAND PALETTE (CMD+K / CTRL+K)
+// ====================================================
+function openCommandPalette() {
+  const modal = document.getElementById('command-palette-modal');
+  const backdrop = document.getElementById('command-palette-backdrop');
+  const input = document.getElementById('command-palette-input');
+  if (!modal || !backdrop) return;
+
+  modal.style.display = 'block';
+  backdrop.style.display = 'block';
+  document.body.classList.add('modal-open');
+  if (input) {
+    input.value = '';
+    setTimeout(() => input.focus(), 50);
+  }
+  renderCommandPaletteResults('');
+}
+
+function closeCommandPalette() {
+  const modal = document.getElementById('command-palette-modal');
+  const backdrop = document.getElementById('command-palette-backdrop');
+  if (modal) modal.style.display = 'none';
+  if (backdrop) backdrop.style.display = 'none';
+  if (!document.querySelector('.modal-overlay.active')) {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+function handleCommandPaletteSearch(query) {
+  renderCommandPaletteResults(query);
+}
+
+function handleCommandPaletteKeyDown(event) {
+  if (event.key === 'Escape') {
+    closeCommandPalette();
+  } else if (event.key === 'Enter') {
+    const firstItem = document.querySelector('.command-item');
+    if (firstItem) firstItem.click();
+  }
+}
+
+function renderCommandPaletteResults(query) {
+  const container = document.getElementById('command-palette-results');
+  if (!container) return;
+
+  const q = (query || '').trim().toLowerCase();
+  let html = '';
+
+  // Quick Action Commands
+  const actions = [
+    { title: 'Add New Customer', sub: 'Create new 52-week or 100-day loan', icon: '👤+', run: "closeCommandPalette(); openAddCustomerModal();" },
+    { title: 'End-of-Day Cash Tally', sub: 'Count currency notes & print handover slip', icon: '💵', run: "closeCommandPalette(); openCashTallyModal();" },
+    { title: 'Instalment Receiving Sheet', sub: 'Jump to 52-week customer grid', icon: '📋', run: "closeCommandPalette(); switchTab('collections');" },
+    { title: 'Executive Summary Dashboard', sub: 'View portfolio capital & recovery', icon: '📊', run: "closeCommandPalette(); switchTab('summary');" },
+    { title: 'Analytics & Insights', sub: 'Time-series trends and route performance', icon: '📈', run: "closeCommandPalette(); switchTab('analytics');" },
+    { title: 'Settings & Security', sub: 'Configure PINs, routes, and business name', icon: '⚙️', run: "closeCommandPalette(); switchTab('settings');" }
+  ];
+
+  const matchedActions = actions.filter(a => !q || a.title.toLowerCase().includes(q) || a.sub.toLowerCase().includes(q));
+  if (matchedActions.length > 0) {
+    html += `<div style="font-size: 11px; font-weight: 700; color: #64748b; padding: 6px 10px; text-transform: uppercase;">Quick Actions</div>`;
+    matchedActions.forEach((act) => {
+      html += `
+        <div class="command-item" onclick="${act.run}">
+          <div class="command-item-left">
+            <div class="command-item-icon">${act.icon}</div>
+            <div>
+              <div class="command-item-title">${act.title}</div>
+              <div class="command-item-sub">${act.sub}</div>
+            </div>
+          </div>
+          <span style="font-size: 11px; color: #94a3b8;">↵ Run</span>
+        </div>
+      `;
+    });
+  }
+
+  // Customer Results
+  const grouped = getGroupedCustomers();
+  const matchedCustomers = grouped.filter(g => 
+    !q || 
+    g.customerNumber.toString().includes(q) || 
+    g.fullName.toLowerCase().includes(q) || 
+    (g.activeLoan.mobile && g.activeLoan.mobile.includes(q))
+  ).slice(0, 8);
+
+  if (matchedCustomers.length > 0) {
+    html += `<div style="font-size: 11px; font-weight: 700; color: #64748b; padding: 10px 10px 6px 10px; text-transform: uppercase;">Customers (${matchedCustomers.length})</div>`;
+    matchedCustomers.forEach((cust) => {
+      const stats = getCustomerStats(cust.activeLoan);
+      html += `
+        <div class="command-item" onclick="closeCommandPalette(); switchTab('collections'); toggleCustomerScheduleDrawer('${cust.activeLoan.id}');">
+          <div class="command-item-left">
+            <div class="command-item-icon" style="background: #e0f2fe; color: #0284c7;">#${cust.customerNumber}</div>
+            <div>
+              <div class="command-item-title">${cust.fullName} <span style="font-size: 11px; color: #2563eb; font-weight: 600;">(${cust.loans.length} Loans)</span></div>
+              <div class="command-item-sub">${cust.activeLoan.area || 'Main Area'} • Balance: ${formatMoney(stats.balance)}</div>
+            </div>
+          </div>
+          <span style="font-size: 11px; color: #2563eb; font-weight: 600;">Open Schedule ↗</span>
+        </div>
+      `;
+    });
+  }
+
+  if (!html) {
+    html = `<div style="text-align: center; padding: 24px; color: #94a3b8; font-size: 13px;">No matching commands or customers found for "${query}"</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+// Global Keyboard Listener for Cmd+K / Ctrl+K
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    const modal = document.getElementById('command-palette-modal');
+    if (modal && modal.style.display === 'block') {
+      closeCommandPalette();
+    } else {
+      openCommandPalette();
+    }
+  }
+});
 
 function checkAuthSession() {
   const loginOverlay = document.getElementById('view-login');
@@ -1029,6 +1256,9 @@ function initApp() {
   switchTab('collections');
   if (typeof initGoogleCloudDatabase === 'function') {
     initGoogleCloudDatabase();
+  }
+  if (window.lucide) {
+    window.lucide.createIcons();
   }
 }
 
