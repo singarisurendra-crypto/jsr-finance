@@ -1,9 +1,29 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow read/write to JSR Finance collections
-    match /{document=**} {
-      allow read, write: if true;
+    // 1. Customers Collection: Requires valid customer data
+    match /customers/{customerId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.customerNumber != null 
+                            && request.resource.data.fullName != null
+                            && request.resource.data.givenAmount != null;
+      allow delete: if true;
+    }
+
+    // 2. Transactions Collection: Append-Only Immutable Audit Ledger
+    // Once created, historical transactions cannot be altered or deleted by anyone
+    match /transactions/{txnId} {
+      allow read: if true;
+      allow create: if request.resource.data.amount != null 
+                    && request.resource.data.type in ['payment', 'partial', 'undo'];
+      allow update, delete: if false;
+    }
+
+    // 3. System Configuration & Settings
+    match /config/{configId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
     }
   }
 }
