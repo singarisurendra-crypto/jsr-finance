@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS = {
   currency: '₹',
   defaultGivenAmount: 10000,
   defaultInstalments: 52,
-  defaultInstalmentAmount: 200,
+  defaultInstalmentAmount: 250,
   autoCustNumbering: true,
   nextCustNumber: 1,
 };
@@ -26,13 +26,13 @@ const DEFAULT_SETTINGS = {
 const DEFAULT_SCHEMES = [
   {
     id: 'SCH-52W-STD',
-    name: '52 Weeks Standard (₹10,000 / ₹200 wk)',
+    name: '52 Weeks Standard (₹10,000 / ₹250 wk)',
     totalInstalments: 52,
     frequency: 'Weekly',
     givenAmount: 10000,
-    instalmentAmount: 200,
-    totalPayable: 10400,
-    description: 'Standard 52 weekly instalments of ₹200 for ₹10,000 loan',
+    instalmentAmount: 250,
+    totalPayable: 13000,
+    description: 'Standard 52 weekly instalments of ₹250 for ₹10,000 loan (30% Flat Margin)',
     isDefault: true,
   },
   {
@@ -64,6 +64,7 @@ let state = {
   settings: { ...DEFAULT_SETTINGS },
   schemes: [...DEFAULT_SCHEMES],
   customers: [],
+  transactions: [],
   activeTab: 'collections',
   searchQuery: '',
   filterStatus: 'active',
@@ -312,16 +313,23 @@ function handleLogin(event) {
   const user = (usernameInput?.value || '').trim();
   const pass = (passwordInput?.value || '').trim();
 
-  // Allow standard admin or operator login credentials
-  const isValidAdmin = (user === 'admin' && pass === 'admin123');
-  const isValidMobile = (user.length >= 4 && (pass === '1234' || pass === 'admin123'));
+  // Configured PINs (from settings or secure defaults)
+  const configuredAdminPin = state.settings.adminPin || 'admin123';
+  const configuredCollectorPin = state.settings.collectorPin || '1122';
 
-  if (isValidAdmin || isValidMobile) {
+  let role = null;
+  if ((user.toLowerCase() === 'admin' || user === (state.settings.phone || '')) && pass === configuredAdminPin) {
+    role = 'Admin';
+  } else if (user.length >= 3 && (pass === configuredCollectorPin || pass === configuredAdminPin)) {
+    role = (pass === configuredAdminPin) ? 'Admin' : 'Collector';
+  }
+
+  if (role) {
     if (errorAlert) errorAlert.style.display = 'none';
     const rememberMe = document.getElementById('login-remember')?.checked !== false;
     const sessionData = {
-      user: user || 'admin',
-      role: 'Operator',
+      user: user || 'Operator',
+      role: role,
       loginTime: new Date().toISOString()
     };
     if (rememberMe) {
@@ -330,7 +338,7 @@ function handleLogin(event) {
       sessionStorage.setItem(AUTH_KEY, JSON.stringify(sessionData));
     }
     playCashChime();
-    showToast(`Welcome back, ${user || 'admin'}! Signed in successfully.`);
+    showToast(`Welcome back, ${user}! Signed in as ${role}.`);
     if (loginOverlay) {
       loginOverlay.style.opacity = '0';
       loginOverlay.style.transition = 'opacity 0.25s ease';
@@ -341,18 +349,10 @@ function handleLogin(event) {
     }
   } else {
     if (errorAlert) {
-      errorAlert.textContent = '❌ Invalid Operator ID or PIN. (Default: admin / admin123 or use 1-Tap Quick Demo)';
+      errorAlert.textContent = '❌ Invalid Operator ID or PIN. Please enter your authorized credentials.';
       errorAlert.style.display = 'flex';
     }
   }
-}
-
-function handleQuickDemoLogin() {
-  const usernameInput = document.getElementById('login-username');
-  const passwordInput = document.getElementById('login-password');
-  if (usernameInput) usernameInput.value = 'admin';
-  if (passwordInput) passwordInput.value = 'admin123';
-  handleLogin();
 }
 
 function handleLogout() {
@@ -473,6 +473,50 @@ function saveCustomerModifications(customerId) {
   if (!customer) return;
 
   const collectedAmount = pending ? (Number(pending.sessionAmount) || 0) : 0;
+
+  // Log each modified instalment to the immutable audit ledger
+  if (pending && pending.initialInstalments && pending.modifiedInstalments) {
+    const totalInst = customer.totalInstalments || 52;
+    for (let i = 1; i <= totalInst; i++) {
+      const before = pending.initialInstalments[i - 1] || { number: i, status: 'Pending', paidAmount: 0 };
+      const after = pending.modifiedInstalments[i - 1] || { number: i, status: 'Pending', paidAmount: 0 };
+      const beforePaid = before.status === 'Received' ? (Number(before.dueAmount || customer.instalmentAmount)) : (Number(before.paidAmount) || 0);
+      const afterPaid = after.status === 'Received' ? (Number(after.dueAmount || customer.instalmentAmount)) : (Number(after.paidAmount) || 0);
+
+      const diff = afterPaid - beforePaid;
+      if (diff > 0) {
+        // Payment added
+        recordTransaction({
+          receiptNumber: after.receiptNumber || generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, i),
+          customerId: customer.id,
+          customerNumber: customer.customerNumber,
+          loanNumber: customer.loanNumber || 1,
+          customerName: customer.fullName,
+          instalmentNumber: i,
+          amount: diff,
+          type: after.status === 'Received' ? 'payment' : 'partial',
+          date: after.paidDate || getISTDateString(),
+          timestamp: after.paidTimestamp || getNowTimestamp()
+        });
+      } else if (diff < 0) {
+        // Undo logged
+        recordTransaction({
+          receiptNumber: `UNDO-${before.receiptNumber || 'LEGACY'}-${Date.now()}`,
+          previousReceipt: before.receiptNumber,
+          customerId: customer.id,
+          customerNumber: customer.customerNumber,
+          loanNumber: customer.loanNumber || 1,
+          customerName: customer.fullName,
+          instalmentNumber: i,
+          amount: Math.abs(diff),
+          type: 'undo',
+          date: getISTDateString(),
+          timestamp: getNowTimestamp()
+        });
+      }
+    }
+  }
+
   if (pending && pending.modifiedInstalments) {
     customer.instalments = pending.modifiedInstalments;
   }
@@ -575,9 +619,96 @@ function handleInstalmentClick(customerId, instNumber, event) {
   if (event) {
     event.stopPropagation();
   }
+  const customer = state.customers.find(c => c.id === customerId);
+  if (!customer) return;
+
+  const pending = state.pendingModifications && state.pendingModifications[customerId];
+  const insts = pending ? pending.modifiedInstalments : (customer.instalments || []);
+  const inst = insts[instNumber - 1];
+
+  // Accidental Tap / Undo Protection:
+  if (inst && inst.status === 'Received') {
+    const totalInst = customer.totalInstalments || 52;
+    const unitLabel = (customer.frequency === 'Daily' || totalInst === 100) ? 'Day' : 'Week';
+    const amt = inst.paidAmount || customer.instalmentAmount || 200;
+    if (!confirm(`Are you sure you want to undo payment for ${unitLabel} #${instNumber} (${formatMoney(amt)})?\n\nThis will remove the received status and be logged in the audit ledger.`)) {
+      return;
+    }
+  }
+
   checkAndPromptUnsaved(customerId, () => {
     modifyInstalment(customerId, instNumber);
   });
+}
+
+// Indian Standard Time (IST / Asia/Kolkata) Date String (YYYY-MM-DD)
+function getISTDateString(dateObj = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(dateObj);
+  } catch (e) {
+    const d = new Date(dateObj.getTime() + (5.5 * 60 * 60 * 1000) + (dateObj.getTimezoneOffset() * 60 * 1000));
+    return d.toISOString().split('T')[0];
+  }
+}
+
+// Global Unique Receipt Counter & Generator (Collision-Proof)
+let receiptSequenceCounter = 0;
+function generateUniqueReceiptNumber(customerNumber, loanNumber, instalmentNumber) {
+  receiptSequenceCounter = (receiptSequenceCounter + 1) % 10000;
+  const now = new Date();
+  const dStr = getISTDateString().replace(/-/g, '');
+  const timeStr = String(now.getHours()).padStart(2, '0') +
+                  String(now.getMinutes()).padStart(2, '0') +
+                  String(now.getSeconds()).padStart(2, '0') +
+                  String(now.getMilliseconds()).padStart(3, '0');
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const seqStr = String(receiptSequenceCounter).padStart(4, '0');
+  return `REC-${dStr}-${timeStr}-CUS${customerNumber}-L${loanNumber || 1}-W${instalmentNumber}-${seqStr}-${rand}`;
+}
+
+// Current Logged-in Session User
+function getCurrentUser() {
+  try {
+    const session = localStorage.getItem(AUTH_KEY) || sessionStorage.getItem(AUTH_KEY);
+    if (session) {
+      const parsed = JSON.parse(session);
+      if (parsed && parsed.user) return parsed;
+    }
+  } catch (e) {}
+  return { user: 'Admin', role: 'Operator' };
+}
+
+// Immutable Transaction Ledger: Record Entry
+function recordTransaction(txnData) {
+  if (!state.transactions) state.transactions = [];
+  const id = `TXN-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+  const currentUser = getCurrentUser();
+  const txn = {
+    id,
+    ...txnData,
+    date: txnData.date || getISTDateString(),
+    timestamp: txnData.timestamp || getNowTimestamp(),
+    collector: txnData.collector || (currentUser ? currentUser.user : 'Admin'),
+    createdAt: new Date().toISOString()
+  };
+  state.transactions.unshift(txn);
+  if (state.transactions.length > 5000) {
+    state.transactions = state.transactions.slice(0, 5000);
+  }
+  try {
+    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(state.transactions));
+  } catch (e) {
+    console.warn('Error saving transaction to localStorage', e);
+  }
+  if (typeof syncTransactionToFirestore === 'function') {
+    syncTransactionToFirestore(txn);
+  }
+  return txn;
 }
 
 // Format Instalment Timestamp for Schedule Tooltip & Passbook
@@ -747,26 +878,47 @@ function modifyInstalment(customerId, instNumber, customAmount) {
   }
 
   const scheduledAmount = Number(customer.instalmentAmount) || 200;
-  const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = getISTDateString();
   const timestampStr = getNowTimestamp();
 
   if (customAmount !== undefined && customAmount !== null && !isNaN(customAmount) && Number(customAmount) > 0) {
-    const amt = Number(customAmount);
-    const existing = Number(inst.paidAmount) || 0;
-    const newTotal = existing + amt;
-    if (newTotal >= scheduledAmount) {
-      inst.status = 'Received';
-      inst.paidAmount = scheduledAmount;
-      inst.paidDate = todayStr;
-      inst.paidTimestamp = timestampStr;
-      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
-    } else {
-      inst.status = 'Partial';
-      inst.paidAmount = newTotal;
-      inst.paidDate = todayStr;
-      inst.paidTimestamp = timestampStr;
-      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}-P`;
+    let remainingSurplus = Number(customAmount);
+    let targetInstNum = instNumber;
+
+    while (remainingSurplus > 0 && targetInstNum <= totalInst) {
+      while (insts.length < targetInstNum) {
+        insts.push({ number: insts.length + 1, status: 'Pending', dueAmount: scheduledAmount, paidAmount: 0 });
+      }
+      const curInst = insts[targetInstNum - 1];
+      const existingPaid = (curInst.status === 'Received') ? scheduledAmount : (Number(curInst.paidAmount) || 0);
+      const needed = Math.max(0, scheduledAmount - existingPaid);
+
+      if (needed === 0) {
+        targetInstNum++;
+        continue;
+      }
+
+      if (remainingSurplus >= needed) {
+        curInst.status = 'Received';
+        curInst.paidAmount = scheduledAmount;
+        curInst.paidDate = todayStr;
+        curInst.paidTimestamp = timestampStr;
+        curInst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, targetInstNum);
+        remainingSurplus -= needed;
+        targetInstNum++;
+      } else {
+        curInst.status = 'Partial';
+        curInst.paidAmount = existingPaid + remainingSurplus;
+        curInst.paidDate = todayStr;
+        curInst.paidTimestamp = timestampStr;
+        curInst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, targetInstNum) + '-P';
+        remainingSurplus = 0;
+        break;
+      }
+    }
+
+    if (remainingSurplus > 0) {
+      showToast(`⚠️ All ${totalInst} instalments paid! Remaining surplus: ${formatMoney(remainingSurplus)}`, 4000);
     }
   } else {
     // 1-click toggle
@@ -781,13 +933,13 @@ function modifyInstalment(customerId, instNumber, customAmount) {
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
       inst.paidTimestamp = timestampStr;
-      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+      inst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, instNumber);
     } else {
       inst.status = 'Received';
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
       inst.paidTimestamp = timestampStr;
-      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+      inst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, instNumber);
     }
   }
 
@@ -853,6 +1005,17 @@ function loadData() {
     } else {
       state.customers = [];
     }
+
+    const savedTxns = localStorage.getItem(STORAGE_KEYS.TRANSACTIONS);
+    if (savedTxns) {
+      try {
+        state.transactions = JSON.parse(savedTxns) || [];
+      } catch (e) {
+        state.transactions = [];
+      }
+    } else {
+      state.transactions = [];
+    }
   } catch (err) {
     console.error('Error loading data from localStorage', err);
   }
@@ -863,6 +1026,7 @@ function saveDataLocallyOnly() {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(state.settings));
     localStorage.setItem(STORAGE_KEYS.SCHEMES, JSON.stringify(state.schemes));
     localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(state.customers));
+    localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(state.transactions || []));
     updateHeaderStats();
   } catch (err) {
     console.error('Error saving data to localStorage', err);
@@ -918,7 +1082,7 @@ function getCustomerStats(customer) {
       const nowMs = new Date().getTime();
       const diffDays = Math.floor((nowMs - startMs) / (1000 * 60 * 60 * 24));
       const isDaily = customer.frequency === 'Daily' || (customer.totalInstalments || 52) === 100;
-      const expectedInst = isDaily ? Math.max(0, diffDays + 1) : Math.max(0, Math.floor(diffDays / 7) + 1);
+      const expectedInst = isDaily ? Math.max(0, diffDays) : Math.max(0, Math.floor(diffDays / 7));
       const cappedExpected = Math.min(totalInst, expectedInst);
       if (cappedExpected - paidCount >= 2) {
         isOverdue = true;
@@ -929,12 +1093,13 @@ function getCustomerStats(customer) {
     }
   }
 
-  // Profit calculations
+  // Profit calculations (Proportional Accounting Invariant: principalRecovered + realizedProfit === totalPaid)
   const given = Number(customer.givenAmount) || 0;
   const expectedProfit = Math.max(0, totalPayable - given);
   const profitMarginRate = totalPayable > 0 ? (expectedProfit / totalPayable) : 0;
   const profitReturnPercent = given > 0 ? Math.round((expectedProfit / given) * 1000) / 10 : 0;
   const realizedProfit = Math.round(totalPaid * profitMarginRate);
+  const principalRecovered = Math.max(0, totalPaid - realizedProfit);
 
   return {
     paidCount,
@@ -946,10 +1111,12 @@ function getCustomerStats(customer) {
     progressPercent,
     expectedProfit,
     realizedProfit,
+    principalRecovered,
     profitReturnPercent,
     isCompleted,
     isOverdue,
     missedCount,
+    dueToDate: typeof cappedExpected !== 'undefined' ? cappedExpected : paidCount,
   };
 }
 
@@ -965,7 +1132,7 @@ function getPortfolioStats() {
   let totalExpectedProfit = 0;
   let totalRealizedProfit = 0;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getISTDateString();
 
   state.customers.forEach((cust) => {
     totalDisbursed += (cust.givenAmount || 0);
@@ -994,6 +1161,7 @@ function getPortfolioStats() {
 
   const recoveryPercent = totalPayable > 0 ? Math.round((totalCollected / totalPayable) * 100) : 0;
   const todayProfit = todayCollected > 0 && totalPayable > 0 ? Math.round(todayCollected * (totalExpectedProfit / totalPayable)) : 0;
+  const totalPrincipalRecovered = Math.max(0, totalCollected - totalRealizedProfit);
 
   return {
     totalCustomers: state.customers.length,
@@ -1006,6 +1174,7 @@ function getPortfolioStats() {
     todayCollected,
     totalExpectedProfit,
     totalRealizedProfit,
+    totalPrincipalRecovered,
     todayProfit,
     recoveryPercent,
   };
@@ -1126,30 +1295,34 @@ function renderRecentTransactions() {
   const searchQuery = (document.getElementById('recent-search-filter')?.value || '').toLowerCase().trim();
   const routeFilter = document.getElementById('recent-route-filter')?.value || 'all';
 
-  // Populate routes dropdown if empty
+  // Dynamically refresh route dropdown while preserving active selection
   const routeSelect = document.getElementById('recent-route-filter');
-  if (routeSelect && routeSelect.options.length <= 1) {
-    const uniqueRoutes = Array.from(new Set(state.customers.map(c => c.areaRoute).filter(Boolean)));
+  if (routeSelect) {
+    const currentVal = routeSelect.value || 'all';
+    const uniqueRoutes = Array.from(new Set(state.customers.map(c => c.areaRoute).filter(Boolean))).sort();
+    routeSelect.innerHTML = '<option value="all">📍 All Routes</option>';
     uniqueRoutes.forEach(route => {
       const opt = document.createElement('option');
       opt.value = route;
       opt.textContent = `📍 ${route}`;
       routeSelect.appendChild(opt);
     });
+    if (uniqueRoutes.includes(currentVal)) {
+      routeSelect.value = currentVal;
+    } else {
+      routeSelect.value = 'all';
+    }
   }
 
-  // Get current date benchmarks
+  // Get current date benchmarks in Indian Standard Time (IST)
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
-  
-  const weekAgo = new Date(now);
-  weekAgo.setDate(now.getDate() - 7);
-  const weekAgoStr = weekAgo.toISOString().split('T')[0];
-
-  const monthStartStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const todayStr = getISTDateString(now);
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const yesterdayStr = getISTDateString(yesterday);
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const weekAgoStr = getISTDateString(weekAgo);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthStartStr = getISTDateString(monthStart);
 
   let allPaid = [];
   state.customers.forEach((c) => {
@@ -1239,10 +1412,6 @@ function renderAnalytics() {
   let nextWeekProjected = 0;
 
   const routeMap = {};
-  const weekCollectionMap = {};
-  for (let w = 1; w <= 52; w++) {
-    weekCollectionMap[w] = 0;
-  }
 
   customers.forEach(c => {
     const stats = getCustomerStats(c);
@@ -1256,11 +1425,13 @@ function renderAnalytics() {
       completedLoansCount++;
     } else {
       activeLoansCount++;
-      nextWeekProjected += (c.instalmentAmount || 0);
+      const isDaily = c.frequency === 'Daily' || (c.totalInstalments || 52) === 100;
+      nextWeekProjected += isDaily ? ((c.instalmentAmount || 0) * 7) : (c.instalmentAmount || 0);
     }
 
-    const instCount = c.totalInstalments || 52;
-    totalDueWeeks += instCount;
+    // Velocity based on due instalments to date
+    const dueToDate = stats.dueToDate || stats.paidCount;
+    totalDueWeeks += dueToDate;
     totalPaidWeeks += stats.paidCount;
 
     // Route map
@@ -1271,23 +1442,13 @@ function renderAnalytics() {
     routeMap[route].count++;
     routeMap[route].disbursed += (c.givenAmount || 0);
     routeMap[route].collected += (stats.totalPaid || 0);
-
-    // Week collections map (both full and partial payments)
-    (c.instalments || []).forEach(inst => {
-      if (inst && (inst.status === 'Received' || inst.status === 'Partial')) {
-        const w = inst.number;
-        if (w >= 1 && w <= 52) {
-          weekCollectionMap[w] += (inst.paidAmount || (inst.status === 'Received' ? c.instalmentAmount : 0) || 0);
-        }
-      }
-    });
   });
 
-  // Rates
-  const principalRecovered = Math.min(totalDisbursed, totalCollected);
+  // Rates & Proportional Accounting Invariant: principalRecovered + totalRealizedProfit === totalCollected
+  const principalRecovered = Math.max(0, totalCollected - totalRealizedProfit);
   const recoveryRate = totalDisbursed > 0 ? Math.round((principalRecovered / totalDisbursed) * 100) : 0;
   const profitYield = totalDisbursed > 0 ? ((totalRealizedProfit / totalDisbursed) * 100).toFixed(1) : '0.0';
-  const collectionVelocity = totalDueWeeks > 0 ? Math.round((totalPaidWeeks / totalDueWeeks) * 100) : 0;
+  const collectionVelocity = totalDueWeeks > 0 ? Math.min(100, Math.round((totalPaidWeeks / totalDueWeeks) * 100)) : 100;
   const remainingOutlay = Math.max(0, totalDisbursed - principalRecovered);
 
   // Set Top KPI cards
@@ -1304,7 +1465,7 @@ function renderAnalytics() {
   const elVel = document.getElementById('ana-collection-rate');
   const elVelSub = document.getElementById('ana-velocity-sub');
   if (elVel) elVel.textContent = `${collectionVelocity}%`;
-  if (elVelSub) elVelSub.textContent = `${totalPaidWeeks} of ${totalDueWeeks} Weeks`;
+  if (elVelSub) elVelSub.textContent = `${totalPaidWeeks} of ${totalDueWeeks} Due Weeks`;
 
   const elProj = document.getElementById('ana-projected-week');
   if (elProj) elProj.textContent = formatMoney(nextWeekProjected);
@@ -1314,8 +1475,8 @@ function renderAnalytics() {
   const elMeterPct = document.getElementById('ana-meter-pct');
   if (elMeterPct) elMeterPct.textContent = `${meterPct}%`;
 
-  const prinPct = totalPayable > 0 ? Math.round((principalRecovered / totalPayable) * 100) : 0;
-  const profPct = totalPayable > 0 ? Math.round((totalRealizedProfit / totalPayable) * 100) : 0;
+  const prinPct = totalPayable > 0 ? ((principalRecovered / totalPayable) * 100) : 0;
+  const profPct = totalPayable > 0 ? ((totalRealizedProfit / totalPayable) * 100) : 0;
 
   const barPrin = document.getElementById('ana-bar-principal');
   const barProf = document.getElementById('ana-bar-profit');
@@ -1329,28 +1490,74 @@ function renderAnalytics() {
   if (elProfRec) elProfRec.textContent = formatMoney(totalRealizedProfit);
   if (elRem) elRem.textContent = formatMoney(remainingOutlay);
 
-  // Weekly Collection Bar Chart (Rendered with explicit pixel heights for rock-solid cross-device display)
+  // Calendar-Based Weekly Collection Bar Chart (8 Calendar Weeks ending Current Week)
+  const numWeeks = 8;
+  const now = new Date();
+  const dayOfWeek = (now.getDay() + 6) % 7; // Monday = 0
+  const currentMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
+
+  const calendarWeeks = [];
+  for (let i = numWeeks - 1; i >= 0; i--) {
+    const wStart = new Date(currentMonday.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+    const wEnd = new Date(wStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+    const startStr = getISTDateString(wStart);
+    const endStr = getISTDateString(wEnd);
+    const shortLabel = i === 0 ? 'This Wk' : (i === 1 ? 'Last Wk' : wStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }));
+    calendarWeeks.push({
+      startStr,
+      endStr,
+      label: shortLabel,
+      total: 0
+    });
+  }
+
+  // Populate collections across calendar weeks
+  if (state.transactions && state.transactions.length > 0) {
+    state.transactions.forEach(txn => {
+      const d = txn.date;
+      if (!d) return;
+      const bucket = calendarWeeks.find(cw => d >= cw.startStr && d <= cw.endStr);
+      if (bucket) {
+        if (txn.type === 'undo') {
+          bucket.total = Math.max(0, bucket.total - (Number(txn.amount) || 0));
+        } else {
+          bucket.total += (Number(txn.amount) || 0);
+        }
+      }
+    });
+  } else {
+    customers.forEach(c => {
+      (c.instalments || []).forEach(inst => {
+        if (inst && (inst.status === 'Received' || inst.status === 'Partial') && inst.paidDate) {
+          const d = inst.paidDate;
+          const amt = Number(inst.paidAmount) || (inst.status === 'Received' ? c.instalmentAmount : 0) || 0;
+          const bucket = calendarWeeks.find(cw => d >= cw.startStr && d <= cw.endStr);
+          if (bucket) {
+            bucket.total += amt;
+          }
+        }
+      });
+    });
+  }
+
   const chartEl = document.getElementById('ana-weekly-chart');
   if (chartEl) {
-    let maxVal = 1;
-    for (let w = 1; w <= 16; w++) {
-      if (weekCollectionMap[w] > maxVal) maxVal = weekCollectionMap[w];
-    }
+    const maxVal = Math.max(1, ...calendarWeeks.map(w => w.total));
     let chartHtml = '';
-    for (let w = 1; w <= 16; w++) {
-      const val = weekCollectionMap[w] || 0;
+    calendarWeeks.forEach(w => {
+      const val = w.total;
       const barHeightPx = val > 0 ? Math.max(10, Math.round((val / maxVal) * 128)) : 6;
-      const formattedVal = val > 0 ? (val >= 1000 ? (val >= 10000 ? (val/1000).toFixed(0)+'k' : (val/1000).toFixed(1)+'k') : val) : '';
+      const formattedVal = val > 0 ? (val >= 1000 ? (val >= 10000 ? (val / 1000).toFixed(0) + 'k' : (val / 1000).toFixed(1) + 'k') : val) : '';
       chartHtml += `
         <div style="flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:190px; gap:4px;">
           <div style="font-size:10px; font-weight:700; color:#2563eb; min-height:14px; line-height:14px; text-align:center; white-space:nowrap;">${formattedVal}</div>
           <div style="width:100%; height:135px; display:flex; align-items:flex-end; justify-content:center; background:#f8fafc; border-radius:6px; padding:2px 1px;">
-            <div style="width:100%; max-width:22px; height:${barHeightPx}px; background:${val > 0 ? 'linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%)' : '#e2e8f0'}; border-radius:4px 4px 0 0; box-shadow:${val > 0 ? '0 2px 6px rgba(37,99,235,0.25)' : 'none'}; cursor:pointer;" title="Week ${w}: ${formatMoney(val)}"></div>
+            <div style="width:100%; max-width:28px; height:${barHeightPx}px; background:${val > 0 ? 'linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%)' : '#e2e8f0'}; border-radius:4px 4px 0 0; box-shadow:${val > 0 ? '0 2px 6px rgba(37,99,235,0.25)' : 'none'}; cursor:pointer;" title="${w.label} (${w.startStr} to ${w.endStr}): ${formatMoney(val)}"></div>
           </div>
-          <div style="font-size:10px; color:#64748b; font-weight:600; min-height:14px; line-height:14px;">W${w}</div>
+          <div style="font-size:10px; color:#64748b; font-weight:600; min-height:14px; line-height:14px; text-align:center;">${w.label}</div>
         </div>
       `;
-    }
+    });
     chartEl.innerHTML = chartHtml;
   }
 
@@ -1813,60 +2020,150 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
     }
   }
 
-  const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
-  const timestampStr = getNowTimestamp();
   const scheduledAmount = Number(customer.instalmentAmount) || 200;
+  const todayStr = getISTDateString();
+  const timestampStr = getNowTimestamp();
 
   if (customAmount !== undefined && customAmount !== null && !isNaN(customAmount) && Number(customAmount) > 0) {
-    // Partial or custom amount payment received
-    const amountVal = Number(customAmount);
-    const existingPaid = Number(inst.paidAmount) || 0;
-    const newTotalPaid = existingPaid + amountVal;
+    let remainingSurplus = Number(customAmount);
+    let targetInstNum = instNumber;
+    let totalCollectedThisAction = 0;
 
-    if (newTotalPaid >= scheduledAmount) {
-      inst.status = 'Received';
-      inst.paidAmount = scheduledAmount;
-      inst.paidDate = todayStr;
-      inst.paidTimestamp = timestampStr;
-      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
-      playCashChime();
-      showToast(`✓ Received Full #${instNumber} (${formatMoney(scheduledAmount)}) for #${customer.customerNumber}`);
-    } else {
-      inst.status = 'Partial';
-      inst.paidAmount = newTotalPaid;
-      inst.paidDate = todayStr;
-      inst.paidTimestamp = timestampStr;
-      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}-P`;
-      playCashChime();
-      showToast(`½ Partial payment of ₹${amountVal} recorded for #${instNumber} (₹${scheduledAmount - newTotalPaid} due) for #${customer.customerNumber}`);
+    while (remainingSurplus > 0 && targetInstNum <= totalInst) {
+      while (customer.instalments.length < targetInstNum) {
+        customer.instalments.push({ number: customer.instalments.length + 1, status: 'Pending', dueAmount: scheduledAmount, paidAmount: 0 });
+      }
+      const curInst = customer.instalments[targetInstNum - 1];
+      const existingPaid = (curInst.status === 'Received') ? scheduledAmount : (Number(curInst.paidAmount) || 0);
+      const needed = Math.max(0, scheduledAmount - existingPaid);
+
+      if (needed === 0) {
+        targetInstNum++;
+        continue;
+      }
+
+      if (remainingSurplus >= needed) {
+        curInst.status = 'Received';
+        curInst.paidAmount = scheduledAmount;
+        curInst.paidDate = todayStr;
+        curInst.paidTimestamp = timestampStr;
+        curInst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, targetInstNum);
+        remainingSurplus -= needed;
+        totalCollectedThisAction += needed;
+
+        recordTransaction({
+          receiptNumber: curInst.receiptNumber,
+          customerId: customer.id,
+          customerNumber: customer.customerNumber,
+          loanNumber: customer.loanNumber || 1,
+          customerName: customer.fullName,
+          instalmentNumber: targetInstNum,
+          amount: needed,
+          type: 'payment',
+          date: todayStr,
+          timestamp: timestampStr
+        });
+        targetInstNum++;
+      } else {
+        curInst.status = 'Partial';
+        curInst.paidAmount = existingPaid + remainingSurplus;
+        curInst.paidDate = todayStr;
+        curInst.paidTimestamp = timestampStr;
+        curInst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, targetInstNum) + '-P';
+        totalCollectedThisAction += remainingSurplus;
+
+        recordTransaction({
+          receiptNumber: curInst.receiptNumber,
+          customerId: customer.id,
+          customerNumber: customer.customerNumber,
+          loanNumber: customer.loanNumber || 1,
+          customerName: customer.fullName,
+          instalmentNumber: targetInstNum,
+          amount: remainingSurplus,
+          type: 'partial',
+          date: todayStr,
+          timestamp: timestampStr
+        });
+        remainingSurplus = 0;
+        break;
+      }
+    }
+    playCashChime();
+    showToast(`✓ Received ${formatMoney(totalCollectedThisAction)} for #${customer.customerNumber}`);
+    if (remainingSurplus > 0) {
+      showToast(`⚠️ All ${totalInst} instalments paid! Remaining surplus: ${formatMoney(remainingSurplus)}`, 4000);
     }
   } else {
     // Standard 1-Click toggle
     if (inst.status === 'Received') {
-      // Undo
+      const amtToUndo = Number(inst.paidAmount) || scheduledAmount;
+      if (!confirm(`Are you sure you want to undo payment for ${unitLabel} #${instNumber} (${formatMoney(amtToUndo)})?\n\nThis will remove the received status and be logged in the audit ledger.`)) {
+        return;
+      }
+
+      recordTransaction({
+        receiptNumber: `UNDO-${inst.receiptNumber || 'LEGACY'}-${Date.now()}`,
+        previousReceipt: inst.receiptNumber,
+        customerId: customer.id,
+        customerNumber: customer.customerNumber,
+        loanNumber: customer.loanNumber || 1,
+        customerName: customer.fullName,
+        instalmentNumber: instNumber,
+        amount: amtToUndo,
+        type: 'undo',
+        date: todayStr,
+        timestamp: timestampStr
+      });
+
       inst.status = 'Pending';
       inst.paidDate = null;
       inst.paidTimestamp = null;
       inst.paidAmount = 0;
       inst.receiptNumber = null;
+      showToast(`↩️ Payment undone for ${unitLabel} #${instNumber} for #${customer.customerNumber}`);
     } else if (inst.status === 'Partial') {
-      // Clicking a partial instalment completes the remaining due balance
+      const needed = scheduledAmount - (Number(inst.paidAmount) || 0);
       inst.status = 'Received';
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
       inst.paidTimestamp = timestampStr;
-      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+      inst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, instNumber);
       playCashChime();
-      showToast(`✓ Completed remaining balance for #${instNumber} (${formatMoney(scheduledAmount)}) for #${customer.customerNumber}`);
+
+      recordTransaction({
+        receiptNumber: inst.receiptNumber,
+        customerId: customer.id,
+        customerNumber: customer.customerNumber,
+        loanNumber: customer.loanNumber || 1,
+        customerName: customer.fullName,
+        instalmentNumber: instNumber,
+        amount: needed,
+        type: 'payment',
+        date: todayStr,
+        timestamp: timestampStr
+      });
+      showToast(`✓ Completed remaining balance for #${instNumber} (${formatMoney(needed)}) for #${customer.customerNumber}`);
     } else {
-      // Mark Received full
       inst.status = 'Received';
       inst.paidDate = todayStr;
       inst.paidTimestamp = timestampStr;
       inst.paidAmount = scheduledAmount;
-      inst.receiptNumber = `REC-${customer.customerNumber}-${instNumber}`;
+      inst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, instNumber);
       playCashChime();
+
+      recordTransaction({
+        receiptNumber: inst.receiptNumber,
+        customerId: customer.id,
+        customerNumber: customer.customerNumber,
+        loanNumber: customer.loanNumber || 1,
+        customerName: customer.fullName,
+        instalmentNumber: instNumber,
+        amount: scheduledAmount,
+        type: 'payment',
+        date: todayStr,
+        timestamp: timestampStr
+      });
+      showToast(`✓ Received #${instNumber} (${formatMoney(scheduledAmount)}) for #${customer.customerNumber}`);
     }
   }
 
@@ -1905,7 +2202,12 @@ function handleQuickCustNumChange() {
   if (targetLoanNum !== null) {
     customer = matches.find((c) => (Number(c.loanNumber) || 1) === targetLoanNum);
   } else {
-    customer = matches[0];
+    // Pick the active loan with pending instalments
+    const activeLoan = matches.find(c => {
+      const stats = getCustomerStats(c);
+      return !stats.isCompleted;
+    });
+    customer = activeLoan || matches[0];
   }
 
   if (!customer) return;
@@ -1923,7 +2225,7 @@ function handleQuickCustNumChange() {
   }
 
   if (nextDueInst) {
-    const scheduled = Number(customer.instalmentAmount) || 200;
+    const scheduled = Number(customer.instalmentAmount) || 250;
     const paidSoFar = Number(nextDueInst.paidAmount) || 0;
     const remaining = Math.max(1, scheduled - paidSoFar);
     amountInput.value = remaining;
@@ -2221,7 +2523,7 @@ function updateCustomerModalProfitCalc() {
 // Bi-directional Auto Calculation: Margin % -> Instalment Amount
 function calculateFromMargin() {
   const given = Number(document.getElementById('cust-form-given')?.value) || 0;
-  const marginPct = Number(document.getElementById('cust-form-margin')?.value) || 4.0;
+  const marginPct = Number(document.getElementById('cust-form-margin')?.value) || 30.0;
   const instalments = Number(document.getElementById('cust-form-instalments')?.value) || 52;
   if (given > 0 && instalments > 0) {
     const repayable = Math.round(given * (1 + marginPct / 100));
@@ -2260,6 +2562,7 @@ function setInstalmentsPreset(count) {
   const freqInput = document.getElementById('cust-form-frequency');
   const amountLabel = document.getElementById('cust-form-amount-label');
   const freqHelp = document.getElementById('cust-form-freq-help');
+  const amountInput = document.getElementById('cust-form-amount');
 
   if (instInput) instInput.value = count;
 
@@ -2268,7 +2571,12 @@ function setInstalmentsPreset(count) {
   if (amountLabel) amountLabel.textContent = isDaily ? 'Instalment Amount (₹ / day):' : 'Instalment Amount (₹ / week):';
   if (freqHelp) freqHelp.textContent = isDaily ? 'Daily collection schedule (100 Days)' : `Weekly collection schedule (${count} Weeks)`;
 
-  calculateFromMargin();
+  const curAmt = Number(amountInput?.value) || 0;
+  if (curAmt > 0) {
+    calculateFromAmount();
+  } else {
+    calculateFromMargin();
+  }
 }
 
 // Multi-Loan Handling Mode Switcher
@@ -2401,10 +2709,10 @@ function openAddCustomerModal() {
   document.getElementById('cust-form-address').value = '';
   document.getElementById('cust-form-area').value = 'Main Area';
   document.getElementById('cust-form-given').value = state.settings.defaultGivenAmount || 10000;
-  document.getElementById('cust-form-margin').value = '4.0';
+  document.getElementById('cust-form-margin').value = '30.0';
   document.getElementById('cust-form-instalments').value = state.settings.defaultInstalments || 52;
-  document.getElementById('cust-form-amount').value = state.settings.defaultInstalmentAmount || 200;
-  document.getElementById('cust-form-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('cust-form-amount').value = state.settings.defaultInstalmentAmount || 250;
+  document.getElementById('cust-form-date').value = getISTDateString();
 
   const freqInput = document.getElementById('cust-form-frequency');
   const amountLabel = document.getElementById('cust-form-amount-label');
@@ -2438,7 +2746,7 @@ function openEditCustomerModal(customerId) {
   document.getElementById('cust-form-given').value = c.givenAmount;
   document.getElementById('cust-form-instalments').value = c.totalInstalments || 52;
   document.getElementById('cust-form-amount').value = c.instalmentAmount || 200;
-  document.getElementById('cust-form-date').value = c.startDate || new Date().toISOString().split('T')[0];
+  document.getElementById('cust-form-date').value = c.startDate || getISTDateString();
 
   const freqInput = document.getElementById('cust-form-frequency');
   const amountLabel = document.getElementById('cust-form-amount-label');
@@ -2460,21 +2768,45 @@ function handleSaveCustomer(event) {
 
   const id = document.getElementById('form-customer-id').value;
   const customerNumber = document.getElementById('cust-form-number').value.trim();
+  const rawCustNum = document.getElementById('cust-form-number')?.value.trim();
+  const rawFullName = document.getElementById('cust-form-name')?.value.trim();
+  const rawGiven = document.getElementById('cust-form-given')?.value.trim();
+  const rawInstCount = document.getElementById('cust-form-instalments')?.value.trim();
+  const rawInstAmt = document.getElementById('cust-form-amount')?.value.trim();
   const loanNumber = Number(document.getElementById('cust-form-loan-number')?.value) || 1;
-  const fullName = document.getElementById('cust-form-name').value.trim();
-  const phone = document.getElementById('cust-form-phone').value.trim();
-  const address = document.getElementById('cust-form-address').value.trim();
-  const areaRoute = document.getElementById('cust-form-area').value.trim();
-  const givenAmount = Number(document.getElementById('cust-form-given').value) || 10000;
-  const totalInstalments = Number(document.getElementById('cust-form-instalments').value) || 52;
-  const instalmentAmount = Number(document.getElementById('cust-form-amount').value) || 200;
-  const startDate = document.getElementById('cust-form-date').value;
-  const frequency = document.getElementById('cust-form-frequency')?.value || (totalInstalments === 100 ? 'Daily' : 'Weekly');
+  const phone = document.getElementById('cust-form-phone')?.value.trim() || '';
+  const address = document.getElementById('cust-form-address')?.value.trim() || '';
+  const areaRoute = document.getElementById('cust-form-area')?.value.trim() || 'Main Area';
+  const startDate = document.getElementById('cust-form-date')?.value || getISTDateString();
 
-  if (!fullName) {
+  // Strict Form Validation (Zero Silent Defaults)
+  if (!rawCustNum || isNaN(rawCustNum) || Number(rawCustNum) <= 0) {
+    alert('Please enter a valid Customer Number (e.g. 1, 2, 3...)');
+    return;
+  }
+  if (!rawFullName) {
     alert('Please enter Customer Full Name');
     return;
   }
+  if (!rawGiven || isNaN(rawGiven) || Number(rawGiven) <= 0) {
+    alert('Please enter a valid Disbursal Amount greater than 0');
+    return;
+  }
+  if (!rawInstCount || isNaN(rawInstCount) || Number(rawInstCount) <= 0) {
+    alert('Please enter valid Total Instalments (e.g. 52 or 20)');
+    return;
+  }
+  if (!rawInstAmt || isNaN(rawInstAmt) || Number(rawInstAmt) <= 0) {
+    alert('Please enter a valid Instalment Amount greater than 0');
+    return;
+  }
+
+  const customerNumber = rawCustNum;
+  const fullName = rawFullName;
+  const givenAmount = Number(rawGiven);
+  const totalInstalments = Number(rawInstCount);
+  const instalmentAmount = Number(rawInstAmt);
+  const frequency = document.getElementById('cust-form-frequency')?.value || (totalInstalments === 100 ? 'Daily' : 'Weekly');
 
   // Check duplicate customer number AND loan number combination
   const duplicate = state.customers.find((c) =>
@@ -2492,6 +2824,20 @@ function handleSaveCustomer(event) {
     // Edit existing loan
     const existing = state.customers.find((c) => c.id === id);
     if (existing) {
+      const existingInsts = existing.instalments || [];
+      let highestPaidNumber = 0;
+      existingInsts.forEach(i => {
+        if (i && (i.status === 'Received' || i.status === 'Partial')) {
+          highestPaidNumber = Math.max(highestPaidNumber, i.number);
+        }
+      });
+
+      // Invariant: Historical Record Revision Floor (Pitfall #10)
+      if (totalInstalments < highestPaidNumber) {
+        alert(`Cannot reduce term to ${totalInstalments} instalments. Customer has already paid up to instalment #${highestPaidNumber}!`);
+        return;
+      }
+
       existing.customerNumber = customerNumber;
       existing.loanNumber = loanNumber;
       existing.fullName = fullName;
@@ -2504,6 +2850,39 @@ function handleSaveCustomer(event) {
       existing.totalPayable = totalInstalments * instalmentAmount;
       existing.startDate = startDate;
       existing.frequency = frequency;
+
+      // Reschedule instalments: adjust count while preserving all paid history
+      if (totalInstalments < existingInsts.length) {
+        existing.instalments = existingInsts.slice(0, totalInstalments);
+      } else if (totalInstalments > existingInsts.length) {
+        for (let i = existingInsts.length + 1; i <= totalInstalments; i++) {
+          existing.instalments.push({
+            number: i,
+            dueAmount: instalmentAmount,
+            paidAmount: 0,
+            status: 'Pending',
+          });
+        }
+      }
+      // Update dueAmount on remaining pending instalments
+      existing.instalments.forEach(i => {
+        if (i.status === 'Pending') {
+          i.dueAmount = instalmentAmount;
+        }
+      });
+
+      // Synchronize shared contact details across all loans of this customer
+      state.customers.forEach(other => {
+        if (other.customerNumber.toString() === customerNumber.toString() && other.id !== existing.id) {
+          other.fullName = fullName;
+          other.phone = phone;
+          other.address = address;
+          other.areaRoute = areaRoute;
+          if (typeof syncCustomerToFirestore === 'function') {
+            syncCustomerToFirestore(other);
+          }
+        }
+      });
     }
   } else {
     // Create new customer or additional loan
@@ -2540,6 +2919,19 @@ function handleSaveCustomer(event) {
     if (loanNumber === 1) {
       state.settings.nextCustNumber = Math.max(state.settings.nextCustNumber || 1, Number(customerNumber) + 1);
     }
+
+    // Sync contact info to existing loans of this customer if creating L2/L3
+    state.customers.forEach(other => {
+      if (other.customerNumber.toString() === customerNumber.toString() && other.id !== newId) {
+        other.fullName = fullName;
+        other.phone = phone;
+        other.address = address;
+        other.areaRoute = areaRoute;
+        if (typeof syncCustomerToFirestore === 'function') {
+          syncCustomerToFirestore(other);
+        }
+      }
+    });
   }
 
   saveData();
@@ -2554,8 +2946,14 @@ function handleSaveCustomer(event) {
   showToast(`Customer #${customerNumber} (Loan #${loanNumber}) saved successfully!`);
 }
 
-// Delete Customer / Loan
+// Delete Customer / Loan (Restricted to Owner/Admin)
 function deleteCustomer(customerId) {
+  const currentUser = getCurrentUser();
+  if (currentUser.role === 'Collector') {
+    alert('Access Denied: Only Owner / Admin can delete loans.');
+    return;
+  }
+
   const c = state.customers.find((cust) => cust.id === customerId);
   if (!c) return;
 
@@ -2679,7 +3077,7 @@ function openCustomerPassbook(customerId) {
   const msg = encodeURIComponent(
     `*${state.settings.businessName}*\nCustomer: #${c.customerNumber}${loanSuffix} - ${c.fullName}\nPlan: ${isDaily ? '100-Day Daily Plan' : totalInst + '-Week Plan'}\nGiven Amount: ${formatMoney(c.givenAmount)}\nInstalment: ${formatMoney(c.instalmentAmount)} ${unitRate}\nInstalments Paid: ${stats.paidCount}/${totalInst}\nTotal Paid: ${formatMoney(stats.totalPaid)}\nBalance Remaining: ${formatMoney(stats.balance)}\nThank you!`
   );
-  shareBtn.onclick = () => window.open(`https://wa.me/${c.phone ? c.phone.replace(/[^0-9]/g, '') : ''}?text=${msg}`, '_blank');
+  shareBtn.onclick = () => window.open(`https://wa.me/${formatWhatsAppPhone(c.phone)}?text=${msg}`, '_blank');
 
   document.getElementById('modal-passbook').classList.add('active');
 }
@@ -3165,12 +3563,13 @@ function exportDataBackup() {
     settings: state.settings,
     schemes: state.schemes,
     customers: state.customers,
+    transactions: state.transactions || [],
   };
 
   const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportObject, null, 2));
   const downloadAnchor = document.createElement('a');
   downloadAnchor.setAttribute('href', dataStr);
-  downloadAnchor.setAttribute('download', `JSR_Finance_Backup_${new Date().toISOString().split('T')[0]}.json`);
+  downloadAnchor.setAttribute('download', `JSR_Finance_Backup_${getISTDateString()}.json`);
   document.body.appendChild(downloadAnchor);
   downloadAnchor.click();
   downloadAnchor.remove();
@@ -3182,16 +3581,30 @@ function importDataBackup(event) {
   if (!file) return;
 
   const reader = new FileReader();
-  reader.onload = function (e) {
+  reader.onload = async function (e) {
     try {
       const imported = JSON.parse(e.target.result);
       if (imported.customers && imported.settings) {
         state.settings = imported.settings;
         state.customers = imported.customers;
         if (imported.schemes) state.schemes = imported.schemes;
+        if (imported.transactions) state.transactions = imported.transactions;
         saveData();
+
+        // Push restored data to Cloud Firestore to prevent cloud snapshot overwrite
+        if (typeof syncCustomerToFirestore === 'function') {
+          for (const cust of state.customers) {
+            await syncCustomerToFirestore(cust);
+          }
+        }
+        if (typeof syncTransactionToFirestore === 'function' && Array.isArray(state.transactions)) {
+          for (const txn of state.transactions) {
+            await syncTransactionToFirestore(txn);
+          }
+        }
+
         initApp();
-        alert('Data backup successfully restored!');
+        alert('Data backup successfully restored and synced to cloud!');
       } else {
         alert('Invalid backup file format.');
       }
@@ -3235,7 +3648,7 @@ function exportCollectionSheetCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `JSR_Instalment_Sheet_${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `JSR_Instalment_Sheet_${getISTDateString()}.csv`;
   a.click();
 }
 
@@ -3366,12 +3779,21 @@ function loadSampleDemoData(confirmPrompt = true) {
 }
 
 function clearAllData() {
-  if (confirm('CAUTION: Are you sure you want to reset all data? This will clear all customers and instalments.')) {
+  const currentUser = getCurrentUser();
+  if (currentUser.role === 'Collector') {
+    alert('Access Denied: Only Owner / Admin can reset or clear system data.');
+    return;
+  }
+  const confirmPrompt = prompt('CRITICAL WARNING: This will permanently wipe all customer records and transactions!\n\nTo confirm, type RESET in all capital letters:');
+  if (confirmPrompt === 'RESET') {
     state.customers = [];
+    state.transactions = [];
     state.settings.nextCustNumber = 1;
     saveData();
     initApp();
     showToast('All customer data cleared.');
+  } else if (confirmPrompt !== null) {
+    alert('Reset cancelled. Confirmation text did not match.');
   }
 }
 
@@ -3401,7 +3823,7 @@ function renderRunSheet() {
   const searchInput = document.getElementById('runsheet-search-input');
   const selectedRoute = routeFilterSelect ? routeFilterSelect.value : 'all';
   const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getISTDateString();
 
   // Populate route filter options
   if (routeFilterSelect) {
@@ -3575,11 +3997,19 @@ function renderRunSheet() {
 // ----------------------------------------------------
 // WHATSAPP INTEGRATION (DUE REMINDER & INSTANT RECEIPT)
 // ----------------------------------------------------
+function formatWhatsAppPhone(rawPhone) {
+  if (!rawPhone) return '';
+  const digits = rawPhone.toString().replace(/\D/g, '');
+  if (digits.length === 10) return '91' + digits;
+  if (digits.length === 12 && digits.startsWith('91')) return digits;
+  return digits;
+}
+
 function sendWhatsAppDueReminder(customerId) {
   const c = state.customers.find((cust) => cust.id === customerId);
   if (!c) return;
 
-  const phone = c.phone ? c.phone.replace(/[^0-9]/g, '') : '';
+  const phone = formatWhatsAppPhone(c.phone);
   if (!phone) {
     alert(`No valid phone number found for ${c.fullName}.`);
     return;
@@ -3604,7 +4034,7 @@ This is a friendly reminder for your *${freqLabel} instalment*:
 Kindly keep the amount ready for collection. Thank you!
 — *${state.settings.businessName || 'JSR Finance'}*`;
 
-  const url = `https://wa.me/${phone.length === 10 ? '91' + phone : phone}?text=${encodeURIComponent(message)}`;
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   window.open(url, '_blank');
 }
 
@@ -3612,7 +4042,7 @@ function sendWhatsAppPaymentReceipt(customerId, paidAmount, instNumber) {
   const c = state.customers.find((cust) => cust.id === customerId);
   if (!c) return;
 
-  const phone = c.phone ? c.phone.replace(/[^0-9]/g, '') : '';
+  const phone = formatWhatsAppPhone(c.phone);
   if (!phone) {
     alert(`No valid phone number found for ${c.fullName}.`);
     return;
@@ -3624,6 +4054,9 @@ function sendWhatsAppPaymentReceipt(customerId, paidAmount, instNumber) {
   const todayStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   const loanSuffix = (c.loanNumber && c.loanNumber > 1) ? ` (Loan #${c.loanNumber})` : '';
 
+  const inst = (c.instalments || []).find((it) => it && it.number === instNumber);
+  const rcptNum = (inst && inst.receiptNumber) ? inst.receiptNumber : generateUniqueReceiptNumber(c.customerNumber, c.loanNumber || 1, instNumber || 1);
+
   const message =
 `*PAYMENT RECEIPT - ${state.settings.businessName || 'JSR Finance'}*
 ━━━━━━━━━━━━━━━━━━━━
@@ -3631,12 +4064,12 @@ function sendWhatsAppPaymentReceipt(customerId, paidAmount, instNumber) {
 • Customer: *${c.fullName}* (#${c.customerNumber}${loanSuffix})
 • Instalment: *#${instNumber || 1} of ${totalInst}*
 • Date: *${todayStr}*
-• Receipt #: *REC-${c.customerNumber}-${instNumber || 1}*
+• Receipt #: *${rcptNum}*
 • Remaining Balance: *${formatMoney(stats.balance)}*
 ━━━━━━━━━━━━━━━━━━━━
 Thank you for your prompt payment!`;
 
-  const url = `https://wa.me/${phone.length === 10 ? '91' + phone : phone}?text=${encodeURIComponent(message)}`;
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   window.open(url, '_blank');
 }
 
