@@ -129,6 +129,16 @@ async function syncSettingsToFirestore(settings) {
   }
 }
 
+// Sync transaction ledger entry to Google Cloud Firestore
+async function syncTransactionToFirestore(txn) {
+  if (!firestoreDb || !isCloudSyncActive || !txn || !txn.id) return;
+  try {
+    await firestoreDb.collection('transactions').doc(txn.id).set(txn);
+  } catch (err) {
+    console.error('Error saving transaction to Google Cloud Firestore:', err);
+  }
+}
+
 // Manual Save Custom Firebase Config from Settings UI
 function saveFirebaseConfigFromUI(configObj) {
   localStorage.setItem('jsr_firebase_custom_config', JSON.stringify(configObj));
