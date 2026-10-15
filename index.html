@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=23">
+  <link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body>
 
@@ -1093,14 +1093,15 @@
     </button>
   </nav>
 
-  <!-- Loans Breakdown Tooltip Popover -->
+  <!-- Loans Breakdown Tooltip Popover & Backdrop -->
+  <div id="loans-popover-backdrop" class="loans-popover-backdrop" style="display: none;" onclick="hideLoansTooltip()"></div>
   <div id="loans-tooltip-popover" class="loans-tooltip-popover" style="display: none;"></div>
 
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=23"></script>
-  <script src="firebase-sync.js?v=23"></script>
-  <script src="app.js?v=23"></script>
+  <script src="firebase-config.js?v=24"></script>
+  <script src="firebase-sync.js?v=24"></script>
+  <script src="app.js?v=24"></script>
 </body>
 </html>
