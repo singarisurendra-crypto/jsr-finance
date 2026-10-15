@@ -197,6 +197,7 @@ function toggleLoansTooltip(event, customerNumber) {
     event.stopPropagation();
   }
   const popover = document.getElementById('loans-tooltip-popover');
+  const backdrop = document.getElementById('loans-popover-backdrop');
   if (!popover) return;
 
   if (popover.dataset.openCust === customerNumber && popover.style.display === 'block') {
@@ -210,33 +211,36 @@ function toggleLoansTooltip(event, customerNumber) {
 
   let html = `
     <div class="loans-tooltip-header">
-      <span>💳 Loans for #${custGroup.customerNumber} - ${custGroup.fullName}</span>
-      <span style="cursor: pointer; font-size: 16px; color: #64748b;" onclick="hideLoansTooltip()">&times;</span>
+      <span style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 16px;">💳</span>
+        <span>Loans for #${custGroup.customerNumber} - ${custGroup.fullName}</span>
+      </span>
+      <button type="button" class="modal-close" style="font-size: 20px; line-height: 1; padding: 2px 8px; cursor: pointer;" onclick="hideLoansTooltip()">&times;</button>
     </div>
-    <div style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="display: flex; flex-direction: column; gap: 10px; max-height: 55dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 2px 2px 6px 2px;">
   `;
 
   custGroup.loans.forEach((loan, idx) => {
     const stats = getCustomerStats(loan);
     const isCurrent = loan.id === custGroup.activeLoan.id;
     const statusBadge = stats.isCompleted 
-      ? '<span style="color: #16a34a; font-weight: 700;">✓ Completed</span>'
-      : '<span style="color: #2563eb; font-weight: 700;">Active Loan</span>';
+      ? '<span style="color: #16a34a; font-weight: 700; font-size: 11.5px; background: #dcfce7; padding: 2px 7px; border-radius: 9999px;">✓ Completed</span>'
+      : '<span style="color: #2563eb; font-weight: 700; font-size: 11.5px; background: #eff6ff; padding: 2px 7px; border-radius: 9999px;">Active Loan</span>';
 
     html += `
       <div class="loans-tooltip-item ${isCurrent ? 'active' : ''}">
-        <div class="loans-tooltip-loan-title">
-          <span>Loan #${loan.loanNumber || (idx + 1)} (${loan.frequency || 'Weekly'})</span>
+        <div class="loans-tooltip-loan-title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <strong style="color: #0f172a; font-size: 13.5px;">Loan #${loan.loanNumber || (idx + 1)} (${loan.frequency || 'Weekly'})</strong>
           <span>${statusBadge}</span>
         </div>
-        <div class="loans-tooltip-stat">
+        <div class="loans-tooltip-stat" style="font-size: 12px; line-height: 1.6; color: #475569;">
           • <strong>Disbursed:</strong> ${formatMoney(loan.givenAmount)} (${formatMoney(loan.instalmentAmount)} / ${loan.frequency === 'Daily' ? 'day' : 'wk'})<br>
           • <strong>Instalments:</strong> ${stats.paidCount} of ${loan.totalInstalments || 52} Paid<br>
           • <strong>Balance:</strong> <span style="color: #b45309; font-weight: 700;">${formatMoney(stats.balance)}</span>
         </div>
-        <div style="margin-top: 6px; display: flex; justify-content: flex-end;">
-          <button type="button" class="btn btn-outline btn-sm" onclick="hideLoansTooltip(); openCustomerPassbook('${loan.id}')" style="font-size: 11px; padding: 2px 8px; color: #1e40af;">
-            Passbook ↗
+        <div style="margin-top: 8px; display: flex; justify-content: flex-end;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="hideLoansTooltip(); openCustomerPassbook('${loan.id}')" style="font-size: 11.5px; padding: 4px 10px; color: #1e40af; border-color: #bfdbfe; background: #eff6ff;">
+            View Passbook ↗
           </button>
         </div>
       </div>
@@ -245,8 +249,8 @@ function toggleLoansTooltip(event, customerNumber) {
 
   html += `
     </div>
-    <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #f1f5f9;">
-      <button type="button" class="btn btn-primary btn-sm" onclick="hideLoansTooltip(); openAddLoanForCustomer('${custGroup.customerNumber}')" style="width: 100%; font-size: 12px; padding: 6px 10px;">
+    <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+      <button type="button" class="btn btn-primary" onclick="hideLoansTooltip(); openAddLoanForCustomer('${custGroup.customerNumber}')" style="width: 100%; font-size: 13px; padding: 10px 14px; font-weight: 700; justify-content: center;">
         + Issue Additional Loan
       </button>
     </div>
@@ -254,18 +258,52 @@ function toggleLoansTooltip(event, customerNumber) {
   popover.innerHTML = html;
   popover.dataset.openCust = customerNumber;
   popover.style.display = 'block';
+  if (backdrop) backdrop.style.display = 'block';
+  document.body.classList.add('modal-open');
 
-  // Position relative to click target
-  const rect = event.currentTarget ? event.currentTarget.getBoundingClientRect() : event.target.getBoundingClientRect();
-  popover.style.top = `${rect.bottom + window.scrollY + 6}px`;
-  popover.style.left = `${Math.min(window.innerWidth - 350, Math.max(10, rect.left + window.scrollX - 40))}px`;
+  const isMobile = window.innerWidth <= 768;
+  if (!isMobile) {
+    const btn = event.currentTarget || event.target;
+    const rect = btn.getBoundingClientRect();
+    const popoverWidth = 360;
+    const popoverHeight = 350;
+
+    let top = rect.bottom + 8;
+    if (top + popoverHeight > window.innerHeight && rect.top > popoverHeight) {
+      top = rect.top - popoverHeight - 8;
+    }
+    top = Math.max(12, Math.min(window.innerHeight - popoverHeight - 12, top));
+
+    let left = rect.left - 20;
+    if (left + popoverWidth > window.innerWidth - 16) {
+      left = window.innerWidth - popoverWidth - 16;
+    }
+    left = Math.max(16, left);
+
+    popover.style.top = `${top}px`;
+    popover.style.left = `${left}px`;
+    popover.style.right = 'auto';
+    popover.style.bottom = 'auto';
+  } else {
+    popover.style.top = '';
+    popover.style.left = '';
+    popover.style.right = '';
+    popover.style.bottom = '';
+  }
 }
 
 function hideLoansTooltip() {
   const popover = document.getElementById('loans-tooltip-popover');
+  const backdrop = document.getElementById('loans-popover-backdrop');
   if (popover) {
     popover.style.display = 'none';
     popover.dataset.openCust = '';
+  }
+  if (backdrop) {
+    backdrop.style.display = 'none';
+  }
+  if (!document.querySelector('.modal-overlay.active')) {
+    document.body.classList.remove('modal-open');
   }
 }
 
@@ -276,6 +314,19 @@ document.addEventListener('click', (e) => {
     if (!popover.contains(e.target) && !e.target.closest('.loans-badge')) {
       hideLoansTooltip();
     }
+  }
+  if (e.target && e.target.classList && e.target.classList.contains('modal-overlay')) {
+    closeModal(e.target.id);
+  }
+});
+
+// Escape key to close any active modal or popover
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    hideLoansTooltip();
+    document.querySelectorAll('.modal-overlay.active').forEach(m => {
+      closeModal(m.id);
+    });
   }
 });
 
@@ -443,7 +494,7 @@ function checkAndPromptUnsaved(targetCustomerId, onProceed) {
     onProceed
   };
 
-  if (modal) modal.classList.add('active');
+  openModal('modal-unsaved-prompt');
 }
 
 function handleUnsavedPromptSave() {
@@ -2715,7 +2766,7 @@ function openAddCustomerModal() {
   if (freqHelp) freqHelp.textContent = 'Weekly collection schedule';
 
   calculateFromMargin();
-  document.getElementById('modal-customer').classList.add('active');
+  openModal('modal-customer');
 }
 
 // Open Edit Customer Modal
@@ -2752,7 +2803,7 @@ function openEditCustomerModal(customerId) {
   if (wrap) wrap.style.display = 'none';
 
   calculateFromAmount();
-  document.getElementById('modal-customer').classList.add('active');
+  openModal('modal-customer');
 }
 
 // Save Customer (Create or Update with Multi-Loan & Frequency support)
@@ -3071,7 +3122,7 @@ function openCustomerPassbook(customerId) {
   );
   shareBtn.onclick = () => window.open(`https://wa.me/${formatWhatsAppPhone(c.phone)}?text=${msg}`, '_blank');
 
-  document.getElementById('modal-passbook').classList.add('active');
+  openModal('modal-passbook');
 }
 
 // ----------------------------------------------------
@@ -3790,8 +3841,24 @@ function clearAllData() {
 }
 
 // UI Helpers: Modals & Toasts
+function openModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.add('active');
+    document.body.classList.add('modal-open');
+    const body = modal.querySelector('.modal-body');
+    if (body) body.scrollTop = 0;
+  }
+}
+
 function closeModal(modalId) {
-  document.getElementById(modalId).classList.remove('active');
+  const modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.remove('active');
+  }
+  if (!document.querySelector('.modal-overlay.active') && !document.getElementById('loans-tooltip-popover')?.dataset?.openCust) {
+    document.body.classList.remove('modal-open');
+  }
 }
 
 function showToast(message) {
@@ -4088,7 +4155,7 @@ function openPartialPayModal(customerId, instNumber) {
   amountInput.value = remaining;
   amountInput.max = remaining;
 
-  document.getElementById('modal-partial-pay').classList.add('active');
+  openModal('modal-partial-pay');
   setTimeout(() => amountInput.focus(), 150);
 }
 
@@ -4116,7 +4183,7 @@ function openCashTallyModal() {
   if (ledgerEl) ledgerEl.textContent = formatMoney(stats.todayCollected);
 
   updateCashTallyCalc();
-  document.getElementById('modal-cash-tally').classList.add('active');
+  openModal('modal-cash-tally');
 }
 
 function updateCashTallyCalc() {
