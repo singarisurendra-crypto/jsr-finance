@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=20">
+  <link rel="stylesheet" href="styles.css?v=23">
 </head>
 <body>
 
@@ -151,14 +151,6 @@
       <button class="stat-pill" onclick="openCashTallyModal()" style="cursor: pointer; background: #fffbeb; border-color: #fde68a;" title="End-of-day Cash Tally & Handover Slip">
         <span>💵 Cash Tally:</span>
         <strong style="color: #b45309;">Count Notes ↵</strong>
-      </button>
-      <button class="stat-pill btn-header-logout" onclick="handleLogout()" style="cursor: pointer; background: #fef2f2; border-color: #fecaca; color: #dc2626; display: inline-flex; align-items: center; gap: 6px;" title="Sign out of operator session">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #dc2626;">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/>
-          <line x1="21" y1="12" x2="9" y2="12"/>
-        </svg>
-        <strong style="color: #dc2626;">Logout</strong>
       </button>
     </div>
   </header>
@@ -822,7 +814,7 @@
               <input type="number" id="cust-form-given" class="form-control" value="10000" required style="width: 100%;" oninput="calculateFromMargin()">
             </div>
 
-            <input type="hidden" id="cust-form-margin" value="30.0">
+            <input type="hidden" id="cust-form-margin" value="4.0">
 
             <div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -838,7 +830,7 @@
 
             <div>
               <label class="form-label" id="cust-form-amount-label">Instalment Amount (₹ / week):</label>
-              <input type="number" id="cust-form-amount" class="form-control" value="250" required style="width: 100%;" oninput="calculateFromAmount()">
+              <input type="number" id="cust-form-amount" class="form-control" value="200" required style="width: 100%;" oninput="calculateFromAmount()">
               <input type="hidden" id="cust-form-frequency" value="Weekly">
               <div class="form-help" id="cust-form-freq-help">Weekly collection schedule</div>
             </div>
@@ -848,17 +840,17 @@
               <input type="date" id="cust-form-date" class="form-control" required style="width: 100%;">
             </div>
 
-            <!-- Simple Clear Loan Summary (30% Fixed Margin) -->
+            <!-- Simple Clear Loan Summary (4% Fixed Margin) -->
             <div class="form-full" style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 12px 16px; margin-top: 4px;">
               <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div>
-                  <span style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700;">Total to Collect (30% Margin):</span><br>
-                  <strong id="cust-form-calc-repayable" style="color: #15803d; font-size: 17px;">₹ 13,000</strong>
+                  <span style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700;">Total to Collect (4% Margin):</span><br>
+                  <strong id="cust-form-calc-repayable" style="color: #15803d; font-size: 17px;">₹ 10,400</strong>
                 </div>
                 <div>
                   <span style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700;">Profit:</span><br>
-                  <strong id="cust-form-calc-profit" style="color: #7c3aed; font-size: 17px;">+ ₹ 3,000</strong>
-                  <span id="cust-form-calc-profit-pct" style="display: none;">30.0%</span>
+                  <strong id="cust-form-calc-profit" style="color: #7c3aed; font-size: 17px;">+ ₹ 400</strong>
+                  <span id="cust-form-calc-profit-pct" style="display: none;">4.0%</span>
                 </div>
               </div>
             </div>
@@ -1107,8 +1099,8 @@
   <!-- Google Cloud / Firebase SDKs (Loaded via official Google CDN - Zero local installations!) -->
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=22"></script>
-  <script src="firebase-sync.js?v=22"></script>
-  <script src="app.js?v=22"></script>
+  <script src="firebase-config.js?v=23"></script>
+  <script src="firebase-sync.js?v=23"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>
