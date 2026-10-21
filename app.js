@@ -1000,20 +1000,88 @@ function handleInstalmentClick(customerId, instNumber, event) {
   const customer = state.customers.find(c => c.id === customerId);
   if (!customer) return;
 
-  const pending = state.pendingModifications && state.pendingModifications[customerId];
-  const insts = pending ? pending.modifiedInstalments : (customer.instalments || []);
-  const inst = insts[instNumber - 1];
+  const totalInst = customer.totalInstalments || 52;
+  const unitLabel = (customer.frequency === 'Daily' || totalInst === 100) ? 'Day' : 'Week';
 
-  // Accidental Tap / Undo Protection:
-  if (inst && inst.status === 'Received') {
-    const totalInst = customer.totalInstalments || 52;
-    const unitLabel = (customer.frequency === 'Daily' || totalInst === 100) ? 'Day' : 'Week';
-    const amt = inst.paidAmount || customer.instalmentAmount || 200;
-    if (!confirm(`Are you sure you want to undo payment for ${unitLabel} #${instNumber} (${formatMoney(amt)})?\n\nThis will remove the received status and be logged in the audit ledger.`)) {
-      return;
+  // Ensure customer.instalments exists
+  if (!customer.instalments) {
+    customer.instalments = [];
+    for (let i = 1; i <= totalInst; i++) {
+      customer.instalments.push({ number: i, status: 'Pending', dueAmount: customer.instalmentAmount, paidAmount: 0 });
     }
   }
 
+  const custInst = customer.instalments[instNumber - 1];
+  const isAlreadyCommitted = custInst && (custInst.status === 'Received' || custInst.status === 'Partial');
+
+  // Case 1: The instalment is already committed/saved in customer.instalments -> Handle UNDO immediately
+  if (isAlreadyCommitted) {
+    // 1. Strict Reverse Sequential Validation: only the highest paid instalment can be undone first
+    let lastPaidNumber = 0;
+    for (let i = totalInst; i >= 1; i--) {
+      const itm = customer.instalments[i - 1];
+      if (itm && (itm.status === 'Received' || itm.status === 'Partial')) {
+        lastPaidNumber = i;
+        break;
+      }
+    }
+
+    if (lastPaidNumber > 0 && instNumber !== lastPaidNumber) {
+      showToast(`⚠️ Out of sequence: Please undo ${unitLabel} #${lastPaidNumber} first before undoing #${instNumber}.`, 4000);
+      return;
+    }
+
+    // 2. Confirmation prompt
+    const scheduledAmount = Number(customer.instalmentAmount) || 200;
+    const amtToUndo = Number(custInst.paidAmount) || scheduledAmount;
+    if (!confirm(`Are you sure you want to undo payment for ${unitLabel} #${instNumber} (${formatMoney(amtToUndo)})?\n\nThis will remove the received status and be logged in the audit ledger.`)) {
+      return;
+    }
+
+    // 3. Clear any pending modifications on this customer to prevent desync
+    if (state.pendingModifications && state.pendingModifications[customerId]) {
+      delete state.pendingModifications[customerId];
+    }
+
+    // 4. Record the undo transaction in the immutable audit ledger
+    const prevReceipt = custInst.receiptNumber || '';
+    recordTransaction({
+      receiptNumber: `UNDO-${prevReceipt || 'LEGACY'}-${Date.now()}`,
+      previousReceipt: prevReceipt,
+      customerId: customer.id,
+      customerNumber: customer.customerNumber,
+      loanNumber: customer.loanNumber || 1,
+      customerName: customer.fullName,
+      instalmentNumber: instNumber,
+      amount: amtToUndo,
+      type: 'undo',
+      date: getISTDateString(),
+      timestamp: getNowTimestamp()
+    });
+
+    // 5. Reset instalment status
+    custInst.status = 'Pending';
+    custInst.paidDate = null;
+    custInst.paidTimestamp = null;
+    custInst.paidAmount = 0;
+    custInst.receiptNumber = null;
+
+    // 6. Persist to storage & Firestore
+    saveData();
+    if (typeof syncCustomerToFirestore === 'function') {
+      syncCustomerToFirestore(customer);
+    }
+
+    // 7. Feedback and UI refresh
+    playCashChime();
+    showToast(`↩️ Payment undone for ${unitLabel} #${instNumber} for #${customer.customerNumber}`);
+    renderCollectionMatrix();
+    if (state.activeTab === 'summary') renderDashboard();
+    updateHeaderStats();
+    return;
+  }
+
+  // Case 2: Paying the next pending instalment or untoggling an uncommitted checkbox
   checkAndPromptUnsaved(customerId, () => {
     modifyInstalment(customerId, instNumber);
   });
@@ -1707,14 +1775,16 @@ function renderRecentTransactions() {
   const monthStartStr = getISTDateString(monthStart);
 
   let allItems = [];
+  const recordedKeys = new Set();
+
   if (state.transactions && state.transactions.length > 0) {
     // Primary path: Use comprehensive transaction audit ledger (preserves all payments & undos)
-    allItems = state.transactions.map((t) => {
-      const cust = state.customers.find(c => c.id === t.customerId || c.customerNumber.toString() === (t.customerNumber || '').toString());
-      return {
+    state.transactions.forEach((t) => {
+      const cust = state.customers.find(c => c.id === t.customerId || (c.customerNumber && c.customerNumber.toString() === (t.customerNumber || '').toString()));
+      allItems.push({
         customerId: t.customerId,
-        customerNumber: t.customerNumber,
-        loanNumber: t.loanNumber || 1,
+        customerNumber: t.customerNumber || (cust ? cust.customerNumber : ''),
+        loanNumber: t.loanNumber || (cust ? cust.loanNumber : 1) || 1,
         customerName: t.customerName || (cust ? cust.fullName : 'Customer'),
         areaRoute: (cust && cust.areaRoute) ? cust.areaRoute : 'General',
         instNumber: t.instalmentNumber,
@@ -1725,13 +1795,17 @@ function renderRecentTransactions() {
         type: t.type || 'payment',
         collector: t.collector || 'Admin',
         status: t.type === 'undo' ? 'Undo' : (t.type === 'partial' ? 'Partial' : 'Received')
-      };
+      });
+      recordedKeys.add(`${t.customerId || (cust ? cust.id : '')}_${t.instalmentNumber}`);
     });
-  } else {
-    // Fallback path: extract from active customer instalments
-    state.customers.forEach((c) => {
-      (c.instalments || []).forEach((inst) => {
-        if (inst && (inst.status === 'Received' || inst.status === 'Partial')) {
+  }
+
+  // Also include any active customer instalments not yet recorded in transactions (e.g. legacy/imported data)
+  state.customers.forEach((c) => {
+    (c.instalments || []).forEach((inst) => {
+      if (inst && (inst.status === 'Received' || inst.status === 'Partial')) {
+        const key = `${c.id}_${inst.number}`;
+        if (!recordedKeys.has(key)) {
           allItems.push({
             customerId: c.id,
             customerNumber: c.customerNumber,
@@ -1748,9 +1822,9 @@ function renderRecentTransactions() {
             status: inst.status,
           });
         }
-      });
+      }
     });
-  }
+  });
 
   // Apply filters
   const filtered = allItems.filter(item => {
@@ -1768,8 +1842,8 @@ function renderRecentTransactions() {
 
     // Search filter
     if (searchQuery) {
-      const matchNum = item.customerNumber.toString().includes(searchQuery);
-      const matchName = item.customerName.toLowerCase().includes(searchQuery);
+      const matchNum = (item.customerNumber || '').toString().includes(searchQuery);
+      const matchName = (item.customerName || '').toLowerCase().includes(searchQuery);
       if (!matchNum && !matchName) return false;
     }
 
@@ -5144,6 +5218,9 @@ function setupEventListeners() {
   });
 
   // Recent Received Instalments Feed interactive filters
+  const recentType = document.getElementById('recent-type-filter');
+  if (recentType) recentType.addEventListener('change', renderRecentTransactions);
+
   const recentDate = document.getElementById('recent-date-filter');
   if (recentDate) recentDate.addEventListener('change', renderRecentTransactions);
 
