@@ -2437,13 +2437,19 @@ function renderCollectionMatrix() {
         const isPartial = sqInst.status === 'Partial';
         let btnClass = 'is-pending';
         let btnIcon = '';
+        let instTitle = `${unitLabel} #${sq}: ${sqInst.status}. Tap to toggle.`;
 
         if (isReceived) {
           btnClass = 'is-paid';
           btnIcon = '✓';
+          instTitle = `${unitLabel} #${sq}: Received (${formatMoney(sqInst.paidAmount || cust.instalmentAmount)}). Tap to undo.`;
         } else if (isPartial) {
           btnClass = 'is-partial';
-          btnIcon = '-';
+          const pAmt = Number(sqInst.paidAmount) || 0;
+          btnIcon = `<span class="sched-partial-amt"><span class="sched-partial-currency">₹</span>${pAmt}</span>`;
+          instTitle = `${unitLabel} #${sq}: Partial Paid ${formatMoney(pAmt)} of ${formatMoney(cust.instalmentAmount)}. Tap to complete or undo.`;
+        } else {
+          instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)}). Tap to receive.`;
         }
 
         gridCellsHtml += `
@@ -2452,7 +2458,7 @@ function renderCollectionMatrix() {
             <button type="button" 
                     class="sched-box-btn ${btnClass}" 
                     onclick="handleInstalmentClick('${cust.id}', ${sq}, event)" 
-                    title="${unitLabel} #${sq}: ${sqInst.status}. Tap to toggle.">
+                    title="${instTitle}">
               ${btnIcon}
             </button>
           </div>
