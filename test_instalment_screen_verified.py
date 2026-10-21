@@ -346,42 +346,37 @@ def main():
             results.collHiddenOnAna = collView && (!collView.classList.contains('active') || getComputedStyle(collView).display === 'none');
 
             // 4. Switch back to collections to test User Flow:
-            // Customer 1 pays up to instalment 22, then user un-checks instalment 22
+            // Use an isolated temporary test customer to prevent mutating production data
             switchTab('collections');
-            const cust1 = state.customers[0];
-            cust1.totalInstalments = 52;
-            // Ensure instalments 1..21 are received
-            cust1.instalments = cust1.instalments || [];
+            const testCustId = 'TEST-ISOLATED-AUTOMATION-CUST';
+            const testInsts = [];
             for (let i = 1; i <= 21; i++) {
-                if (!cust1.instalments[i - 1]) {
-                    cust1.instalments.push({ number: i, status: 'Received', dueAmount: 200, paidAmount: 200, paidDate: getISTDateString() });
-                } else {
-                    cust1.instalments[i - 1].status = 'Received';
-                    cust1.instalments[i - 1].paidAmount = 200;
-                }
+                testInsts.push({ number: i, status: 'Received', dueAmount: 200, paidAmount: 200, receiptNumber: `REC-TEST-${i}`, paidDate: getISTDateString() });
             }
-            // Mark instalment 22 as received and saved
-            if (!cust1.instalments[21]) {
-                cust1.instalments.push({ number: 22, status: 'Received', dueAmount: 200, paidAmount: 200, receiptNumber: 'REC-TEST-22', paidDate: getISTDateString() });
-            } else {
-                cust1.instalments[21].status = 'Received';
-                cust1.instalments[21].paidAmount = 200;
-                cust1.instalments[21].receiptNumber = 'REC-TEST-22';
+            testInsts.push({ number: 22, status: 'Received', dueAmount: 200, paidAmount: 200, receiptNumber: 'REC-TEST-22', paidDate: getISTDateString() });
+            for (let i = 23; i <= 52; i++) {
+                testInsts.push({ number: i, status: 'Pending', dueAmount: 200, paidAmount: 0 });
             }
-            // Ensure instalments 23 to 52 are pending so 22 is the highest paid
-            for (let i = 23; i <= (cust1.totalInstalments || 52); i++) {
-                if (cust1.instalments[i - 1]) {
-                    cust1.instalments[i - 1].status = 'Pending';
-                    cust1.instalments[i - 1].paidAmount = 0;
-                }
-            }
-            saveData();
+            const testCust = {
+                id: testCustId,
+                customerNumber: '9999',
+                loanNumber: 1,
+                fullName: 'Test Automation Customer',
+                instalmentAmount: 200,
+                totalInstalments: 52,
+                totalPayable: 10400,
+                givenAmount: 10000,
+                areaRoute: 'Test Route',
+                instalments: testInsts,
+                status: 'Active'
+            };
+            state.customers.push(testCust);
             renderCollectionMatrix();
 
-            // Check Customer 1 instalment 22 status
-            results.debugCust1Id = cust1.id;
-            results.foundCust = !!state.customers.find(c => c.id === cust1.id);
-            const foundCust = state.customers.find(c => c.id === cust1.id);
+            // Check Test Customer instalment 22 status
+            results.debugCust1Id = testCust.id;
+            results.foundCust = !!state.customers.find(c => c.id === testCust.id);
+            const foundCust = state.customers.find(c => c.id === testCust.id);
             results.beforeClickInst22 = JSON.stringify(foundCust.instalments[21]);
 
             results.totalInst = foundCust.totalInstalments;
@@ -399,7 +394,7 @@ def main():
             // Simulate user clicking on Instalment 22 to un-check it
             window.confirm = () => true; // Automatically confirm the modal popup
             try {
-                handleInstalmentClick(cust1.id, 22);
+                handleInstalmentClick(testCust.id, 22);
             } catch(e) {
                 results.clickError = e.message + " " + e.stack;
             }
@@ -408,7 +403,7 @@ def main():
             results.inst22StatusAfterUndo = foundCust.instalments[21].status; // Expect 'Pending'
 
             // Check if transaction was logged
-            const undoTxn = (state.transactions || []).find(t => t.type === 'undo' && t.instalmentNumber === 22);
+            const undoTxn = (state.transactions || []).find(t => t.type === 'undo' && t.customerId === testCustId && t.instalmentNumber === 22);
             results.hasUndoTxn = !!undoTxn;
             results.undoTxnAmount = undoTxn ? undoTxn.amount : 0;
 
@@ -436,7 +431,7 @@ def main():
             results.hasSummaryLoanFilter = !!summaryLoanEl;
             results.hasRecentLoanFilter = !!recentLoanEl;
 
-            // Test filtering by Loan #2 (Customer 1 in test is L2)
+            // Test filtering by Loan #2
             if (summaryLoanEl) {
                 handleSummaryLoanFilterChange('2');
                 results.recentLoanSyncedVal = recentLoanEl ? recentLoanEl.value : '';
@@ -447,6 +442,10 @@ def main():
             if (summaryLoanEl) {
                 handleSummaryLoanFilterChange('all');
             }
+
+            // Cleanup isolated test customer and test transaction
+            state.customers = state.customers.filter(c => c.id !== testCustId);
+            state.transactions = (state.transactions || []).filter(t => t.customerId !== testCustId);
 
             // Switch back to collections for screenshot
             switchTab('collections');
