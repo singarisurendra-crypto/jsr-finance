@@ -431,50 +431,75 @@ function verifyAndLoginGoogleUser(email, name) {
   const errorAlert = document.getElementById('login-error-alert');
   const normalizedEmail = (email || '').trim().toLowerCase();
 
-  // Strict Whitelist Authorization Gate (Preset whitelist + Configured operator list)
+  function grantAccess() {
+    const sessionData = {
+      user: name || normalizedEmail,
+      email: normalizedEmail,
+      role: 'Admin',
+      provider: 'Google SSO',
+      loginTime: new Date().toISOString()
+    };
+    localStorage.setItem(AUTH_KEY, JSON.stringify(sessionData));
+    
+    const loginOverlay = document.getElementById('view-login');
+    if (loginOverlay) {
+      loginOverlay.style.opacity = '0';
+      loginOverlay.style.transition = 'opacity 0.25s ease';
+      setTimeout(() => {
+        loginOverlay.style.display = 'none';
+        loginOverlay.style.opacity = '1';
+      }, 250);
+    }
+    playCashChime();
+    showToast(`✓ Whitelist Verified! Welcome, ${name || normalizedEmail}`);
+  }
+
+  function showDenied() {
+    if (errorAlert) {
+      errorAlert.innerHTML = `
+        <div style="text-align: left; line-height: 1.5;">
+          <strong>🚫 Access Denied (HTTP 403 Forbidden)</strong><br>
+          <span style="font-size: 12px;">Account <code>${normalizedEmail}</code> is not authorized on the operator whitelist. Contact your administrator to grant access in Settings.</span>
+        </div>
+      `;
+      errorAlert.style.display = 'flex';
+    }
+  }
+
+  // 1. Check local in-memory whitelist
   const dynamicEmails = (state && state.settings && state.settings.operatorWhitelist)
     ? state.settings.operatorWhitelist.split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
     : [];
   const fullWhitelist = [...AUTHORIZED_OPERATOR_WHITELIST.map(e => e.toLowerCase()), ...dynamicEmails];
 
-  const isAuthorized = fullWhitelist.some(allowed => 
-    normalizedEmail === allowed || normalizedEmail.endsWith('@jsrfinance.com')
-  );
-
-  if (!isAuthorized) {
-    if (errorAlert) {
-      errorAlert.innerHTML = `
-        <div style="text-align: left; line-height: 1.5;">
-          <strong>🚫 Access Denied (HTTP 403 Forbidden)</strong><br>
-          <span style="font-size: 12px;">Account <code>${normalizedEmail}</code> is not authorized on the operator whitelist. Contact your administrator to grant access.</span>
-        </div>
-      `;
-      errorAlert.style.display = 'flex';
-    }
+  if (fullWhitelist.some(allowed => normalizedEmail === allowed || normalizedEmail.endsWith('@jsrfinance.com'))) {
+    grantAccess();
     return;
   }
 
-  // Grant session
-  const sessionData = {
-    user: name || normalizedEmail,
-    email: normalizedEmail,
-    role: 'Admin',
-    provider: 'Google GIS',
-    loginTime: new Date().toISOString()
-  };
-  localStorage.setItem(AUTH_KEY, JSON.stringify(sessionData));
-  
-  const loginOverlay = document.getElementById('view-login');
-  if (loginOverlay) {
-    loginOverlay.style.opacity = '0';
-    loginOverlay.style.transition = 'opacity 0.25s ease';
-    setTimeout(() => {
-      loginOverlay.style.display = 'none';
-      loginOverlay.style.opacity = '1';
-    }, 250);
+  // 2. Multi-device Fallback: Query Firestore config/settings directly for fresh devices
+  if (typeof firestoreDb !== 'undefined' && firestoreDb) {
+    firestoreDb.collection('config').doc('settings').get()
+      .then(doc => {
+        if (doc && doc.exists) {
+          const cloudSettings = doc.data();
+          const cloudEmails = (cloudSettings && cloudSettings.operatorWhitelist)
+            ? cloudSettings.operatorWhitelist.split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+            : [];
+          if (cloudEmails.includes(normalizedEmail)) {
+            state.settings = { ...state.settings, ...cloudSettings };
+            if (typeof saveDataLocallyOnly === 'function') saveDataLocallyOnly();
+            grantAccess();
+            return;
+          }
+        }
+        showDenied();
+      })
+      .catch(() => showDenied());
+    return;
   }
-  playCashChime();
-  showToast(`✓ Whitelist Verified! Welcome, ${name || normalizedEmail}`);
+
+  showDenied();
 }
 
 // ====================================================
@@ -3875,8 +3900,11 @@ function handleSaveSettings(event) {
   if (zoomSelect) applyScreenZoom(zoomSelect.value);
 
   saveData();
+  if (typeof syncSettingsToFirestore === 'function') {
+    syncSettingsToFirestore(state.settings);
+  }
   updateHeaderStats();
-  showToast('Settings saved successfully!');
+  showToast('Settings saved and synced to Google Cloud Firestore!');
 }
 
 // Export Data as JSON Backup
