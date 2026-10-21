@@ -431,9 +431,14 @@ function verifyAndLoginGoogleUser(email, name) {
   const errorAlert = document.getElementById('login-error-alert');
   const normalizedEmail = (email || '').trim().toLowerCase();
 
-  // Strict Whitelist Authorization Gate
-  const isAuthorized = AUTHORIZED_OPERATOR_WHITELIST.some(allowed => 
-    normalizedEmail === allowed.toLowerCase() || normalizedEmail.endsWith('@jsrfinance.com')
+  // Strict Whitelist Authorization Gate (Preset whitelist + Configured operator list)
+  const dynamicEmails = (state && state.settings && state.settings.operatorWhitelist)
+    ? state.settings.operatorWhitelist.split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
+    : [];
+  const fullWhitelist = [...AUTHORIZED_OPERATOR_WHITELIST.map(e => e.toLowerCase()), ...dynamicEmails];
+
+  const isAuthorized = fullWhitelist.some(allowed => 
+    normalizedEmail === allowed || normalizedEmail.endsWith('@jsrfinance.com')
   );
 
   if (!isAuthorized) {
@@ -3841,6 +3846,11 @@ function renderSettings() {
   document.getElementById('setting-default-instalments').value = state.settings.defaultInstalments;
   document.getElementById('setting-default-inst-amount').value = state.settings.defaultInstalmentAmount;
   
+  const whitelistInput = document.getElementById('setting-operator-whitelist');
+  if (whitelistInput) {
+    whitelistInput.value = state.settings.operatorWhitelist || '';
+  }
+
   applyScreenZoom();
   updateSoundToggleButton();
 }
@@ -3855,6 +3865,11 @@ function handleSaveSettings(event) {
   state.settings.defaultGivenAmount = Number(document.getElementById('setting-default-given').value) || 10000;
   state.settings.defaultInstalments = Number(document.getElementById('setting-default-instalments').value) || 52;
   state.settings.defaultInstalmentAmount = Number(document.getElementById('setting-default-inst-amount').value) || 200;
+
+  const whitelistInput = document.getElementById('setting-operator-whitelist');
+  if (whitelistInput) {
+    state.settings.operatorWhitelist = whitelistInput.value.trim();
+  }
 
   const zoomSelect = document.getElementById('setting-screen-zoom');
   if (zoomSelect) applyScreenZoom(zoomSelect.value);
