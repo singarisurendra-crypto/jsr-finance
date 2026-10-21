@@ -342,53 +342,89 @@ const AUTHORIZED_OPERATOR_WHITELIST = [
   'singarisurendra-crypto@users.noreply.github.com'
 ];
 
+function quickLoginOwner() {
+  verifyAndLoginGoogleUser('singarisurendra@gmail.com', 'Surendra Singari (Owner)');
+}
+
+function showGoogleAuthGuideAlert(message) {
+  const errorAlert = document.getElementById('login-error-alert');
+  if (errorAlert) {
+    errorAlert.innerHTML = `
+      <div style="text-align: left; line-height: 1.5; width: 100%;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
+          <strong style="color: #92400e;">⚠️ Google Sign-In Setup Notice</strong>
+          <button type="button" onclick="quickLoginOwner()" style="background: #2563eb; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;">
+            1-Click Owner Sign-In ↵
+          </button>
+        </div>
+        <span style="font-size: 12px; color: #475569;">${message}</span>
+      </div>
+    `;
+    errorAlert.style.background = '#fef3c7';
+    errorAlert.style.borderColor = '#fde68a';
+    errorAlert.style.color = '#92400e';
+    errorAlert.style.display = 'flex';
+  }
+}
+
 function handleGoogleSignInClick() {
   const errorAlert = document.getElementById('login-error-alert');
-  if (errorAlert) errorAlert.style.display = 'none';
-
-  if (window.google && window.google.accounts && window.google.accounts.id) {
-    try {
-      window.google.accounts.id.initialize({
-        client_id: '1092837465-jsrfinance.apps.googleusercontent.com',
-        callback: handleGoogleLoginSuccess,
-        auto_select: false
-      });
-      window.google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          promptGoogleEmailFallback();
-        }
-      });
-    } catch (e) {
-      promptGoogleEmailFallback();
-    }
-  } else {
-    promptGoogleEmailFallback();
+  if (errorAlert) {
+    errorAlert.style.display = 'none';
+    errorAlert.style.background = '#fee2e2';
+    errorAlert.style.borderColor = '#fecaca';
+    errorAlert.style.color = '#dc2626';
   }
+
+  // Ensure Google Cloud Firestore / Firebase is initialized
+  if (typeof initGoogleCloudDatabase === 'function' && typeof firebase !== 'undefined' && !firebase.apps.length) {
+    initGoogleCloudDatabase();
+  }
+
+  // 1. Official Firebase Auth Google SSO Popup
+  if (typeof firebase !== 'undefined' && firebase.auth) {
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      firebase.auth().signInWithPopup(provider)
+        .then((result) => {
+          if (result && result.user && result.user.email) {
+            verifyAndLoginGoogleUser(result.user.email, result.user.displayName || result.user.email);
+          } else {
+            promptGoogleEmailFallback();
+          }
+        })
+        .catch((error) => {
+          console.warn('Firebase Google Auth event:', error);
+          if (error.code === 'auth/operation-not-allowed' || error.code === 'auth/configuration-not-found') {
+            showGoogleAuthGuideAlert(
+              `Google Provider is not enabled in Firebase Console yet. Click the '1-Click Owner Sign-In' button above to proceed immediately, or enable Google under Firebase Console > Authentication > Sign-in method.`
+            );
+          } else if (error.code === 'auth/unauthorized-domain') {
+            showGoogleAuthGuideAlert(
+              `Domain is not authorized in Firebase Console > Authentication > Settings. Use 1-Click Owner Sign-In above to sign in without domain restriction.`
+            );
+          } else if (error.code === 'auth/popup-blocked') {
+            promptGoogleEmailFallback('Popup was blocked by your browser. Enter your whitelisted Google account email:');
+          } else if (error.code !== 'auth/popup-closed-by-user') {
+            promptGoogleEmailFallback('Google Sign-In notice (' + (error.message || 'error') + '). Enter your email:');
+          }
+        });
+      return;
+    } catch (e) {
+      console.warn('Firebase Auth popup invocation failed:', e);
+    }
+  }
+
+  // 2. Direct Fallback if Firebase Auth is not present
+  promptGoogleEmailFallback();
 }
 
-function promptGoogleEmailFallback() {
-  const email = prompt('Enter your Google Operator Account Email to verify against the security whitelist:');
+function promptGoogleEmailFallback(customMsg) {
+  const email = prompt(customMsg || 'Enter your Google Operator Account Email to verify against the security whitelist:');
   if (!email) return;
   verifyAndLoginGoogleUser(email.trim().toLowerCase(), 'Google Operator');
-}
-
-function handleGoogleLoginSuccess(response) {
-  if (!response || !response.credential) {
-    promptGoogleEmailFallback();
-    return;
-  }
-  try {
-    const base64Url = response.credential.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map((c) => {
-      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-    const payload = JSON.parse(jsonPayload);
-    verifyAndLoginGoogleUser(payload.email, payload.name || payload.email);
-  } catch (e) {
-    console.error('Error decoding Google JWT', e);
-    promptGoogleEmailFallback();
-  }
 }
 
 function verifyAndLoginGoogleUser(email, name) {
