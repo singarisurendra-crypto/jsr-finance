@@ -828,8 +828,8 @@ function saveCustomerModifications(customerId) {
     for (let i = 1; i <= totalInst; i++) {
       const before = pending.initialInstalments[i - 1] || { number: i, status: 'Pending', paidAmount: 0 };
       const after = pending.modifiedInstalments[i - 1] || { number: i, status: 'Pending', paidAmount: 0 };
-      const beforePaid = before.status === 'Received' ? (Number(before.dueAmount || customer.instalmentAmount)) : (Number(before.paidAmount) || 0);
-      const afterPaid = after.status === 'Received' ? (Number(after.dueAmount || customer.instalmentAmount)) : (Number(after.paidAmount) || 0);
+      const beforePaid = before.status === 'Received' ? (Number(before.paidAmount) || Number(customer.instalmentAmount) || Number(before.dueAmount) || 0) : (Number(before.paidAmount) || 0);
+      const afterPaid = after.status === 'Received' ? (Number(after.paidAmount) || Number(customer.instalmentAmount) || Number(after.dueAmount) || 0) : (Number(after.paidAmount) || 0);
 
       const diff = afterPaid - beforePaid;
       if (diff > 0) {
@@ -1033,7 +1033,7 @@ function handleInstalmentClick(customerId, instNumber, event) {
 
     // 2. Confirmation prompt
     const scheduledAmount = Number(customer.instalmentAmount) || 200;
-    const amtToUndo = Number(custInst.paidAmount) || scheduledAmount;
+    const amtToUndo = (custInst.status === 'Partial') ? (Number(custInst.paidAmount) || 0) : (Number(custInst.paidAmount) || scheduledAmount);
     if (!confirm(`Are you sure you want to undo payment for ${unitLabel} #${instNumber} (${formatMoney(amtToUndo)})?\n\nThis will remove the received status and be logged in the audit ledger.`)) {
       return;
     }
@@ -1427,6 +1427,77 @@ function initApp() {
   }
 }
 
+// Self-Healing Accounting Invariant Guard: Protects customer records across all loans (e.g. L1, L2, L3)
+function healCustomerInvariants() {
+  if (!state.customers || !Array.isArray(state.customers)) return false;
+  let modified = false;
+
+  state.customers.forEach((c) => {
+    if (!c) return;
+    const instAmt = Number(c.instalmentAmount) || 200;
+    const totInst = Number(c.totalInstalments) || 52;
+    const expectedPayable = totInst * instAmt;
+
+    if (c.totalPayable !== expectedPayable) {
+      c.totalPayable = expectedPayable;
+      modified = true;
+    }
+
+    if (!c.instalments || !Array.isArray(c.instalments)) {
+      c.instalments = [];
+      modified = true;
+    }
+
+    // Expand array if shorter than totalInstalments
+    if (c.instalments.length < totInst) {
+      for (let i = c.instalments.length + 1; i <= totInst; i++) {
+        c.instalments.push({
+          number: i,
+          dueAmount: instAmt,
+          paidAmount: 0,
+          status: 'Pending'
+        });
+      }
+      modified = true;
+    }
+
+    // Validate each instalment: received instalments must match scheduled instalmentAmount (unless marked Partial)
+    c.instalments.forEach((inst, idx) => {
+      if (!inst) return;
+      if (!inst.number) {
+        inst.number = idx + 1;
+        modified = true;
+      }
+      if (inst.status === 'Received') {
+        if (Number(inst.paidAmount) !== instAmt) {
+          inst.paidAmount = instAmt;
+          modified = true;
+        }
+        if (Number(inst.dueAmount) !== instAmt) {
+          inst.dueAmount = instAmt;
+          modified = true;
+        }
+      } else if (inst.status === 'Pending') {
+        if (Number(inst.dueAmount) !== instAmt) {
+          inst.dueAmount = instAmt;
+          modified = true;
+        }
+        if (Number(inst.paidAmount) !== 0) {
+          inst.paidAmount = 0;
+          modified = true;
+        }
+      } else if (inst.status === 'Partial') {
+        if (Number(inst.dueAmount) !== instAmt) {
+          inst.dueAmount = instAmt;
+          modified = true;
+        }
+      }
+    });
+  });
+
+  return modified;
+}
+
 // Data Storage Management
 function loadData() {
   try {
@@ -1448,6 +1519,7 @@ function loadData() {
         const parsed = JSON.parse(savedCustomers);
         // Automatically filter out any starter demo data for live production use
         state.customers = Array.isArray(parsed) ? parsed.filter(c => c && c.id && !c.id.startsWith('DEMO-')) : [];
+        healCustomerInvariants();
       } catch (e) {
         state.customers = [];
       }
@@ -1849,11 +1921,19 @@ function renderRecentTransactions() {
   if (state.transactions && state.transactions.length > 0) {
     // Primary path: Use comprehensive transaction audit ledger (preserves all payments & undos)
     state.transactions.forEach((t) => {
-      const cust = state.customers.find(c => c.id === t.customerId || (c.customerNumber && c.customerNumber.toString() === (t.customerNumber || '').toString()));
+      const targetLoan = Number(t.loanNumber) || 1;
+      const cust = (t.customerId ? state.customers.find(c => c.id === t.customerId) : null) ||
+                   state.customers.find(c => 
+                     c.customerNumber && c.customerNumber.toString() === (t.customerNumber || '').toString() &&
+                     (Number(c.loanNumber) || 1) === targetLoan
+                   ) ||
+                   state.customers.find(c => c.customerNumber && c.customerNumber.toString() === (t.customerNumber || '').toString());
+
+      const loanNum = Number(t.loanNumber) || (cust ? Number(cust.loanNumber) : 1) || 1;
       allItems.push({
-        customerId: t.customerId,
+        customerId: t.customerId || (cust ? cust.id : ''),
         customerNumber: t.customerNumber || (cust ? cust.customerNumber : ''),
-        loanNumber: t.loanNumber || (cust ? cust.loanNumber : 1) || 1,
+        loanNumber: loanNum,
         customerName: t.customerName || (cust ? cust.fullName : 'Customer'),
         areaRoute: (cust && cust.areaRoute) ? cust.areaRoute : 'General',
         instNumber: t.instalmentNumber,
@@ -1865,26 +1945,29 @@ function renderRecentTransactions() {
         collector: t.collector || 'Admin',
         status: t.type === 'undo' ? 'Undo' : (t.type === 'partial' ? 'Partial' : 'Received')
       });
-      recordedKeys.add(`${t.customerId || (cust ? cust.id : '')}_${t.instalmentNumber}`);
+      recordedKeys.add(`${t.customerId || (cust ? cust.id : '')}_L${loanNum}_W${t.instalmentNumber}`);
     });
   }
 
   // Also include any active customer instalments not yet recorded in transactions (e.g. legacy/imported data)
   state.customers.forEach((c) => {
+    const cLoanNum = Number(c.loanNumber) || 1;
+    const cInstAmt = Number(c.instalmentAmount) || 200;
     (c.instalments || []).forEach((inst) => {
       if (inst && (inst.status === 'Received' || inst.status === 'Partial')) {
-        const key = `${c.id}_${inst.number}`;
+        const key = `${c.id}_L${cLoanNum}_W${inst.number}`;
         if (!recordedKeys.has(key)) {
+          const instPaid = (inst.status === 'Received') ? (Number(inst.paidAmount) || cInstAmt) : (Number(inst.paidAmount) || 0);
           allItems.push({
             customerId: c.id,
             customerNumber: c.customerNumber,
-            loanNumber: c.loanNumber || 1,
+            loanNumber: cLoanNum,
             customerName: c.fullName,
             areaRoute: c.areaRoute || 'General',
             instNumber: inst.number,
             paidDate: inst.paidDate || todayStr,
             timestamp: inst.paidTimestamp || '',
-            amount: Number(inst.paidAmount) || c.instalmentAmount,
+            amount: instPaid,
             receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
             type: inst.status === 'Partial' ? 'partial' : 'payment',
             collector: 'Admin',
@@ -3342,9 +3425,15 @@ function handleSaveCustomer(event) {
           });
         }
       }
-      // Update dueAmount on remaining pending instalments
+      // Update dueAmount and paid amounts to match the revised instalmentAmount
       existing.instalments.forEach(i => {
         if (i.status === 'Pending') {
+          i.dueAmount = instalmentAmount;
+          i.paidAmount = 0;
+        } else if (i.status === 'Received') {
+          i.dueAmount = instalmentAmount;
+          i.paidAmount = instalmentAmount;
+        } else if (i.status === 'Partial') {
           i.dueAmount = instalmentAmount;
         }
       });
