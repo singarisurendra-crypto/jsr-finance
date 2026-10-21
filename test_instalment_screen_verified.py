@@ -252,6 +252,38 @@ def main():
         assert acc_data["c2OpenAfter"] is True, "Customer 2 must open when selected"
         print("  [PASS] Single-customer accordion and 52-instalment 4-row grid verified.")
 
+        # Step 3.5: Verify Customer ID (#1, #2) before Avatar
+        id_prefix_check_js = """
+        (function() {
+            const cards = document.querySelectorAll('.cust-compact-card');
+            const card1 = cards[0];
+            const leftEl = card1.querySelector('.cust-card-left');
+            const prefixEl = leftEl ? leftEl.querySelector('.cust-id-prefix') : null;
+            const avatarEl = leftEl ? leftEl.querySelector('.cust-avatar') : null;
+            const subDetailsEl = leftEl ? leftEl.querySelector('.cust-sub-details') : null;
+            
+            // Check order: prefixEl should appear before avatarEl in DOM
+            const isBeforeAvatar = prefixEl && avatarEl && (prefixEl.compareDocumentPosition(avatarEl) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+            return JSON.stringify({
+                hasPrefix: !!prefixEl,
+                prefixText: prefixEl ? prefixEl.innerText.trim() : '',
+                hasAvatar: !!avatarEl,
+                avatarInitials: avatarEl ? avatarEl.innerText.trim() : '',
+                isBeforeAvatar: !!isBeforeAvatar,
+                subDetailsText: subDetailsEl ? subDetailsEl.innerText.trim() : ''
+            });
+        })()
+        """
+        res_prefix = simple_ws_send_recv(ws_url, {"id": 45, "method": "Runtime.evaluate", "params": {"expression": id_prefix_check_js, "returnByValue": True}})
+        prefix_data = get_cdp_value(res_prefix)
+        print("3.5. Customer ID Prefix Before Avatar:", prefix_data)
+        assert prefix_data["hasPrefix"] is True, "Must have .cust-id-prefix element"
+        assert prefix_data["prefixText"] == "#1", f"Expected #1 for customer 1, got {prefix_data['prefixText']}"
+        assert prefix_data["isBeforeAvatar"] is True, "Customer ID (#1) must precede the avatar icon"
+        assert "₹" in prefix_data["subDetailsText"], "Sub-details must show financial terms"
+        print("  [PASS] Verified Customer ID (#1) is rendered directly before the profile avatar icon.")
+
         # Step 4: Verify Toolbar Action Buttons
         toolbar_check_js = """
         (function() {
@@ -293,6 +325,14 @@ def main():
                 with open(img_path, "wb") as f:
                     f.write(base64.b64decode(data_json["result"]["data"]))
                 print(f"[OK] Saved {img_path} ({os.path.getsize(img_path)} bytes)")
+                
+                # Copy to artifact directory
+                import shutil
+                art_dir = r"C:\Users\surendra.s\.gemini\antigravity\brain\9a0c6fee-fcaa-42a0-ade3-57b237e6eb62"
+                if os.path.exists(art_dir):
+                    dest = os.path.join(art_dir, "instalments_screen_verified.png")
+                    shutil.copyfile(img_path, dest)
+                    print(f"[OK] Copied to artifact directory: {dest}")
 
         print("\n=========================================================")
         print("ALL INSTALMENT SCREEN TESTS PASSED WITH 100% SUCCESS!")
