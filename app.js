@@ -1570,7 +1570,7 @@ function getCustomerStats(customer) {
 }
 
 // Helper: Global Portfolio Metrics
-function getPortfolioStats() {
+function getPortfolioStats(loanFilter = 'all') {
   let totalDisbursed = 0;
   let totalCollected = 0;
   let totalPayable = 0;
@@ -1582,8 +1582,16 @@ function getPortfolioStats() {
   let totalRealizedProfit = 0;
 
   const todayStr = getISTDateString();
+  const targetLoan = (loanFilter && loanFilter !== 'all') ? Number(loanFilter) : null;
 
-  state.customers.forEach((cust) => {
+  const targetCustomers = state.customers.filter((cust) => {
+    if (targetLoan !== null) {
+      return (Number(cust.loanNumber) || 1) === targetLoan;
+    }
+    return true;
+  });
+
+  targetCustomers.forEach((cust) => {
     totalDisbursed += (cust.givenAmount || 0);
     const stats = getCustomerStats(cust);
     totalCollected += stats.totalPaid;
@@ -1613,7 +1621,7 @@ function getPortfolioStats() {
   const totalPrincipalRecovered = Math.max(0, totalCollected - totalRealizedProfit);
 
   return {
-    totalCustomers: state.customers.length,
+    totalCustomers: targetCustomers.length,
     activeLoans,
     completedLoans,
     totalDisbursed,
@@ -1631,7 +1639,7 @@ function getPortfolioStats() {
 
 // Update Persistent Header Stats
 function updateHeaderStats() {
-  const stats = getPortfolioStats();
+  const stats = getPortfolioStats('all');
   document.getElementById('header-active-cust').textContent = stats.activeLoans;
   document.getElementById('header-disbursed').textContent = formatMoney(stats.totalDisbursed);
   document.getElementById('header-collected').textContent = formatMoney(stats.totalCollected);
@@ -1686,8 +1694,41 @@ function switchTab(tabName) {
 // ----------------------------------------------------
 // SCREEN 1: SUMMARY SCREEN (DASHBOARD)
 // ----------------------------------------------------
+function handleSummaryLoanFilterChange(val) {
+  const recentLoan = document.getElementById('recent-loan-filter');
+  if (recentLoan) {
+    recentLoan.value = val;
+  }
+  renderDashboard();
+}
+
 function renderDashboard() {
-  const stats = getPortfolioStats();
+  const loanFilterEl = document.getElementById('summary-loan-filter');
+
+  // Dynamically populate available loan numbers in summary-loan-filter
+  if (loanFilterEl) {
+    const currentVal = loanFilterEl.value || 'all';
+    const uniqueLoans = Array.from(new Set([
+      ...state.customers.map(c => Number(c.loanNumber) || 1),
+      ...(state.transactions || []).map(t => Number(t.loanNumber) || 1)
+    ])).sort((a, b) => a - b);
+
+    loanFilterEl.innerHTML = '<option value="all">📋 All Loans (Overall)</option>';
+    uniqueLoans.forEach(ln => {
+      const opt = document.createElement('option');
+      opt.value = ln.toString();
+      opt.textContent = `Loan #${ln} (L${ln})`;
+      loanFilterEl.appendChild(opt);
+    });
+    if (uniqueLoans.map(String).includes(currentVal)) {
+      loanFilterEl.value = currentVal;
+    } else {
+      loanFilterEl.value = 'all';
+    }
+  }
+
+  const activeLoan = loanFilterEl ? loanFilterEl.value : 'all';
+  const stats = getPortfolioStats(activeLoan);
 
   document.getElementById('kpi-disbursed').textContent = formatMoney(stats.totalDisbursed);
   document.getElementById('kpi-disbursed-sub').textContent = `${stats.totalCustomers} Total Loans Disbursed`;
@@ -1712,9 +1753,13 @@ function renderDashboard() {
   const progLabel = document.getElementById('dashboard-progress-label');
   if (progLabel) progLabel.textContent = `${stats.recoveryPercent}% Complete (${formatMoney(stats.totalCollected)} of ${formatMoney(stats.totalDisbursed)})`;
 
-  // Milestone distribution counts
+  // Milestone distribution counts (filtered by active loan if specified)
   let w1to10 = 0, w11to25 = 0, w26to40 = 0, w41to52 = 0;
-  state.customers.forEach((c) => {
+  const targetCustomers = activeLoan !== 'all'
+    ? state.customers.filter(c => (Number(c.loanNumber) || 1) === Number(activeLoan))
+    : state.customers;
+
+  targetCustomers.forEach((c) => {
     const s = getCustomerStats(c);
     if (s.paidCount <= 10) w1to10++;
     else if (s.paidCount <= 25) w11to25++;
@@ -1741,9 +1786,33 @@ function renderRecentTransactions() {
   if (!recentList) return;
 
   const typeFilter = document.getElementById('recent-type-filter')?.value || 'all';
+  const loanFilter = document.getElementById('recent-loan-filter')?.value || 'all';
   const dateFilter = document.getElementById('recent-date-filter')?.value || 'all';
   const searchQuery = (document.getElementById('recent-search-filter')?.value || '').toLowerCase().trim();
   const routeFilter = document.getElementById('recent-route-filter')?.value || 'all';
+
+  // Dynamically refresh loan dropdown while preserving active selection
+  const loanSelect = document.getElementById('recent-loan-filter');
+  if (loanSelect) {
+    const currentLoanVal = loanSelect.value || 'all';
+    const uniqueLoans = Array.from(new Set([
+      ...state.customers.map(c => Number(c.loanNumber) || 1),
+      ...(state.transactions || []).map(t => Number(t.loanNumber) || 1)
+    ])).sort((a, b) => a - b);
+
+    loanSelect.innerHTML = '<option value="all">📋 All Loans</option>';
+    uniqueLoans.forEach(ln => {
+      const opt = document.createElement('option');
+      opt.value = ln.toString();
+      opt.textContent = `Loan #${ln} (L${ln})`;
+      loanSelect.appendChild(opt);
+    });
+    if (uniqueLoans.map(String).includes(currentLoanVal)) {
+      loanSelect.value = currentLoanVal;
+    } else {
+      loanSelect.value = 'all';
+    }
+  }
 
   // Dynamically refresh route dropdown while preserving active selection
   const routeSelect = document.getElementById('recent-route-filter');
@@ -1832,6 +1901,12 @@ function renderRecentTransactions() {
     if (typeFilter === 'payment' && item.type !== 'payment') return false;
     if (typeFilter === 'partial' && item.type !== 'partial') return false;
     if (typeFilter === 'undo' && item.type !== 'undo') return false;
+
+    // Loan Number Filter
+    if (loanFilter !== 'all') {
+      const targetLoanNum = Number(loanFilter);
+      if ((Number(item.loanNumber) || 1) !== targetLoanNum) return false;
+    }
 
     // Date filter
     const itemDate = item.paidDate;
@@ -5217,9 +5292,16 @@ function setupEventListeners() {
     }
   });
 
+  // Summary Screen Portfolio & Recent Feed Loan Filters
+  const summaryLoan = document.getElementById('summary-loan-filter');
+  if (summaryLoan) summaryLoan.addEventListener('change', (e) => handleSummaryLoanFilterChange(e.target.value));
+
   // Recent Received Instalments Feed interactive filters
   const recentType = document.getElementById('recent-type-filter');
   if (recentType) recentType.addEventListener('change', renderRecentTransactions);
+
+  const recentLoan = document.getElementById('recent-loan-filter');
+  if (recentLoan) recentLoan.addEventListener('change', renderRecentTransactions);
 
   const recentDate = document.getElementById('recent-date-filter');
   if (recentDate) recentDate.addEventListener('change', renderRecentTransactions);
