@@ -447,6 +447,39 @@ def main():
             state.customers = state.customers.filter(c => c.id !== testCustId);
             state.transactions = (state.transactions || []).filter(t => t.customerId !== testCustId);
 
+            // 7. Verify Partial Amount shown in checkbox
+            const partialTestCust = {
+                id: 'TEST-PARTIAL-CUST-999',
+                customerNumber: 9998,
+                loanNumber: 1,
+                fullName: 'Partial Test Customer',
+                phone: '9999999998',
+                areaRoute: 'Test Route',
+                givenAmount: 10000,
+                totalInstalments: 52,
+                instalmentAmount: 200,
+                totalPayable: 10400,
+                status: 'Active',
+                frequency: 'Weekly',
+                instalments: [
+                    { number: 1, status: 'Received', paidAmount: 200 },
+                    { number: 2, status: 'Partial', paidAmount: 150 },
+                    { number: 3, status: 'Pending', paidAmount: 0 }
+                ]
+            };
+            state.customers.unshift(partialTestCust);
+            renderCollectionMatrix();
+            toggleCustomerSchedule(partialTestCust.id);
+
+            const partialBtn = document.querySelector(`.cust-compact-card[data-customer-id="${partialTestCust.id}"] .sched-box-btn.is-partial`);
+            results.hasPartialBtn = !!partialBtn;
+            results.partialBtnHtml = partialBtn ? partialBtn.innerHTML : '';
+            results.partialBtnText = partialBtn ? partialBtn.innerText.trim() : '';
+
+            // Clean up partial test customer
+            state.customers = state.customers.filter(c => c.id !== partialTestCust.id);
+            renderCollectionMatrix();
+
             // Switch back to collections for screenshot
             switchTab('collections');
             const c1 = document.querySelectorAll('.cust-compact-card')[0];
@@ -474,7 +507,10 @@ def main():
         assert iso_data["hasSummaryLoanFilter"] is True, "Summary screen must have summary-loan-filter dropdown"
         assert iso_data["hasRecentLoanFilter"] is True, "Summary recent feed must have recent-loan-filter dropdown"
         assert iso_data["recentLoanSyncedVal"] == "2", "Changing summary loan filter must sync recent loan filter"
-        print("  [PASS] Screen view isolation, undo payment flow, and loan number filter verified.")
+        assert iso_data["hasPartialBtn"] is True, "Must render .sched-box-btn.is-partial for partial instalments"
+        assert "150" in iso_data["partialBtnText"], f"Partial checkbox must display the amount 150, got {iso_data['partialBtnText']}"
+        assert "₹" in iso_data["partialBtnHtml"], "Partial checkbox must include currency symbol ₹"
+        print("  [PASS] Screen view isolation, undo payment flow, loan number filter, and partial amount in checkbox verified.")
 
         time.sleep(1)
 
