@@ -1754,6 +1754,8 @@ function switchTab(tabName) {
     }
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    const contentArea = document.querySelector('.content-area');
+    if (contentArea) contentArea.scrollTo({ top: 0, behavior: 'smooth' });
 
     if (tabName === 'summary') renderDashboard();
     if (tabName === 'collections') renderCollectionMatrix();
