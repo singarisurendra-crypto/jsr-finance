@@ -4016,6 +4016,9 @@ select:focus-visible {
 }
 .cust-info-left {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 .cust-name-row {
   display: flex;
@@ -4042,29 +4045,27 @@ select:focus-visible {
 .cust-sub-details {
   font-size: 12px;
   color: #64748b;
-  margin-top: 1px;
   white-space: nowrap;
 }
-.cust-phone-desktop {
-  color: #94a3b8;
-  font-weight: 500;
+.cust-financial-terms {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
 }
 .cust-card-right {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-.cust-progress-col {
-  display: flex;
   flex-direction: column;
   align-items: flex-end;
+  justify-content: center;
   gap: 3px;
+  flex-shrink: 0;
 }
 .cust-paid-stat {
   font-size: 12px;
   font-weight: 700;
   color: #0f172a;
+  white-space: nowrap;
 }
 .cust-progress-row {
   display: flex;
@@ -4095,9 +4096,40 @@ select:focus-visible {
   font-weight: 700;
   color: #64748b;
   transition: transform 0.2s ease;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 14px;
+  margin-top: 2px;
 }
 .cust-chevron-icon.rotated {
   transform: rotate(180deg);
+  color: #1e40af;
+}
+
+.coll-btn-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+  height: 38px;
+}
+.coll-btn-shortcut:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1d4ed8;
 }
 
 @media (max-width: 680px) {
@@ -4120,8 +4152,8 @@ select:focus-visible {
   .cust-sub-details {
     font-size: 11px;
   }
-  .cust-phone-desktop {
-    display: none;
+  .cust-financial-terms {
+    font-size: 11px;
   }
   .cust-bar-bg {
     width: 44px;
