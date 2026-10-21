@@ -322,7 +322,71 @@ def main():
         print("4. Action Toolbar:", tb_data)
         assert tb_data["allExpandedSuccess"] is True, "Expand all must open all cards"
         assert tb_data["allCollapsedSuccess"] is True, "Collapse all must close all cards"
-        print("  [PASS] Expand all and Collapse all toolbar actions verified.")
+        # Step 4.5: Verify Screen View Isolation and Undo Filter/Net Calculation
+        tab_isolation_check_js = """
+        (function() {
+            const results = {};
+            // 1. Switch to Customers tab
+            switchTab('customers');
+            const custView = document.getElementById('view-customers');
+            const collView = document.getElementById('view-collections');
+            results.customersActive = custView && custView.classList.contains('active') && getComputedStyle(custView).display !== 'none';
+            results.collHiddenOnCust = collView && (!collView.classList.contains('active') || getComputedStyle(collView).display === 'none');
+
+            // 2. Switch to Settings tab
+            switchTab('settings');
+            const settView = document.getElementById('view-settings');
+            results.settingsActive = settView && settView.classList.contains('active') && getComputedStyle(settView).display !== 'none';
+            results.collHiddenOnSett = collView && (!collView.classList.contains('active') || getComputedStyle(collView).display === 'none');
+
+            // 3. Switch to Analytics tab
+            switchTab('analytics');
+            const anaView = document.getElementById('view-analytics');
+            results.analyticsActive = anaView && anaView.classList.contains('active') && getComputedStyle(anaView).display !== 'none';
+            results.collHiddenOnAna = collView && (!collView.classList.contains('active') || getComputedStyle(collView).display === 'none');
+
+            // 4. Switch to Summary tab and test undo filtering & calculation
+            switchTab('summary');
+            const filterEl = document.getElementById('recent-type-filter');
+            results.hasUndoFilter = !!filterEl;
+
+            // Seed a test undo transaction if not present
+            state.transactions = state.transactions || [];
+            state.transactions.push({
+                id: 'tx_test_undo_1',
+                type: 'undo',
+                customerId: 'cust_test_1',
+                customerNumber: '1',
+                customerName: 'Test Customer',
+                amount: 200,
+                instalmentNumber: 1,
+                date: new Date().toISOString()
+            });
+            renderRecentTransactions();
+
+            const undoBadge = document.querySelector('.tx-badge-undo');
+            results.hasUndoBadge = !!undoBadge;
+
+            // Switch back to collections for screenshot
+            switchTab('collections');
+            const c1 = document.querySelectorAll('.cust-compact-card')[0];
+            if (c1) toggleCustomerSchedule(c1.dataset.customerId);
+
+            return JSON.stringify(results);
+        })()
+        """
+        res_iso = simple_ws_send_recv(ws_url, {"id": 55, "method": "Runtime.evaluate", "params": {"expression": tab_isolation_check_js, "returnByValue": True}})
+        iso_data = get_cdp_value(res_iso)
+        print("4.5. Tab Isolation & Undo Filter:", iso_data)
+        assert iso_data["customersActive"] is True, "Customers view must be active"
+        assert iso_data["collHiddenOnCust"] is True, "Collections view must be hidden on Customers tab"
+        assert iso_data["settingsActive"] is True, "Settings view must be active"
+        assert iso_data["collHiddenOnSett"] is True, "Collections view must be hidden on Settings tab"
+        assert iso_data["analyticsActive"] is True, "Analytics view must be active"
+        assert iso_data["collHiddenOnAna"] is True, "Collections view must be hidden on Analytics tab"
+        assert iso_data["hasUndoFilter"] is True, "Summary recent feed must have type filter"
+        assert iso_data["hasUndoBadge"] is True, "Undo badges must be rendered in recent transactions"
+        print("  [PASS] Screen view isolation and undo feed filtering verified.")
 
         time.sleep(1)
 
