@@ -322,7 +322,7 @@ def main():
         print("4. Action Toolbar:", tb_data)
         assert tb_data["allExpandedSuccess"] is True, "Expand all must open all cards"
         assert tb_data["allCollapsedSuccess"] is True, "Collapse all must close all cards"
-        # Step 4.5: Verify Screen View Isolation and Undo Filter/Net Calculation
+        # Step 4.5: Verify Screen View Isolation and End-to-End Undo Payment & Filter Flow
         tab_isolation_check_js = """
         (function() {
             const results = {};
@@ -345,27 +345,90 @@ def main():
             results.analyticsActive = anaView && anaView.classList.contains('active') && getComputedStyle(anaView).display !== 'none';
             results.collHiddenOnAna = collView && (!collView.classList.contains('active') || getComputedStyle(collView).display === 'none');
 
-            // 4. Switch to Summary tab and test undo filtering & calculation
+            // 4. Switch back to collections to test User Flow:
+            // Customer 1 pays up to instalment 22, then user un-checks instalment 22
+            switchTab('collections');
+            const cust1 = state.customers[0];
+            cust1.totalInstalments = 52;
+            // Ensure instalments 1..21 are received
+            cust1.instalments = cust1.instalments || [];
+            for (let i = 1; i <= 21; i++) {
+                if (!cust1.instalments[i - 1]) {
+                    cust1.instalments.push({ number: i, status: 'Received', dueAmount: 200, paidAmount: 200, paidDate: getISTDateString() });
+                } else {
+                    cust1.instalments[i - 1].status = 'Received';
+                    cust1.instalments[i - 1].paidAmount = 200;
+                }
+            }
+            // Mark instalment 22 as received and saved
+            if (!cust1.instalments[21]) {
+                cust1.instalments.push({ number: 22, status: 'Received', dueAmount: 200, paidAmount: 200, receiptNumber: 'REC-TEST-22', paidDate: getISTDateString() });
+            } else {
+                cust1.instalments[21].status = 'Received';
+                cust1.instalments[21].paidAmount = 200;
+                cust1.instalments[21].receiptNumber = 'REC-TEST-22';
+            }
+            // Ensure instalments 23 to 52 are pending so 22 is the highest paid
+            for (let i = 23; i <= (cust1.totalInstalments || 52); i++) {
+                if (cust1.instalments[i - 1]) {
+                    cust1.instalments[i - 1].status = 'Pending';
+                    cust1.instalments[i - 1].paidAmount = 0;
+                }
+            }
+            saveData();
+            renderCollectionMatrix();
+
+            // Check Customer 1 instalment 22 status
+            results.debugCust1Id = cust1.id;
+            results.foundCust = !!state.customers.find(c => c.id === cust1.id);
+            const foundCust = state.customers.find(c => c.id === cust1.id);
+            results.beforeClickInst22 = JSON.stringify(foundCust.instalments[21]);
+
+            results.totalInst = foundCust.totalInstalments;
+            let lastPaid = 0;
+            const tInst = foundCust.totalInstalments || 52;
+            for (let i = tInst; i >= 1; i--) {
+              const itm = foundCust.instalments[i - 1];
+              if (itm && (itm.status === 'Received' || itm.status === 'Partial')) {
+                lastPaid = i;
+                break;
+              }
+            }
+            results.computedLastPaid = lastPaid;
+
+            // Simulate user clicking on Instalment 22 to un-check it
+            window.confirm = () => true; // Automatically confirm the modal popup
+            try {
+                handleInstalmentClick(cust1.id, 22);
+            } catch(e) {
+                results.clickError = e.message + " " + e.stack;
+            }
+
+            results.afterClickInst22 = JSON.stringify(foundCust.instalments[21]);
+            results.inst22StatusAfterUndo = foundCust.instalments[21].status; // Expect 'Pending'
+
+            // Check if transaction was logged
+            const undoTxn = (state.transactions || []).find(t => t.type === 'undo' && t.instalmentNumber === 22);
+            results.hasUndoTxn = !!undoTxn;
+            results.undoTxnAmount = undoTxn ? undoTxn.amount : 0;
+
+            // 5. Switch to Summary tab and test undo filtering & calculation
             switchTab('summary');
             const filterEl = document.getElementById('recent-type-filter');
             results.hasUndoFilter = !!filterEl;
 
-            // Seed a test undo transaction if not present
-            state.transactions = state.transactions || [];
-            state.transactions.push({
-                id: 'tx_test_undo_1',
-                type: 'undo',
-                customerId: 'cust_test_1',
-                customerNumber: '1',
-                customerName: 'Test Customer',
-                amount: 200,
-                instalmentNumber: 1,
-                date: new Date().toISOString()
-            });
-            renderRecentTransactions();
+            if (filterEl) {
+                filterEl.value = 'undo';
+                renderRecentTransactions();
+            }
 
             const undoBadge = document.querySelector('.tx-badge-undo');
             results.hasUndoBadge = !!undoBadge;
+
+            const recentTbody = document.getElementById('recent-transactions-list');
+            results.recentListHtml = recentTbody ? recentTbody.innerHTML : '';
+            results.containsInst22 = results.recentListHtml.includes('Instalment #22');
+            results.containsRedMinus = results.recentListHtml.includes('- ₹ 200') || results.recentListHtml.includes('- ₹200');
 
             // Switch back to collections for screenshot
             switchTab('collections');
@@ -377,16 +440,21 @@ def main():
         """
         res_iso = simple_ws_send_recv(ws_url, {"id": 55, "method": "Runtime.evaluate", "params": {"expression": tab_isolation_check_js, "returnByValue": True}})
         iso_data = get_cdp_value(res_iso)
-        print("4.5. Tab Isolation & Undo Filter:", iso_data)
+        print("4.5. Tab Isolation & End-to-End Undo Flow:", iso_data)
         assert iso_data["customersActive"] is True, "Customers view must be active"
         assert iso_data["collHiddenOnCust"] is True, "Collections view must be hidden on Customers tab"
         assert iso_data["settingsActive"] is True, "Settings view must be active"
         assert iso_data["collHiddenOnSett"] is True, "Collections view must be hidden on Settings tab"
         assert iso_data["analyticsActive"] is True, "Analytics view must be active"
         assert iso_data["collHiddenOnAna"] is True, "Collections view must be hidden on Analytics tab"
+        assert iso_data["inst22StatusAfterUndo"] == "Pending", f"Instalment 22 should be Pending after undo, got {iso_data['inst22StatusAfterUndo']}"
+        assert iso_data["hasUndoTxn"] is True, "state.transactions must contain an undo transaction for instalment 22"
+        assert iso_data["undoTxnAmount"] == 200, f"Undo transaction amount must be 200, got {iso_data['undoTxnAmount']}"
         assert iso_data["hasUndoFilter"] is True, "Summary recent feed must have type filter"
         assert iso_data["hasUndoBadge"] is True, "Undo badges must be rendered in recent transactions"
-        print("  [PASS] Screen view isolation and undo feed filtering verified.")
+        assert iso_data["containsInst22"] is True, "Recent transactions with undo filter must show Instalment #22"
+        assert iso_data["containsRedMinus"] is True, "Recent transactions must show - ₹ 200 for undo"
+        print("  [PASS] Screen view isolation and end-to-end undo payment & filter flow verified.")
 
         time.sleep(1)
 
