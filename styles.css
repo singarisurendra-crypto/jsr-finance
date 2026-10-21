@@ -4211,6 +4211,24 @@ select:focus-visible {
   background: #ea580c;
   border-color: #c2410c;
   color: #ffffff;
+  padding: 0 1px;
+}
+.sched-partial-amt {
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.sched-partial-currency {
+  font-size: 8px;
+  font-weight: 700;
+  margin-right: 0.5px;
+  opacity: 0.92;
 }
 .sched-box-btn.is-pending {
   background: #ffffff;
@@ -4232,6 +4250,22 @@ select:focus-visible {
   .sched-box-btn {
     border-radius: 4px;
     font-size: 11px;
+  }
+  .sched-partial-amt {
+    font-size: 8.5px;
+    letter-spacing: -0.4px;
+  }
+  .sched-partial-currency {
+    font-size: 7px;
+  }
+}
+
+@media (max-width: 380px) {
+  .sched-partial-amt {
+    font-size: 7.5px;
+  }
+  .sched-partial-currency {
+    display: none;
   }
 }
 
