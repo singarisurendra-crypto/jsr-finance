@@ -4239,6 +4239,7 @@ function openExcelImportModal() {
 function downloadExcelImportTemplate() {
   const headers = [
     'Customer Number',
+    'Loan Number',
     'Full Name',
     'Mobile Phone',
     'Area / Route',
@@ -4257,6 +4258,7 @@ function downloadExcelImportTemplate() {
   const sampleRows = [
     [
       1,
+      1,
       'Ramesh Kumar',
       '9876543210',
       'Market Line',
@@ -4265,14 +4267,32 @@ function downloadExcelImportTemplate() {
       52,
       200,
       'Weekly',
+      '2025-08-01',
+      52,
+      10400,
+      0,
+      'Example 1A: Customer #1, Loan 1 (Completed previous loan with 0 balance)'
+    ],
+    [
+      1,
+      2,
+      'Ramesh Kumar',
+      '9876543210',
+      'Market Line',
+      'Shop #12, Market Road',
+      20000,
+      52,
+      520,
+      'Weekly',
       '2026-08-01',
       15,
-      3000,
-      7400,
-      'Example 1: Weekly loan with 15 paid instalments (7400 balance remaining)'
+      7800,
+      19240,
+      'Example 1B: Customer #1, Loan 2 (Second active loan for same customer)'
     ],
     [
       2,
+      1,
       'Priya Sharma',
       '9845123456',
       'Gandhi Nagar',
@@ -4285,10 +4305,11 @@ function downloadExcelImportTemplate() {
       25,
       2500,
       7500,
-      'Example 2: Daily 100-day loan with remaining balance of 7500'
+      'Example 2: Customer #2, Daily 100-day loan with remaining balance of 7500'
     ],
     [
       3,
+      1,
       'Suresh Reddy',
       '9988776655',
       'Station Area',
@@ -4301,16 +4322,16 @@ function downloadExcelImportTemplate() {
       0,
       0,
       10400,
-      'Example 3: Fresh loan with 0 paid and full 10400 balance'
+      'Example 3: Customer #3, Fresh loan with 0 paid and full 10400 balance'
     ]
   ];
 
   if (typeof XLSX !== 'undefined') {
     const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
     ws['!cols'] = [
-      { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 16 }, { wch: 24 },
+      { wch: 16 }, { wch: 12 }, { wch: 18 }, { wch: 14 }, { wch: 16 }, { wch: 24 },
       { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 15 },
-      { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 45 }
+      { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 55 }
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Loan Ledger');
@@ -4416,6 +4437,13 @@ function processRawImportData(rows) {
   const rawHeaders = rows[0].map(h => String(h || '').trim().toLowerCase().replace(/[\s\-_#\/]/g, ''));
 
   const findCol = (synonyms) => {
+    // Priority 1: Exact cleaned header match
+    for (let syn of synonyms) {
+      const cleanSyn = syn.toLowerCase().replace(/[\s\-_#\/]/g, '');
+      const idx = rawHeaders.findIndex(h => h === cleanSyn);
+      if (idx !== -1) return idx;
+    }
+    // Priority 2: Substring inclusion match
     for (let syn of synonyms) {
       const cleanSyn = syn.toLowerCase().replace(/[\s\-_#\/]/g, '');
       const idx = rawHeaders.findIndex(h => h.includes(cleanSyn));
@@ -4425,6 +4453,7 @@ function processRawImportData(rows) {
   };
 
   const colCustNum = findCol(['customernumber', 'custnumber', 'custno', 'customerid', 'accountno', 'id', 'no']);
+  const colLoanNum = findCol(['loannumber', 'loanno', 'loan#', 'loancount', 'cycle', 'loancycle', 'loanid', 'loanindex', 'loan']);
   const colName = findCol(['fullname', 'customername', 'name', 'clientname', 'customer']);
   const colPhone = findCol(['mobilephone', 'mobile', 'phone', 'contact', 'phonenumber']);
   const colArea = findCol(['arearoute', 'area', 'route', 'location', 'line']);
@@ -4445,6 +4474,7 @@ function processRawImportData(rows) {
 
   const parsedCustomers = [];
   const todayStr = getISTDateString();
+  const seenCustomerLoans = {};
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
@@ -4453,7 +4483,39 @@ function processRawImportData(rows) {
     const fullName = String(row[colName !== -1 ? colName : 1] || '').trim();
     if (!fullName) continue;
 
-    const customerNumber = parseInt(row[colCustNum !== -1 ? colCustNum : 0], 10) || (r);
+    const rawCustCell = String(row[colCustNum !== -1 ? colCustNum : 0] || '').trim();
+    let customerNumber = null;
+    let loanNumber = null;
+
+    // Check for inline Customer & Loan format (e.g. "1-2", "1/2", "1 L2", "#1-L2")
+    const inlineMatch = rawCustCell.match(/^#?(\d+)[\s\-_/]+[lL]?(\d+)$/i);
+    if (inlineMatch) {
+      customerNumber = parseInt(inlineMatch[1], 10);
+      loanNumber = parseInt(inlineMatch[2], 10);
+    } else {
+      const pureDigits = rawCustCell.replace(/[^0-9]/g, '');
+      customerNumber = pureDigits ? parseInt(pureDigits, 10) : r;
+    }
+
+    // Explicit Loan Number column overrides or populates loanNumber if provided
+    if (colLoanNum !== -1 && row[colLoanNum] !== undefined && String(row[colLoanNum]).trim() !== '') {
+      const parsedLoan = parseInt(String(row[colLoanNum]).replace(/[^0-9]/g, ''), 10);
+      if (!isNaN(parsedLoan) && parsedLoan > 0) {
+        loanNumber = parsedLoan;
+      }
+    }
+
+    // If loanNumber was not explicitly provided:
+    // Auto-increment if customer number repeated within the import file
+    if (!loanNumber) {
+      if (seenCustomerLoans[customerNumber]) {
+        loanNumber = seenCustomerLoans[customerNumber] + 1;
+      } else {
+        loanNumber = 1;
+      }
+    }
+    seenCustomerLoans[customerNumber] = Math.max(loanNumber, seenCustomerLoans[customerNumber] || 0);
+
     const phone = colPhone !== -1 ? String(row[colPhone] || '').trim() : '';
     const areaRoute = colArea !== -1 ? String(row[colArea] || 'General').trim() : 'General';
     const address = colAddress !== -1 ? String(row[colAddress] || '').trim() : '';
@@ -4504,7 +4566,7 @@ function processRawImportData(rows) {
           status: 'Received',
           paidDate: instDate,
           paidTimestamp: instDate + 'T10:00:00.000Z',
-          receiptNumber: `IMP-REC-${customerNumber}-L1-${i}`
+          receiptNumber: `IMP-REC-${customerNumber}-L${loanNumber}-${i}`
         });
         accumulatedPaid += instalmentAmount;
       } else if (remainingToAllocate > 0) {
@@ -4515,7 +4577,7 @@ function processRawImportData(rows) {
           status: 'Partial',
           paidDate: instDate,
           paidTimestamp: instDate + 'T10:00:00.000Z',
-          receiptNumber: `IMP-PART-${customerNumber}-L1-${i}`
+          receiptNumber: `IMP-PART-${customerNumber}-L${loanNumber}-${i}`
         });
         accumulatedPaid += remainingToAllocate;
       } else {
@@ -4528,11 +4590,11 @@ function processRawImportData(rows) {
       }
     }
 
-    const newId = `CUST-${customerNumber}-L1-${Date.now()}-${r}`;
+    const newId = `CUST-${customerNumber}-L${loanNumber}-${Date.now()}-${r}`;
     parsedCustomers.push({
       id: newId,
       customerNumber,
-      loanNumber: 1,
+      loanNumber,
       fullName,
       phone,
       areaRoute,
@@ -4587,7 +4649,10 @@ function renderExcelImportPreview(customers) {
       const s = getCustomerStats(c);
       return `
         <tr>
-          <td><strong>#${c.customerNumber}</strong></td>
+          <td>
+            <strong>#${c.customerNumber}</strong>
+            <span class="cust-loan-badge" style="font-size:11px; padding:2px 6px; margin-left:4px; font-weight:700; background:#e0f2fe; color:#0369a1; border-radius:4px;">L${c.loanNumber || 1}</span>
+          </td>
           <td><strong>${c.fullName}</strong></td>
           <td>${c.phone || '-'}</td>
           <td>${c.areaRoute}</td>
@@ -4639,8 +4704,12 @@ async function executeExcelImport() {
     }
   });
 
-  // Sort customers numerically by customer number
-  state.customers.sort((a, b) => Number(a.customerNumber) - Number(b.customerNumber));
+  // Sort customers numerically by customer number, then by loan number
+  state.customers.sort((a, b) => {
+    const diff = Number(a.customerNumber) - Number(b.customerNumber);
+    if (diff !== 0) return diff;
+    return (Number(a.loanNumber) || 1) - (Number(b.loanNumber) || 1);
+  });
 
   // Update next customer number
   let maxNum = 0;
