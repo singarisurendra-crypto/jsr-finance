@@ -430,6 +430,24 @@ def main():
             results.containsInst22 = results.recentListHtml.includes('Instalment #22');
             results.containsRedMinus = results.recentListHtml.includes('- ₹ 200') || results.recentListHtml.includes('- ₹200');
 
+            // 6. Test Loan Number Filter on Summary Screen
+            const summaryLoanEl = document.getElementById('summary-loan-filter');
+            const recentLoanEl = document.getElementById('recent-loan-filter');
+            results.hasSummaryLoanFilter = !!summaryLoanEl;
+            results.hasRecentLoanFilter = !!recentLoanEl;
+
+            // Test filtering by Loan #2 (Customer 1 in test is L2)
+            if (summaryLoanEl) {
+                handleSummaryLoanFilterChange('2');
+                results.recentLoanSyncedVal = recentLoanEl ? recentLoanEl.value : '';
+                results.kpiDisbursedL2 = document.getElementById('kpi-disbursed').textContent;
+            }
+
+            // Reset to All Loans for normal operation
+            if (summaryLoanEl) {
+                handleSummaryLoanFilterChange('all');
+            }
+
             // Switch back to collections for screenshot
             switchTab('collections');
             const c1 = document.querySelectorAll('.cust-compact-card')[0];
@@ -440,7 +458,7 @@ def main():
         """
         res_iso = simple_ws_send_recv(ws_url, {"id": 55, "method": "Runtime.evaluate", "params": {"expression": tab_isolation_check_js, "returnByValue": True}})
         iso_data = get_cdp_value(res_iso)
-        print("4.5. Tab Isolation & End-to-End Undo Flow:", iso_data)
+        print("4.5. Tab Isolation, Undo & Loan Filter Flow:", iso_data)
         assert iso_data["customersActive"] is True, "Customers view must be active"
         assert iso_data["collHiddenOnCust"] is True, "Collections view must be hidden on Customers tab"
         assert iso_data["settingsActive"] is True, "Settings view must be active"
@@ -454,7 +472,10 @@ def main():
         assert iso_data["hasUndoBadge"] is True, "Undo badges must be rendered in recent transactions"
         assert iso_data["containsInst22"] is True, "Recent transactions with undo filter must show Instalment #22"
         assert iso_data["containsRedMinus"] is True, "Recent transactions must show - ₹ 200 for undo"
-        print("  [PASS] Screen view isolation and end-to-end undo payment & filter flow verified.")
+        assert iso_data["hasSummaryLoanFilter"] is True, "Summary screen must have summary-loan-filter dropdown"
+        assert iso_data["hasRecentLoanFilter"] is True, "Summary recent feed must have recent-loan-filter dropdown"
+        assert iso_data["recentLoanSyncedVal"] == "2", "Changing summary loan filter must sync recent loan filter"
+        print("  [PASS] Screen view isolation, undo payment flow, and loan number filter verified.")
 
         time.sleep(1)
 
