@@ -2161,8 +2161,9 @@ function renderCollectionMatrix() {
     cardsHtml += `
       <div class="cust-compact-card ${isExpanded ? 'card-expanded' : ''}" data-customer-id="${cust.id}">
         <!-- Top Compact Card Header (Click to toggle expansion) -->
-        <div class="cust-card-header" onclick="toggleCustomerSchedule('${cust.id}', event)">
+        <div class="cust-card-header" onclick="toggleCustomerSchedule('${cust.id}', event)" title="${cust.fullName} (#${cust.customerNumber}) - ${cust.phone || 'No Phone'}">
           <div class="cust-card-left">
+            <span class="cust-id-prefix">#${cust.customerNumber}</span>
             <div class="cust-avatar" style="${avatarStyle}">${initials}</div>
             <div class="cust-info-left">
               <div class="cust-name-row">
@@ -2171,18 +2172,14 @@ function renderCollectionMatrix() {
                 ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 5px; margin-left:4px;">⚠️ Due ${stats.missedCount}</span>` : ''}
               </div>
               <div class="cust-sub-details">
-                ${custIdStr} • ${cust.phone || 'No Phone'}
+                ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)} / ${unitLabel}${cust.phone ? ` <span class="cust-phone-desktop">• ${cust.phone}</span>` : ''}
               </div>
             </div>
           </div>
 
-          <div class="cust-card-mid">
-            ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)} / ${unitLabel}
-          </div>
-
           <div class="cust-card-right">
             <div class="cust-progress-col">
-              <div class="cust-paid-stat">${effectiveStats.paidCount}/${instCount} paid</div>
+              <div class="cust-paid-stat">${effectiveStats.paidCount}/${instCount}</div>
               <div class="cust-progress-row">
                 <div class="cust-bar-bg">
                   <div class="cust-bar-fill" style="width: ${completionPct}%;"></div>
