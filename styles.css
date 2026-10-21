@@ -3988,12 +3988,23 @@ select:focus-visible {
 .cust-card-left {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 170px;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.cust-id-prefix {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #334155;
+  min-width: 24px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: -0.3px;
 }
 .cust-avatar {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -4002,6 +4013,9 @@ select:focus-visible {
   font-size: 13px;
   flex-shrink: 0;
   text-transform: uppercase;
+}
+.cust-info-left {
+  min-width: 0;
 }
 .cust-name-row {
   display: flex;
@@ -4012,6 +4026,9 @@ select:focus-visible {
   font-weight: 750;
   font-size: 14.5px;
   color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cust-loan-badge {
   font-size: 11px;
@@ -4020,23 +4037,22 @@ select:focus-visible {
   border-radius: 4px;
   background: #dbeafe;
   color: #1e40af;
+  flex-shrink: 0;
 }
 .cust-sub-details {
   font-size: 12px;
   color: #64748b;
   margin-top: 1px;
+  white-space: nowrap;
 }
-.cust-card-mid {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #1e293b;
-  text-align: center;
-  flex: 1;
+.cust-phone-desktop {
+  color: #94a3b8;
+  font-weight: 500;
 }
 .cust-card-right {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   flex-shrink: 0;
 }
 .cust-progress-col {
@@ -4046,7 +4062,7 @@ select:focus-visible {
   gap: 3px;
 }
 .cust-paid-stat {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   color: #0f172a;
 }
@@ -4056,7 +4072,7 @@ select:focus-visible {
   gap: 6px;
 }
 .cust-bar-bg {
-  width: 60px;
+  width: 54px;
   height: 6px;
   background: #e2e8f0;
   border-radius: 999px;
@@ -4086,16 +4102,29 @@ select:focus-visible {
 
 @media (max-width: 680px) {
   .cust-card-header {
-    flex-wrap: wrap;
-    padding: 10px 12px;
+    padding: 8px 12px;
     gap: 8px;
   }
-  .cust-card-mid {
-    width: 100%;
-    text-align: left;
-    order: 3;
+  .cust-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+  .cust-id-prefix {
     font-size: 12.5px;
-    padding-left: 50px;
+    min-width: 20px;
+  }
+  .cust-name {
+    font-size: 13.5px;
+  }
+  .cust-sub-details {
+    font-size: 11px;
+  }
+  .cust-phone-desktop {
+    display: none;
+  }
+  .cust-bar-bg {
+    width: 44px;
   }
   .coll-btn-add {
     margin-left: 0;
