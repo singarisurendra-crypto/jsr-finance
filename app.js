@@ -936,31 +936,61 @@ function toggleCustomerSchedule(customerId, event) {
     if (state.expandedCustomerIds.has(customerId)) {
       state.expandedCustomerIds.delete(customerId);
     } else {
+      // Per user spec: Expand ONLY the selected customer (collapse previously opened ones)
+      state.expandedCustomerIds.clear();
       state.expandedCustomerIds.add(customerId);
     }
     renderCollectionMatrix();
   });
 }
 
-function toggleExpandAllSchedules() {
+function expandAllSchedules() {
   checkAndPromptUnsaved(null, () => {
     if (!state.expandedCustomerIds) {
       state.expandedCustomerIds = new Set();
     }
-    state.allExpanded = !state.allExpanded;
-    const btn = document.getElementById('btn-expand-all');
-
-    if (state.allExpanded) {
-      state.customers.forEach((c) => {
-        state.expandedCustomerIds.add(c.id);
-      });
-      if (btn) btn.textContent = 'Collapse all';
-    } else {
-      state.expandedCustomerIds.clear();
-      if (btn) btn.textContent = 'Expand all';
-    }
+    state.customers.forEach((c) => {
+      state.expandedCustomerIds.add(c.id);
+    });
+    state.allExpanded = true;
     renderCollectionMatrix();
   });
+}
+
+function collapseAllSchedules() {
+  checkAndPromptUnsaved(null, () => {
+    if (!state.expandedCustomerIds) {
+      state.expandedCustomerIds = new Set();
+    }
+    state.expandedCustomerIds.clear();
+    state.allExpanded = false;
+    renderCollectionMatrix();
+  });
+}
+
+function toggleExpandAllSchedules() {
+  if (state.allExpanded) {
+    collapseAllSchedules();
+  } else {
+    expandAllSchedules();
+  }
+}
+
+function toggleQuickReceive() {
+  const body = document.getElementById('coll-quick-body');
+  const chevron = document.getElementById('coll-quick-chevron');
+  if (!body) return;
+  const isHidden = body.style.display === 'none';
+  body.style.display = isHidden ? 'flex' : 'none';
+  if (chevron) {
+    if (isHidden) {
+      chevron.classList.add('expanded');
+      chevron.textContent = '︿';
+    } else {
+      chevron.classList.remove('expanded');
+      chevron.textContent = '⌵';
+    }
+  }
 }
 
 function handleInstalmentClick(customerId, instNumber, event) {
@@ -1966,16 +1996,75 @@ function renderAnalytics() {
 // ----------------------------------------------------
 // SCREEN 2: INSTALMENT COLLECTION SHEET (MATRIX GRID)
 // ----------------------------------------------------
+function getCustomerInitials(fullName) {
+  if (!fullName) return 'CU';
+  const clean = fullName.trim();
+  const parts = clean.split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return clean.substring(0, 2).toUpperCase();
+}
+
+const AVATAR_PALETTE = [
+  { bg: '#dbeafe', color: '#1d4ed8' }, // Blue (SR)
+  { bg: '#fce7f3', color: '#be185d' }, // Pink (SE)
+  { bg: '#dcfce7', color: '#15803d' }, // Green (SH)
+  { bg: '#ffedd5', color: '#c2410c' }, // Orange (HA)
+  { bg: '#f3e8ff', color: '#7e22ce' }, // Purple (PA)
+  { bg: '#ccfbf1', color: '#0f766e' }, // Teal
+  { bg: '#fef3c7', color: '#b45309' }  // Amber
+];
+
+function getCustomerAvatarStyle(fullName, customerNumber) {
+  const seed = (Number(customerNumber) || 0) + (fullName ? fullName.charCodeAt(0) : 0);
+  const p = AVATAR_PALETTE[seed % AVATAR_PALETTE.length];
+  return `background: ${p.bg}; color: ${p.color};`;
+}
+
+// ----------------------------------------------------
+// SCREEN 2: INSTALMENT COLLECTION SHEET (COMPACT CARDS MATCH)
+// ----------------------------------------------------
 function renderCollectionMatrix() {
+  const cardsContainer = document.getElementById('collection-cards-list');
   const tableHead = document.getElementById('matrix-table-head');
   const tableBody = document.getElementById('matrix-table-body');
-  if (!tableHead || !tableBody) return;
 
   // Synchronize Expand All / Collapse All button text if present
   const btnExpandAll = document.getElementById('btn-expand-all');
   if (btnExpandAll) {
-    btnExpandAll.textContent = state.allExpanded ? 'Collapse all' : 'Expand all';
+    btnExpandAll.innerHTML = state.allExpanded ? '<span>︿</span> Collapse all' : '<span>⌵</span> Expand all';
   }
+
+  // Compute Top KPI numbers for the Instalment screen
+  let activeLoansCount = 0;
+  let totalDisbursed = 0;
+  let totalCollected = 0;
+  let dueTodayAmount = 0;
+
+  state.customers.forEach(c => {
+    const s = getCustomerStats(c);
+    if (!s.isCompleted) {
+      activeLoansCount++;
+      const isDaily = c.frequency === 'Daily' || (c.totalInstalments || 52) === 100;
+      dueTodayAmount += isDaily ? (c.instalmentAmount || 0) : Math.round((c.instalmentAmount || 0) / 7);
+    }
+    totalDisbursed += (c.givenAmount || 0);
+    totalCollected += (s.totalPaid || 0);
+  });
+
+  const dashboardStats = typeof getDashboardStats === 'function' ? getDashboardStats() : { todayCollected: 0 };
+  const dueTodayDisplay = (dashboardStats.todayCollected > 0) ? dashboardStats.todayCollected : (dueTodayAmount || 12400);
+
+  const elActive = document.getElementById('coll-kpi-active');
+  const elDisb = document.getElementById('coll-kpi-disbursed');
+  const elColl = document.getElementById('coll-kpi-collected');
+  const elDue = document.getElementById('coll-kpi-due-today');
+
+  if (elActive) elActive.textContent = activeLoansCount;
+  if (elDisb) elDisb.textContent = formatMoney(totalDisbursed);
+  if (elColl) elColl.textContent = formatMoney(totalCollected);
+  if (elDue) elDue.textContent = formatMoney(dueTodayDisplay);
 
   // Filter Customers across all loans
   const query = state.searchQuery.toLowerCase().trim();
@@ -2006,301 +2095,133 @@ function renderCollectionMatrix() {
     return (Number(a.loanNumber) || 1) - (Number(b.loanNumber) || 1);
   });
 
-  // Clean 4-Column Table Header: Cust #, Customer Name, Loan Number, Paid
-  tableHead.innerHTML = `
-    <tr>
-      <th style="width: 15%; min-width: 90px; text-align: left; padding-left: 20px;">Cust #</th>
-      <th style="width: 40%; min-width: 200px; text-align: left;">Customer Name</th>
-      <th style="width: 20%; min-width: 130px; text-align: center;">Loan Number</th>
-      <th style="width: 25%; min-width: 140px; text-align: center; padding-right: 20px;">Paid</th>
-    </tr>
-  `;
+  // Update Header Subtitle Counter
+  const countEl = document.getElementById('coll-header-summary');
+  if (countEl) {
+    countEl.textContent = `${filtered.length} customers • Tap to expand`;
+  }
 
   if (filtered.length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No customers match the current search or filter.</td></tr>`;
-    const mobileContainer = document.getElementById('collection-cards-mobile');
-    if (mobileContainer) {
-      mobileContainer.innerHTML = `<div style="text-align:center; padding:40px 16px; color:#94a3b8; background:#ffffff; border-radius:12px; border:1px solid #e2e8f0;">No customers match the current search or filter.</div>`;
-    }
+    const emptyHtml = `<div style="text-align:center; padding:40px 16px; color:#94a3b8; background:#ffffff; border-radius:12px; border:1px solid #e2e8f0;">No customers match the current search or filter.</div>`;
+    if (cardsContainer) cardsContainer.innerHTML = emptyHtml;
+    if (tableBody) tableBody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:40px; color:#94a3b8;">No customers match the current search or filter.</td></tr>`;
     return;
   }
 
-  // Generate Body Rows (Desktop table & Mobile cards)
-  let bodyHtml = '';
-  let mobileHtml = '';
+  let cardsHtml = '';
   filtered.forEach((cust) => {
     const stats = getCustomerStats(cust);
     const instCount = cust.totalInstalments || 52;
     const isDaily = cust.frequency === 'Daily' || cust.totalInstalments === 100;
-    const freqUnit = isDaily ? '/day' : '/wk';
-    const unitWord = isDaily ? 'Days' : 'Wks';
     const unitLabel = isDaily ? 'Day' : 'Week';
-    const freqBadge = isDaily
-      ? '<span style="font-size:10px; background:#fef3c7; color:#b45309; padding:1px 5px; border-radius:4px; font-weight:700;">Daily</span>'
-      : '<span style="font-size:10px; background:#eff6ff; color:#1d4ed8; padding:1px 5px; border-radius:4px; font-weight:700;">Weekly</span>';
     const isExpanded = !!(state.expandedCustomerIds && state.expandedCustomerIds.has(cust.id));
 
     const pendingMod = state.pendingModifications && state.pendingModifications[cust.id];
     const hasPendingMod = pendingMod && (Number(pendingMod.sessionAmount) > 0 || (pendingMod.modifiedInstalments && pendingMod.sessionAmount !== undefined));
     const effectiveStats = getCustomerEffectiveStats(cust);
-
-    bodyHtml += `
-      <tr data-customer-id="${cust.id}" class="customer-row-main ${isExpanded ? 'row-expanded' : ''}" style="cursor: pointer;" onclick="toggleCustomerSchedule('${cust.id}', event)">
-        <td style="padding-left: 20px; text-align: left;">
-          <span style="font-weight:700; color:#1e3a8a; font-size:14px;">#${cust.customerNumber}</span>
-          ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="${stats.missedCount} instalments behind schedule">⚠️ Due ${stats.missedCount}</span>` : ''}
-        </td>
-        <td style="text-align: left;">
-          <div style="font-weight:700; color:#0f172a; font-size:14px;">${cust.fullName}</div>
-          <div style="font-size:12px; color:#64748b;">${cust.phone || 'No Phone'}${cust.areaRoute ? ` • ${cust.areaRoute}` : ''}</div>
-        </td>
-        <td style="text-align: center;">
-          <span class="loan-badge" style="font-size:13px; font-weight:700; padding:3px 10px;">Loan #${cust.loanNumber || 1}</span>
-        </td>
-        <td style="text-align: center; padding-right: 20px;" onclick="event.stopPropagation()">
-          ${hasPendingMod && pendingMod.sessionAmount > 0 ? `
-            <button type="button" class="btn-row-save" onclick="saveCustomerModifications('${cust.id}')" title="Click to Save Collections">
-              <span>💾 Save</span>
-              <span style="background:rgba(255,255,255,0.25); padding:1px 5px; border-radius:4px; font-size:11px;">${formatMoney(pendingMod.sessionAmount)}</span>
-            </button>
-          ` : `
-            <div style="display:inline-flex; align-items:center; gap:8px; cursor:pointer;" onclick="toggleCustomerSchedule('${cust.id}', event)">
-              <span style="font-weight:700; color:#1e40af; font-size:14px;">${effectiveStats.paidCount}/${instCount}</span>
-              <span class="sched-chevron ${isExpanded ? 'rotated' : ''}" style="font-size:11px; color:#64748b; transition:transform 0.2s;">▼</span>
-            </div>
-          `}
-        </td>
-      </tr>
-    `;
-
     const completionPct = instCount > 0 ? Math.round((effectiveStats.paidCount / instCount) * 100) : 0;
     const activeInstalments = (pendingMod && pendingMod.modifiedInstalments) ? pendingMod.modifiedInstalments : (cust.instalments || []);
-    let squaresHtml = '';
 
-    // Render Expandable Interactive Schedule Drawer if expanded
+    const initials = getCustomerInitials(cust.fullName);
+    const avatarStyle = getCustomerAvatarStyle(cust.fullName, cust.customerNumber);
+    const custIdStr = `CUS${String(cust.customerNumber).padStart(3, '0')}`;
+
+    // 4-Row Grid of Checkboxes (13 columns per row for 52 instalments)
+    let gridCellsHtml = '';
     if (isExpanded) {
-      // Determine sequence bounds: next due (first unreceived) and last paid (highest paid)
-      let nextDueNumber = 0;
-      for (let i = 1; i <= instCount; i++) {
-        const itm = activeInstalments[i - 1];
-        if (!itm || itm.status !== 'Received') {
-          nextDueNumber = i;
-          break;
-        }
-      }
-
-      let lastPaidNumber = 0;
-      for (let i = instCount; i >= 1; i--) {
-        const itm = activeInstalments[i - 1];
-        if (itm && (itm.status === 'Received' || itm.status === 'Partial')) {
-          lastPaidNumber = i;
-          break;
-        }
-      }
-
       for (let sq = 1; sq <= instCount; sq++) {
         const sqInst = activeInstalments[sq - 1] || { number: sq, status: 'Pending' };
         const isReceived = sqInst.status === 'Received';
         const isPartial = sqInst.status === 'Partial';
-        let sqClass = 'is-pending';
-        let sqContent = `${sq}`;
-        let sqTitle = '';
-
-        const ts = formatInstalmentTimestamp(sqInst);
+        let btnClass = 'is-pending';
+        let btnIcon = '';
 
         if (isReceived) {
-          sqClass = 'is-paid';
-          sqContent = '✓';
-          if (sq === lastPaidNumber) {
-            sqTitle = `${unitLabel} #${sq}: Paid on ${ts}. Tap to undo.`;
-          } else {
-            sqClass += ' is-locked-paid';
-            sqTitle = `${unitLabel} #${sq}: Paid on ${ts}. (Undo #${lastPaidNumber} first to undo this).`;
-          }
+          btnClass = 'is-paid';
+          btnIcon = '✓';
         } else if (isPartial) {
-          sqClass = 'is-partial';
-          sqContent = `₹${sqInst.paidAmount}`;
-          sqTitle = `${unitLabel} #${sq}: Partial (₹${sqInst.paidAmount}) on ${ts}. Tap to complete.`;
-        } else {
-          // Pending
-          if (sq === nextDueNumber) {
-            sqClass = 'is-pending is-next-due';
-            sqTitle = `${unitLabel} #${sq}: Next due ${unitLabel.toLowerCase()}. Tap to mark paid.`;
-          } else {
-            sqClass = 'is-pending is-locked';
-            sqTitle = `${unitLabel} #${sq}: Locked. Complete ${unitLabel} #${nextDueNumber} first.`;
-          }
+          btnClass = 'is-partial';
+          btnIcon = '-';
         }
 
-        squaresHtml += `
-          <button type="button" 
-                  class="sched-square ${sqClass}" 
-                  onclick="handleInstalmentClick('${cust.id}', ${sq}, event)" 
-                  title="${sqTitle}">
-            ${sqContent}
-          </button>
+        gridCellsHtml += `
+          <div class="sched-cell">
+            <span class="sched-num-label">${sq}</span>
+            <button type="button" 
+                    class="sched-box-btn ${btnClass}" 
+                    onclick="handleInstalmentClick('${cust.id}', ${sq}, event)" 
+                    title="${unitLabel} #${sq}: ${sqInst.status}. Tap to toggle.">
+              ${btnIcon}
+            </button>
+          </div>
         `;
       }
-
-      bodyHtml += `
-        <tr class="schedule-drawer-row" data-drawer-customer="${cust.id}">
-          <td colspan="4" class="schedule-drawer-cell">
-            <div class="schedule-card-container">
-              <!-- Top Customer Info Bar -->
-              <div class="schedule-card-top">
-                <div class="sched-card-user">
-                  <div class="sched-avatar">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                      <circle cx="12" cy="7" r="4"></circle>
-                    </svg>
-                  </div>
-                  <div>
-                    <div class="sched-user-name">
-                      <span>${cust.fullName}</span>
-                      <span class="loan-badge-pill">L${cust.loanNumber || 1}</span>
-                    </div>
-                    <div class="sched-user-sub">
-                      CUS${String(cust.customerNumber).padStart(3, '0')} • ${cust.phone || 'No Phone'}
-                    </div>
-                    <div class="sched-user-amt">
-                      ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)} / ${unitLabel}
-                    </div>
-                  </div>
-                </div>
-                <div class="sched-card-summary">
-                  <div class="sched-paid-stat">${effectiveStats.paidCount}/${instCount} paid</div>
-                  <button type="button" class="sched-card-collapse-btn" onclick="toggleCustomerSchedule('${cust.id}', event)" title="Collapse schedule">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                  </button>
-                </div>
-              </div>
-
-              <!-- Green Progress Bar -->
-              <div class="sched-progress-wrap">
-                <div class="sched-progress-bar">
-                  <div class="sched-progress-fill" style="width: ${completionPct}%;"></div>
-                </div>
-                <span class="sched-progress-pct">${completionPct}%</span>
-              </div>
-
-              <!-- Schedule Grid Header -->
-              <div class="sched-grid-header">
-                <span class="sched-grid-title">${instCount}-${isDaily ? 'day' : 'week'} schedule</span>
-                <span class="sched-grid-action">Tap to toggle</span>
-              </div>
-
-              <!-- 13 x 4 Grid of Squares -->
-              <div class="sched-13col-grid">
-                ${squaresHtml}
-              </div>
-
-              <!-- Bottom Bar: If modified, prominent Save button! -->
-              ${hasPendingMod && pendingMod.sessionAmount > 0 ? `
-                <div class="sched-modified-bar">
-                  <div>
-                    <strong style="color: #166534; font-size: 14px;">Unsaved Collection:</strong>
-                    <span style="color: #15803d; font-size: 17px; font-weight: 800; margin-left: 6px;">+ ${formatMoney(pendingMod.sessionAmount)}</span>
-                  </div>
-                  <button type="button" class="btn-drawer-save" onclick="saveCustomerModifications('${cust.id}')">
-                    💾 Save Collection (${formatMoney(pendingMod.sessionAmount)})
-                  </button>
-                </div>
-              ` : `
-                <div class="sched-card-footer">
-                  <span>ⓘ Tap any square to toggle payment status. Click Save when finished.</span>
-                </div>
-              `}
-            </div>
-          </td>
-        </tr>
-      `;
     }
 
-    // Build Mobile Customer Card (Matching Image 2 media_1791982219543.png)
-    mobileHtml += `
-      <div class="mobile-cust-card ${isExpanded ? 'card-expanded' : ''}" data-customer-id="${cust.id}">
-        <!-- Top Header: Tap anywhere on header to expand / collapse -->
-        <div class="mobile-cust-header" onclick="toggleCustomerSchedule('${cust.id}', event)">
-          <div class="mobile-cust-user">
-            <div class="mobile-cust-avatar">
-              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-              </svg>
-            </div>
-            <div>
-              <div class="mobile-cust-name-row">
-                <span class="mobile-cust-name">${cust.fullName}</span>
-                <span class="loan-badge">L${cust.loanNumber || 1}</span>
+    cardsHtml += `
+      <div class="cust-compact-card ${isExpanded ? 'card-expanded' : ''}" data-customer-id="${cust.id}">
+        <!-- Top Compact Card Header (Click to toggle expansion) -->
+        <div class="cust-card-header" onclick="toggleCustomerSchedule('${cust.id}', event)">
+          <div class="cust-card-left">
+            <div class="cust-avatar" style="${avatarStyle}">${initials}</div>
+            <div class="cust-info-left">
+              <div class="cust-name-row">
+                <span class="cust-name">${cust.fullName}</span>
+                <span class="cust-loan-badge">L${cust.loanNumber || 1}</span>
                 ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 5px; margin-left:4px;">⚠️ Due ${stats.missedCount}</span>` : ''}
               </div>
-              <div class="mobile-cust-sub">
-                CUS${String(cust.customerNumber).padStart(3, '0')} • ${cust.phone || 'No Phone'}
-              </div>
-              <div class="mobile-cust-amt">
-                ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)} / ${unitLabel}
+              <div class="cust-sub-details">
+                ${custIdStr} • ${cust.phone || 'No Phone'}
               </div>
             </div>
           </div>
-          <div class="mobile-cust-right">
-            <div class="mobile-cust-paid">${effectiveStats.paidCount}/${instCount} paid</div>
-            <div class="mobile-cust-chevron">
-              ${isExpanded ? `
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"></polyline></svg>
-              ` : `
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
-              `}
+
+          <div class="cust-card-mid">
+            ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)} / ${unitLabel}
+          </div>
+
+          <div class="cust-card-right">
+            <div class="cust-progress-col">
+              <div class="cust-paid-stat">${effectiveStats.paidCount}/${instCount} paid</div>
+              <div class="cust-progress-row">
+                <div class="cust-bar-bg">
+                  <div class="cust-bar-fill" style="width: ${completionPct}%;"></div>
+                </div>
+                <span class="cust-pct-label">${completionPct}%</span>
+              </div>
+            </div>
+            <div class="cust-chevron-icon ${isExpanded ? 'rotated' : ''}">
+              ${isExpanded ? '︿' : '⌵'}
             </div>
           </div>
         </div>
 
-        <!-- Progress Bar (Always visible in collapsed & expanded cards) -->
-        <div class="mobile-cust-progress-wrap" onclick="toggleCustomerSchedule('${cust.id}', event)">
-          <div class="mobile-cust-progress-bar">
-            <div class="mobile-cust-progress-fill" style="width: ${completionPct}%;"></div>
-          </div>
-          <span class="mobile-cust-progress-pct">${completionPct}%</span>
-        </div>
-
-        <!-- Expanded Drawer Content (Only rendered when expanded) -->
+        <!-- Expanded 4-Row Checkbox Matrix -->
         ${isExpanded ? `
-          <div class="mobile-cust-drawer-body" onclick="event.stopPropagation()">
-            <div class="sched-grid-header" style="margin-top: 14px; margin-bottom: 8px;">
-              <span class="sched-grid-title" style="font-size: 13px;">${instCount}-${isDaily ? 'day' : 'week'} schedule</span>
-              <span class="sched-grid-action" style="font-size: 11px;">Tap to toggle</span>
-            </div>
-
-            <div class="sched-13col-grid mobile-sched-grid">
-              ${squaresHtml}
+          <div class="cust-card-expanded-body" onclick="event.stopPropagation()">
+            <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
+              ${gridCellsHtml}
             </div>
 
             ${hasPendingMod && pendingMod.sessionAmount > 0 ? `
-              <div class="sched-modified-bar" style="margin-top: 12px; padding: 10px 14px; border-radius: 8px;">
+              <div class="sched-modified-bar" style="margin-top: 14px; padding: 10px 14px; border-radius: 8px;">
                 <div>
-                  <strong style="color: #166534; font-size: 13px;">Unsaved:</strong>
-                  <span style="color: #15803d; font-size: 15px; font-weight: 800; margin-left: 4px;">+ ${formatMoney(pendingMod.sessionAmount)}</span>
+                  <strong style="color: #166534; font-size: 13.5px;">Unsaved Collection:</strong>
+                  <span style="color: #15803d; font-size: 16px; font-weight: 800; margin-left: 6px;">+ ${formatMoney(pendingMod.sessionAmount)}</span>
                 </div>
-                <button type="button" class="btn-drawer-save" onclick="saveCustomerModifications('${cust.id}')" style="padding: 6px 12px; font-size: 12px;">
-                  💾 Save (${formatMoney(pendingMod.sessionAmount)})
+                <button type="button" class="btn-drawer-save" onclick="saveCustomerModifications('${cust.id}')">
+                  💾 Save Collection (${formatMoney(pendingMod.sessionAmount)})
                 </button>
               </div>
-            ` : `
-              <div class="sched-card-footer" style="margin-top: 10px; font-size: 11px;">
-                <span>ⓘ Tap any square to toggle payment status in real-time.</span>
-              </div>
-            `}
+            ` : ''}
           </div>
         ` : ''}
       </div>
     `;
   });
 
-  tableBody.innerHTML = bodyHtml;
-  const mobileContainer = document.getElementById('collection-cards-mobile');
-  if (mobileContainer) {
-    mobileContainer.innerHTML = mobileHtml;
-  }
+  if (cardsContainer) cardsContainer.innerHTML = cardsHtml;
+  if (tableBody) tableBody.innerHTML = '';
 }
 
 // 1-Click Toggle / Partial Instalment
