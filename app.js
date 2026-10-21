@@ -1667,11 +1667,12 @@ function renderDashboard() {
   renderRecentTransactions();
 }
 
-// Recent Collections Feed with Interactive Filtering
+// Recent Collections & Audit Feed with Interactive Filtering (Supports Undos & Net Calculation)
 function renderRecentTransactions() {
   const recentList = document.getElementById('recent-transactions-list');
   if (!recentList) return;
 
+  const typeFilter = document.getElementById('recent-type-filter')?.value || 'all';
   const dateFilter = document.getElementById('recent-date-filter')?.value || 'all';
   const searchQuery = (document.getElementById('recent-search-filter')?.value || '').toLowerCase().trim();
   const routeFilter = document.getElementById('recent-route-filter')?.value || 'all';
@@ -1705,28 +1706,59 @@ function renderRecentTransactions() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthStartStr = getISTDateString(monthStart);
 
-  let allPaid = [];
-  state.customers.forEach((c) => {
-    (c.instalments || []).forEach((inst) => {
-      if (inst && (inst.status === 'Received' || inst.status === 'Partial')) {
-        allPaid.push({
-          customerId: c.id,
-          customerNumber: c.customerNumber,
-          loanNumber: c.loanNumber || 1,
-          customerName: c.fullName,
-          areaRoute: c.areaRoute || 'General',
-          instNumber: inst.number,
-          paidDate: inst.paidDate || todayStr,
-          amount: Number(inst.paidAmount) || c.instalmentAmount,
-          receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
-          status: inst.status,
-        });
-      }
+  let allItems = [];
+  if (state.transactions && state.transactions.length > 0) {
+    // Primary path: Use comprehensive transaction audit ledger (preserves all payments & undos)
+    allItems = state.transactions.map((t) => {
+      const cust = state.customers.find(c => c.id === t.customerId || c.customerNumber.toString() === (t.customerNumber || '').toString());
+      return {
+        customerId: t.customerId,
+        customerNumber: t.customerNumber,
+        loanNumber: t.loanNumber || 1,
+        customerName: t.customerName || (cust ? cust.fullName : 'Customer'),
+        areaRoute: (cust && cust.areaRoute) ? cust.areaRoute : 'General',
+        instNumber: t.instalmentNumber,
+        paidDate: t.date || todayStr,
+        timestamp: t.timestamp || '',
+        amount: Number(t.amount) || 0,
+        receiptNumber: t.receiptNumber || '',
+        type: t.type || 'payment',
+        collector: t.collector || 'Admin',
+        status: t.type === 'undo' ? 'Undo' : (t.type === 'partial' ? 'Partial' : 'Received')
+      };
     });
-  });
+  } else {
+    // Fallback path: extract from active customer instalments
+    state.customers.forEach((c) => {
+      (c.instalments || []).forEach((inst) => {
+        if (inst && (inst.status === 'Received' || inst.status === 'Partial')) {
+          allItems.push({
+            customerId: c.id,
+            customerNumber: c.customerNumber,
+            loanNumber: c.loanNumber || 1,
+            customerName: c.fullName,
+            areaRoute: c.areaRoute || 'General',
+            instNumber: inst.number,
+            paidDate: inst.paidDate || todayStr,
+            timestamp: inst.paidTimestamp || '',
+            amount: Number(inst.paidAmount) || c.instalmentAmount,
+            receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
+            type: inst.status === 'Partial' ? 'partial' : 'payment',
+            collector: 'Admin',
+            status: inst.status,
+          });
+        }
+      });
+    });
+  }
 
   // Apply filters
-  const filtered = allPaid.filter(item => {
+  const filtered = allItems.filter(item => {
+    // Type Filter (payment, partial, undo)
+    if (typeFilter === 'payment' && item.type !== 'payment') return false;
+    if (typeFilter === 'partial' && item.type !== 'partial') return false;
+    if (typeFilter === 'undo' && item.type !== 'undo') return false;
+
     // Date filter
     const itemDate = item.paidDate;
     if (dateFilter === 'today' && itemDate !== todayStr && itemDate !== 'Today') return false;
@@ -1747,31 +1779,69 @@ function renderRecentTransactions() {
     return true;
   });
 
-  // Sort descending by paidDate/receipt
-  filtered.sort((a, b) => (b.paidDate || '').localeCompare(a.paidDate || ''));
+  // Sort descending by timestamp/date
+  filtered.sort((a, b) => {
+    const timeA = a.timestamp || a.paidDate || '';
+    const timeB = b.timestamp || b.paidDate || '';
+    return timeB.localeCompare(timeA);
+  });
+
+  // Calculate net collections (Received/Partial are positive, Undone are negative)
+  let totalReceived = 0;
+  let totalUndone = 0;
+  filtered.forEach(item => {
+    if (item.type === 'undo') {
+      totalUndone += item.amount;
+    } else {
+      totalReceived += item.amount;
+    }
+  });
+  const netTotal = totalReceived - totalUndone;
 
   // Update Summary count
   const countEl = document.getElementById('recent-summary-count');
-  const totalAmount = filtered.reduce((sum, item) => sum + item.amount, 0);
   if (countEl) {
-    countEl.textContent = `Showing ${filtered.length} collections · Total: ${formatMoney(totalAmount)}`;
+    if (totalUndone > 0) {
+      countEl.innerHTML = `Showing <strong>${filtered.length}</strong> activities · Net: <strong style="color: ${netTotal >= 0 ? '#16a34a' : '#dc2626'};">${formatMoney(netTotal)}</strong> <span style="font-size:11px; color:#64748b;">(Collected: +${formatMoney(totalReceived)} · Undone: -${formatMoney(totalUndone)})</span>`;
+    } else {
+      countEl.innerHTML = `Showing <strong>${filtered.length}</strong> collections · Total: <strong style="color:#16a34a;">${formatMoney(netTotal)}</strong>`;
+    }
   }
 
   if (filtered.length === 0) {
-    recentList.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No collections match the selected filters.</td></tr>`;
+    recentList.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No collections or audit records match the selected filters.</td></tr>`;
   } else {
-    recentList.innerHTML = filtered.slice(0, 50).map((item) => `
-      <tr>
-        <td>
-          <strong>#${item.customerNumber}</strong>${item.loanNumber > 1 ? ` <span class="loan-badge">L${item.loanNumber}</span>` : ''} - ${item.customerName}
-        </td>
-        <td>Instalment #${item.instNumber}</td>
-        <td><span style="color:#16a34a; font-weight:700;">+ ${formatMoney(item.amount)}</span></td>
-        <td>${formatPassbookDate(item.paidDate, false)}</td>
-        <td><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px;">${item.areaRoute}</span></td>
-        <td>${item.status === 'Partial' ? `<span class="badge-status badge-status-partial">½ Partial</span>` : `<span class="badge-status badge-status-success">✓ Received</span>`}</td>
-      </tr>
-    `).join('');
+    recentList.innerHTML = filtered.slice(0, 50).map((item) => {
+      const isUndo = item.type === 'undo';
+      const isPartial = item.type === 'partial' || item.status === 'Partial';
+
+      let amountHtml = `<span style="color:#16a34a; font-weight:700;">+ ${formatMoney(item.amount)}</span>`;
+      let statusHtml = `<span class="badge-status badge-status-success">✓ Received</span>`;
+
+      if (isUndo) {
+        amountHtml = `<span style="color:#dc2626; font-weight:700;">- ${formatMoney(item.amount)}</span>`;
+        statusHtml = `<span class="badge-status badge-status-undo tx-badge-undo" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-weight:700;">↩️ Undone</span>`;
+      } else if (isPartial) {
+        amountHtml = `<span style="color:#ea580c; font-weight:700;">+ ${formatMoney(item.amount)}</span>`;
+        statusHtml = `<span class="badge-status badge-status-partial">½ Partial</span>`;
+      }
+
+      return `
+        <tr style="${isUndo ? 'background:#fff1f2;' : ''}">
+          <td>
+            <strong>#${item.customerNumber}</strong>${item.loanNumber > 1 ? ` <span class="loan-badge">L${item.loanNumber}</span>` : ''} - ${item.customerName}
+          </td>
+          <td>Instalment #${item.instNumber}</td>
+          <td>${amountHtml}</td>
+          <td>
+            <div>${formatPassbookDate(item.paidDate, false)}</div>
+            ${item.timestamp ? `<div style="font-size:10.5px; color:#94a3b8;">${item.timestamp.split(' ').slice(1).join(' ')}</div>` : ''}
+          </td>
+          <td><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px;">${item.areaRoute}</span></td>
+          <td>${statusHtml}</td>
+        </tr>
+      `;
+    }).join('');
   }
 }
 
@@ -3782,6 +3852,21 @@ function setDefaultScheme(schemeId) {
 // ----------------------------------------------------
 // SCREEN 5: SETTINGS
 // ----------------------------------------------------
+function applyScreenZoom(zoomVal) {
+  try {
+    const zoomSelect = document.getElementById('setting-screen-zoom');
+    const zoom = zoomVal || (zoomSelect ? zoomSelect.value : (state.settings && state.settings.screenZoom)) || '100%';
+    if (zoomSelect && !zoomVal) {
+      zoomSelect.value = zoom;
+    }
+    if (zoom && zoom !== '100%') {
+      document.documentElement.style.zoom = zoom;
+    }
+  } catch (e) {
+    console.warn('Zoom not supported', e);
+  }
+}
+
 function renderSettings() {
   document.getElementById('setting-business-name').value = state.settings.businessName;
   document.getElementById('setting-phone').value = state.settings.phone;
