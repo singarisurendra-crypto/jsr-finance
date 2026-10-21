@@ -3620,6 +3620,68 @@ select:focus-visible {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.4) !important;
 }
 
+/* ==================================================== */
+/* EXCEL & CSV DATA IMPORT UI                           */
+/* ==================================================== */
+.excel-drop-zone {
+  border: 2px dashed #94a3b8;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin: 14px 0;
+}
+.excel-drop-zone:hover, .excel-drop-zone.dragover {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+.excel-drop-icon {
+  font-size: 34px;
+  margin-bottom: 8px;
+}
+.excel-drop-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+.excel-drop-subtitle {
+  font-size: 12px;
+  color: #64748b;
+}
+.excel-preview-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 16px 0;
+}
+.excel-preview-stat-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.excel-preview-stat-label {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.excel-preview-stat-val {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-top: 2px;
+}
+@media (max-width: 640px) {
+  .excel-preview-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+
 
 
 
