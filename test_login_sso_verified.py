@@ -115,9 +115,9 @@ def main():
 
         # Wait for app.js initialization
         for attempt in range(10):
-            res = simple_ws_send_recv(ws_url, {"id": 10 + attempt, "method": "Runtime.evaluate", "params": {"expression": "typeof quickLoginOwner"}})
+            res = simple_ws_send_recv(ws_url, {"id": 10 + attempt, "method": "Runtime.evaluate", "params": {"expression": "typeof handleGoogleSignInClick"}})
             if res and "function" in res:
-                print(f"[OK] quickLoginOwner initialized on attempt {attempt}")
+                print(f"[OK] handleGoogleSignInClick initialized on attempt {attempt}")
                 break
             time.sleep(1)
 
@@ -125,7 +125,7 @@ def main():
         simple_ws_send_recv(ws_url, {"id": 1, "method": "Runtime.evaluate", "params": {"expression": "localStorage.clear(); document.getElementById('view-login').style.display = 'flex';"}})
         time.sleep(0.5)
 
-        # Take screenshot of login modal showing the 1-Click Owner Sign-In button
+        # Take screenshot of login modal showing ONLY the Google Sign-In button
         scr_msg = {"id": 2, "method": "Page.captureScreenshot", "params": {"format": "png"}}
         scr_resp = simple_ws_send_recv(ws_url, scr_msg)
         if scr_resp:
@@ -136,10 +136,10 @@ def main():
                     f.write(base64.b64decode(scr_data))
                 print(f"[OK] Saved login_screen_verified.png to {target_path}")
 
-        # Test clicking quickLoginOwner()
+        # Test Google user authentication
         test_login_js = """
         (function() {
-            quickLoginOwner();
+            verifyAndLoginGoogleUser('singarisurendra@gmail.com', 'Surendra Singari');
             const session = JSON.parse(localStorage.getItem('jsr_auth_session') || '{}');
             const overlay = document.getElementById('view-login');
             return JSON.stringify({
