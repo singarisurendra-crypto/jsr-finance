@@ -152,33 +152,28 @@ def main():
         simple_ws_send_recv(ws_url, {"id": 1, "method": "Runtime.evaluate", "params": {"expression": login_js}})
         time.sleep(1)
 
-        # Step 1: Verify 4 Top KPI Cards
+        # Step 1: Verify Summary KPI Cards Removal & Shortcut Button in Filter Row
         kpi_check_js = """
         (function() {
-            const activeEl = document.getElementById('coll-kpi-active');
-            const disbEl = document.getElementById('coll-kpi-disbursed');
-            const collEl = document.getElementById('coll-kpi-collected');
-            const dueEl = document.getElementById('coll-kpi-due-today');
+            const gridEl = document.querySelector('.coll-kpi-grid');
+            const shortcutBtn = document.querySelector('.coll-btn-shortcut');
+            const searchRow = document.querySelector('.coll-search-row');
             return JSON.stringify({
-                hasActive: !!activeEl && activeEl.innerText !== '',
-                activeText: activeEl ? activeEl.innerText : '',
-                hasDisbursed: !!disbEl && disbEl.innerText !== '',
-                disbursedText: disbEl ? disbEl.innerText : '',
-                hasCollected: !!collEl && collEl.innerText !== '',
-                collectedText: collEl ? collEl.innerText : '',
-                hasDueToday: !!dueEl && dueEl.innerText !== '',
-                dueTodayText: dueEl ? dueEl.innerText : ''
+                hasVisibleGrid: !!gridEl,
+                hasShortcutBtn: !!shortcutBtn,
+                shortcutText: shortcutBtn ? shortcutBtn.innerText.trim() : '',
+                shortcutInSearchRow: !!searchRow && searchRow.contains(shortcutBtn)
             });
         })()
         """
         res_kpi = simple_ws_send_recv(ws_url, {"id": 2, "method": "Runtime.evaluate", "params": {"expression": kpi_check_js, "returnByValue": True}})
         kpi_data = get_cdp_value(res_kpi)
-        print("1. Top KPI Metrics Cards:", kpi_data)
-        assert kpi_data["hasActive"] is True
-        assert kpi_data["hasDisbursed"] is True
-        assert kpi_data["hasCollected"] is True
-        assert kpi_data["hasDueToday"] is True
-        print("  [PASS] All 4 Top KPI Metrics cards populated with live figures.")
+        print("1. Summary Cards Removed & Shortcut Button Added:", kpi_data)
+        assert kpi_data["hasVisibleGrid"] is False, "Summary KPI grid must be removed from the instalment screen"
+        assert kpi_data["hasShortcutBtn"] is True, "Shortcut button must be present in filter bar"
+        assert "⌘K" in kpi_data["shortcutText"], "Shortcut button must indicate ⌘K"
+        assert kpi_data["shortcutInSearchRow"] is True, "Shortcut button must be inside .coll-search-row"
+        print("  [PASS] Summary KPI cards removed from screen, and ⚡ ⌘K shortcut button added to filter bar.")
 
         # Step 2: Verify Collapsible Quick Receive
         quick_check_js = """
@@ -252,7 +247,7 @@ def main():
         assert acc_data["c2OpenAfter"] is True, "Customer 2 must open when selected"
         print("  [PASS] Single-customer accordion and 52-instalment 4-row grid verified.")
 
-        # Step 3.5: Verify Customer ID (#1, #2) before Avatar
+        # Step 3.5: Verify 3-Row Customer Card & #1 ID Prefix Before Avatar
         id_prefix_check_js = """
         (function() {
             const cards = document.querySelectorAll('.cust-compact-card');
@@ -261,6 +256,13 @@ def main():
             const prefixEl = leftEl ? leftEl.querySelector('.cust-id-prefix') : null;
             const avatarEl = leftEl ? leftEl.querySelector('.cust-avatar') : null;
             const subDetailsEl = leftEl ? leftEl.querySelector('.cust-sub-details') : null;
+            const termsEl = leftEl ? leftEl.querySelector('.cust-financial-terms') : null;
+
+            const rightEl = card1.querySelector('.cust-card-right');
+            const paidStatEl = rightEl ? rightEl.querySelector('.cust-paid-stat') : null;
+            const progRowEl = rightEl ? rightEl.querySelector('.cust-progress-row') : null;
+            const pctEl = progRowEl ? progRowEl.querySelector('.cust-pct-label') : null;
+            const chevronEl = rightEl ? rightEl.querySelector('.cust-chevron-icon') : null;
             
             // Check order: prefixEl should appear before avatarEl in DOM
             const isBeforeAvatar = prefixEl && avatarEl && (prefixEl.compareDocumentPosition(avatarEl) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
@@ -271,18 +273,26 @@ def main():
                 hasAvatar: !!avatarEl,
                 avatarInitials: avatarEl ? avatarEl.innerText.trim() : '',
                 isBeforeAvatar: !!isBeforeAvatar,
-                subDetailsText: subDetailsEl ? subDetailsEl.innerText.trim() : ''
+                subDetailsText: subDetailsEl ? subDetailsEl.innerText.trim() : '',
+                termsText: termsEl ? termsEl.innerText.trim() : '',
+                hasPaidStat: !!paidStatEl && paidStatEl.innerText.includes('paid'),
+                hasPctAtEnd: !!pctEl && pctEl.innerText.includes('%'),
+                hasChevron: !!chevronEl
             });
         })()
         """
         res_prefix = simple_ws_send_recv(ws_url, {"id": 45, "method": "Runtime.evaluate", "params": {"expression": id_prefix_check_js, "returnByValue": True}})
         prefix_data = get_cdp_value(res_prefix)
-        print("3.5. Customer ID Prefix Before Avatar:", prefix_data)
+        print("3.5. 3-Row Customer Card & ID Prefix:", prefix_data)
         assert prefix_data["hasPrefix"] is True, "Must have .cust-id-prefix element"
         assert prefix_data["prefixText"] == "#1", f"Expected #1 for customer 1, got {prefix_data['prefixText']}"
         assert prefix_data["isBeforeAvatar"] is True, "Customer ID (#1) must precede the avatar icon"
-        assert "₹" in prefix_data["subDetailsText"], "Sub-details must show financial terms"
-        print("  [PASS] Verified Customer ID (#1) is rendered directly before the profile avatar icon.")
+        assert "CUS" in prefix_data["subDetailsText"], "Sub-details must show CUS code"
+        assert "₹" in prefix_data["termsText"], "Terms row must show financial terms"
+        assert prefix_data["hasPaidStat"] is True, "Paid count stat must include 'paid' text"
+        assert prefix_data["hasPctAtEnd"] is True, "Progress row must include % at end"
+        assert prefix_data["hasChevron"] is True, "Must have chevron toggle icon"
+        print("  [PASS] Verified 3-row layout matching media_1792566364378.png with #1 prefix before profile avatar.")
 
         # Step 4: Verify Toolbar Action Buttons
         toolbar_check_js = """
