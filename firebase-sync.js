@@ -78,6 +78,11 @@ function setupFirestoreRealtimeListeners() {
       cloudCustomers.sort((a, b) => Number(a.customerNumber) - Number(b.customerNumber));
       state.customers = cloudCustomers;
 
+      // Automatically enforce data invariants and self-healing across all customers & loans
+      if (typeof healCustomerInvariants === 'function') {
+        healCustomerInvariants();
+      }
+
       // Update state and UI
       saveDataLocallyOnly();
       updateHeaderStats();
