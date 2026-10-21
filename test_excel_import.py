@@ -108,9 +108,13 @@ def test_code_integrity():
     assert "btn-confirm-excel-import" in html, "btn-confirm-excel-import button missing in index.html"
     assert "openExcelImportModal()" in html, "openExcelImportModal trigger missing in index.html"
 
+    assert "Cust # / Loan" in html, "Cust # / Loan header missing in index.html"
+
     # App.js checks
     assert "openExcelImportModal" in js, "openExcelImportModal missing in app.js"
     assert "downloadExcelImportTemplate" in js, "downloadExcelImportTemplate missing in app.js"
+    assert "'Loan Number'" in js, "Loan Number column missing in downloadExcelImportTemplate"
+    assert "colLoanNum" in js, "colLoanNum column mapping missing in app.js"
     assert "handleExcelFileSelect" in js, "handleExcelFileSelect missing in app.js"
     assert "processRawImportData" in js, "processRawImportData missing in app.js"
     assert "renderExcelImportPreview" in js, "renderExcelImportPreview missing in app.js"
@@ -260,14 +264,16 @@ def test_browser_import_flow():
         open_data = get_cdp_value(res_open)
         assert open_data.get("visible") is True, f"Modal not visible: {open_data}"
 
-        # Simulate legacy data processing and preview rendering
+        # Simulate legacy data processing and preview rendering with Multi-Loan support
         simulate_import_js = """
         (function() {
-            // Mock raw legacy rows parsed from Excel (header row + data rows)
+            // Mock raw legacy rows parsed from Excel (header row + data rows with multi-loan support)
             const rawRows = [
-                ['Customer Number', 'Full Name', 'Mobile Phone', 'Area / Route', 'Address', 'Loan Given Amount', 'Total Instalments', 'Instalment Amount', 'Frequency', 'Loan Start Date', 'Paid Instalments Count', 'Total Paid Amount', 'Remaining Balance'],
-                [101, 'Venkat Raman', '9876543210', 'Gandhi Nagar', 'Door #1', 10000, 52, 200, 'Weekly', '2026-08-01', '', '', 4200],
-                [102, 'Lakshmi Devi', '9876543211', 'Subhash Road', 'Door #2', 5000, 50, 100, 'Daily', '2026-09-01', '', '', 1500]
+                ['Customer Number', 'Loan Number', 'Full Name', 'Mobile Phone', 'Area / Route', 'Address', 'Loan Given Amount', 'Total Instalments', 'Instalment Amount', 'Frequency', 'Loan Start Date', 'Paid Instalments Count', 'Total Paid Amount', 'Remaining Balance'],
+                [101, 1, 'Venkat Raman', '9876543210', 'Gandhi Nagar', 'Door #1', 10000, 52, 200, 'Weekly', '2026-08-01', '', '', 4200],
+                [101, 2, 'Venkat Raman', '9876543210', 'Gandhi Nagar', 'Door #1', 20000, 52, 520, 'Weekly', '2026-08-01', 15, 7800, 19240],
+                [102, 1, 'Lakshmi Devi', '9876543211', 'Subhash Road', 'Door #2', 5000, 50, 100, 'Daily', '2026-09-01', '', '', 1500],
+                ['103-2', '', 'Suresh Babu', '9876543212', 'Gandhi Nagar', 'Door #3', 10000, 52, 200, 'Weekly', '2026-08-01', 52, 10400, 0]
             ];
 
             processRawImportData(rawRows);
@@ -284,20 +290,27 @@ def test_browser_import_flow():
                 uiDisbursedText: disbEl ? disbEl.innerText : '',
                 uiRecoveredText: recovEl ? recovEl.innerText : '',
                 uiBalanceText: balEl ? balEl.innerText : '',
-                previewVisible: previewCard && previewCard.style.display !== 'none'
+                previewVisible: previewCard && previewCard.style.display !== 'none',
+                cust1_l1_id: parsedExcelCustomers[0].id,
+                cust1_l2_id: parsedExcelCustomers[1].id,
+                cust3_l2_loanNum: parsedExcelCustomers[3].loanNumber
             });
         })()
         """
         res_preview = simple_ws_send_recv(ws_url, {"id": 3, "method": "Runtime.evaluate", "params": {"expression": simulate_import_js, "returnByValue": True}})
         print("  Preview Render Result:", res_preview)
         parsed_preview = get_cdp_value(res_preview)
-        assert parsed_preview["customersCount"] == 2
-        assert "15,000" in parsed_preview["uiDisbursedText"]
-        # 10400-4200 = 6200; 5000-1500 = 3500; total = 9700 recovered, total balance = 5700
-        assert "9,700" in parsed_preview["uiRecoveredText"]
-        assert "5,700" in parsed_preview["uiBalanceText"]
+        assert parsed_preview["customersCount"] == 4, f"Expected 4 parsed records, got {parsed_preview['customersCount']}"
+        assert "45,000" in parsed_preview["uiDisbursedText"], f"Expected 45,000 disbursed, got {parsed_preview['uiDisbursedText']}"
+        # 6200 + 7800 + 3500 + 10400 = 27,900 recovered
+        assert "27,900" in parsed_preview["uiRecoveredText"], f"Expected 27,900 recovered, got {parsed_preview['uiRecoveredText']}"
+        # 4200 + 19240 + 1500 + 0 = 24,940 balance
+        assert "24,940" in parsed_preview["uiBalanceText"], f"Expected 24,940 balance, got {parsed_preview['uiBalanceText']}"
         assert parsed_preview["previewVisible"] is True
-        print("  [PASS] Preview UI rendered with exact reconciled sums.")
+        assert "CUST-101-L1-" in parsed_preview["cust1_l1_id"]
+        assert "CUST-101-L2-" in parsed_preview["cust1_l2_id"]
+        assert parsed_preview["cust3_l2_loanNum"] == 2
+        print("  [PASS] Preview UI rendered with exact multi-loan reconciled sums and IDs.")
 
         # Take screenshot of the preview
         shot_preview = simple_ws_send_recv(ws_url, {"id": 4, "method": "Page.captureScreenshot", "params": {"format": "png"}})
@@ -312,19 +325,33 @@ def test_browser_import_flow():
         execute_js = """
         (function() {
             executeExcelImport();
-            const cust1 = state.customers.find(c => c.customerNumber === 101);
-            const stats1 = cust1 ? getCustomerStats(cust1) : null;
+            const cust1_l1 = state.customers.find(c => c.customerNumber === 101 && (c.loanNumber || 1) === 1);
+            const stats1_l1 = cust1_l1 ? getCustomerStats(cust1_l1) : null;
+
+            const cust1_l2 = state.customers.find(c => c.customerNumber === 101 && c.loanNumber === 2);
+            const stats1_l2 = cust1_l2 ? getCustomerStats(cust1_l2) : null;
+
             const cust2 = state.customers.find(c => c.customerNumber === 102);
             const stats2 = cust2 ? getCustomerStats(cust2) : null;
+
+            const cust3_l2 = state.customers.find(c => c.customerNumber === 103 && c.loanNumber === 2);
+            const stats3_l2 = cust3_l2 ? getCustomerStats(cust3_l2) : null;
+
             const modalEl = document.getElementById('modal-excel-import');
 
             return JSON.stringify({
-                cust1Found: !!cust1,
-                cust1Balance: stats1 ? stats1.balance : null,
-                cust1Paid: stats1 ? stats1.totalPaid : null,
+                cust1_l1_Found: !!cust1_l1,
+                cust1_l1_Balance: stats1_l1 ? stats1_l1.balance : null,
+                cust1_l1_Paid: stats1_l1 ? stats1_l1.totalPaid : null,
+                cust1_l2_Found: !!cust1_l2,
+                cust1_l2_Balance: stats1_l2 ? stats1_l2.balance : null,
+                cust1_l2_Paid: stats1_l2 ? stats1_l2.totalPaid : null,
+                cust1_l2_receipt: cust1_l2 && cust1_l2.instalments[0] ? cust1_l2.instalments[0].receiptNumber : null,
                 cust2Found: !!cust2,
                 cust2Balance: stats2 ? stats2.balance : null,
                 cust2Paid: stats2 ? stats2.totalPaid : null,
+                cust3_l2_Found: !!cust3_l2,
+                cust3_l2_Balance: stats3_l2 ? stats3_l2.balance : null,
                 modalClosed: !modalEl || !modalEl.classList.contains('active')
             });
         })()
@@ -332,14 +359,20 @@ def test_browser_import_flow():
         res_exec = simple_ws_send_recv(ws_url, {"id": 5, "method": "Runtime.evaluate", "params": {"expression": execute_js, "returnByValue": True}})
         print("  Execute Import Result:", res_exec)
         parsed_exec = get_cdp_value(res_exec)
-        assert parsed_exec["cust1Found"] is True
-        assert parsed_exec["cust1Balance"] == 4200, f"Expected 4200, got {parsed_exec['cust1Balance']}"
-        assert parsed_exec["cust1Paid"] == 6200, f"Expected 6200, got {parsed_exec['cust1Paid']}"
+        assert parsed_exec["cust1_l1_Found"] is True
+        assert parsed_exec["cust1_l1_Balance"] == 4200, f"Expected 4200, got {parsed_exec['cust1_l1_Balance']}"
+        assert parsed_exec["cust1_l1_Paid"] == 6200, f"Expected 6200, got {parsed_exec['cust1_l1_Paid']}"
+        assert parsed_exec["cust1_l2_Found"] is True
+        assert parsed_exec["cust1_l2_Balance"] == 19240, f"Expected 19240, got {parsed_exec['cust1_l2_Balance']}"
+        assert parsed_exec["cust1_l2_Paid"] == 7800, f"Expected 7800, got {parsed_exec['cust1_l2_Paid']}"
+        assert "IMP-REC-101-L2-1" == parsed_exec["cust1_l2_receipt"]
         assert parsed_exec["cust2Found"] is True
         assert parsed_exec["cust2Balance"] == 1500, f"Expected 1500, got {parsed_exec['cust2Balance']}"
         assert parsed_exec["cust2Paid"] == 3500, f"Expected 3500, got {parsed_exec['cust2Paid']}"
+        assert parsed_exec["cust3_l2_Found"] is True
+        assert parsed_exec["cust3_l2_Balance"] == 0, f"Expected 0, got {parsed_exec['cust3_l2_Balance']}"
         assert parsed_exec["modalClosed"] is True
-        print("  [PASS] Imported customers integrated into state with 0-rupee drift.")
+        print("  [PASS] Multi-loan imported records correctly persisted with separated balances and distinct IDs.")
 
         print("\n[4/4] Final Verification Passed!")
 
