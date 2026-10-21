@@ -446,8 +446,12 @@ def main():
             // Cleanup isolated test customer and test transaction
             state.customers = state.customers.filter(c => c.id !== testCustId);
             state.transactions = (state.transactions || []).filter(t => t.customerId !== testCustId);
+            if (state.pendingModifications) {
+                delete state.pendingModifications[testCustId];
+            }
 
             // 7. Verify Partial Amount shown in checkbox
+            switchTab('collections');
             const partialTestCust = {
                 id: 'TEST-PARTIAL-CUST-999',
                 customerNumber: 9998,
@@ -471,6 +475,10 @@ def main():
             renderCollectionMatrix();
             toggleCustomerSchedule(partialTestCust.id);
 
+            const card = document.querySelector(`.cust-compact-card[data-customer-id="${partialTestCust.id}"]`);
+            results.hasPartialCard = !!card;
+            results.isPartialCardExpanded = card ? card.classList.contains('card-expanded') : false;
+            results.expandedIds = Array.from(state.expandedCustomerIds || []);
             const partialBtn = document.querySelector(`.cust-compact-card[data-customer-id="${partialTestCust.id}"] .sched-box-btn.is-partial`);
             results.hasPartialBtn = !!partialBtn;
             results.partialBtnHtml = partialBtn ? partialBtn.innerHTML : '';
@@ -490,7 +498,7 @@ def main():
         """
         res_iso = simple_ws_send_recv(ws_url, {"id": 55, "method": "Runtime.evaluate", "params": {"expression": tab_isolation_check_js, "returnByValue": True}})
         iso_data = get_cdp_value(res_iso)
-        print("4.5. Tab Isolation, Undo & Loan Filter Flow:", iso_data)
+        print("4.5. Tab Isolation, Undo & Loan Filter Flow: Validating assertions...")
         assert iso_data["customersActive"] is True, "Customers view must be active"
         assert iso_data["collHiddenOnCust"] is True, "Collections view must be hidden on Customers tab"
         assert iso_data["settingsActive"] is True, "Settings view must be active"
