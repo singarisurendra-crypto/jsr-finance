@@ -2172,23 +2172,24 @@ function renderCollectionMatrix() {
                 ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 5px; margin-left:4px;">⚠️ Due ${stats.missedCount}</span>` : ''}
               </div>
               <div class="cust-sub-details">
-                ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)} / ${unitLabel}${cust.phone ? ` <span class="cust-phone-desktop">• ${cust.phone}</span>` : ''}
+                ${custIdStr} • ${cust.phone || 'No Phone'}
+              </div>
+              <div class="cust-financial-terms">
+                ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)}/${unitLabel.toLowerCase()}
               </div>
             </div>
           </div>
 
           <div class="cust-card-right">
-            <div class="cust-progress-col">
-              <div class="cust-paid-stat">${effectiveStats.paidCount}/${instCount}</div>
-              <div class="cust-progress-row">
-                <div class="cust-bar-bg">
-                  <div class="cust-bar-fill" style="width: ${completionPct}%;"></div>
-                </div>
-                <span class="cust-pct-label">${completionPct}%</span>
+            <div class="cust-paid-stat">${effectiveStats.paidCount}/${instCount} paid</div>
+            <div class="cust-progress-row">
+              <div class="cust-bar-bg">
+                <div class="cust-bar-fill" style="width: ${completionPct}%;"></div>
               </div>
+              <span class="cust-pct-label">${completionPct}%</span>
             </div>
             <div class="cust-chevron-icon ${isExpanded ? 'rotated' : ''}">
-              ${isExpanded ? '︿' : '⌵'}
+              ⌵
             </div>
           </div>
         </div>
