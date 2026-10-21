@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=30">
+  <link rel="stylesheet" href="styles.css?v=31">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -319,89 +319,162 @@
       <!-- SCREEN 2: 52-INSTALMENT COLLECTION SHEET       -->
       <!-- ============================================== -->
       <section id="view-collections" class="screen-view active">
-        <div class="view-header collections-header">
-          <div class="collections-title-block">
-            <h1 class="view-title">Customer instalments</h1>
-            <p class="view-subtitle">Tap a customer to expand or collapse 52 weeks</p>
+        <!-- 4 Top KPI Cards (Matching Image media_1792564530838.png) -->
+        <div class="coll-kpi-grid">
+          <div class="coll-kpi-card card-blue">
+            <div class="coll-kpi-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </div>
+            <div class="coll-kpi-content">
+              <div class="coll-kpi-label">Active Loans</div>
+              <div class="coll-kpi-value" id="coll-kpi-active">0</div>
+            </div>
           </div>
-          <div class="collections-tools">
-            <input type="text" id="global-search-input" class="form-control search-icon-padded" placeholder="Search customer / ID / mobile (or ⌘K)">
-            <button type="button" class="btn btn-outline btn-compact" onclick="openCommandPalette()" title="Press Cmd+K / Ctrl+K" style="font-weight: 700; color: #2563eb; background: #eff6ff; border-color: #bfdbfe;">
-              ⚡ ⌘K
-            </button>
-            <select id="collection-filter-select" class="form-control">
-              <option value="active" selected>Active Only</option>
-              <option value="all">All Loans (Weekly & Daily)</option>
-              <option value="overdue">⚠️ Overdue (Behind ≥2)</option>
-              <option value="partial">½ Partial Payments</option>
-              <option value="completed">Completed Only</option>
-              <option value="weekly">Weekly Loans Only</option>
-              <option value="daily">Daily Loans Only (100 Days)</option>
-            </select>
-            <button type="button" class="btn btn-outline btn-compact pill-toggle" id="btn-expand-all" onclick="toggleExpandAllSchedules()" title="Expand or Collapse All Customer Schedules">Expand all</button>
-            <button class="btn btn-outline btn-compact" onclick="exportCollectionSheetCSV()" title="Export CSV / Excel">📥 Export CSV</button>
-            <button class="btn btn-outline btn-compact" onclick="window.print()" title="Print Sheet">🖨️ Print</button>
-            <button class="btn btn-primary btn-compact" onclick="openAddCustomerModal()">+ Add Customer</button>
+
+          <div class="coll-kpi-card card-green">
+            <div class="coll-kpi-icon">
+              <div class="coll-kpi-currency-badge">₹</div>
+            </div>
+            <div class="coll-kpi-content">
+              <div class="coll-kpi-label">Total Disbursed</div>
+              <div class="coll-kpi-value" id="coll-kpi-disbursed">₹ 0</div>
+            </div>
+          </div>
+
+          <div class="coll-kpi-card card-indigo">
+            <div class="coll-kpi-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#3b82f6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+              </svg>
+            </div>
+            <div class="coll-kpi-content">
+              <div class="coll-kpi-label">Total Collected</div>
+              <div class="coll-kpi-value" id="coll-kpi-collected">₹ 0</div>
+            </div>
+          </div>
+
+          <div class="coll-kpi-card card-orange">
+            <div class="coll-kpi-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#ea580c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <div class="coll-kpi-content">
+              <div class="coll-kpi-label">Due Today</div>
+              <div class="coll-kpi-value" id="coll-kpi-due-today">₹ 0</div>
+            </div>
           </div>
         </div>
 
-        <!-- Rapid Keyboard Numpad Entry Bar (Positioned ABOVE table below filters) -->
-        <form class="quick-entry-bar" onsubmit="handleQuickReceive(event)">
-          <div style="font-weight: 700; font-size: 13px; color: #1e40af; display: flex; align-items: center; gap: 6px;">
-            ⚡ Quick Receive (Keyboard / Field Entry):
-          </div>
-          <div class="input-group">
-            <label for="quick-cust-num">Cust # / Loan:</label>
-            <input type="text" id="quick-cust-num" class="form-control" placeholder="e.g. 1 or 1-2" style="width: 100px;" oninput="handleQuickCustNumChange()" required>
-          </div>
-          <div class="input-group">
-            <label for="quick-amount">Amount (₹):</label>
-            <input type="number" id="quick-amount" class="form-control" placeholder="e.g. 200 or 100" style="width: 110px;" step="1" min="1">
-          </div>
-          <button type="submit" class="btn btn-success">
-            Mark Received ↵
-          </button>
-          <span style="font-size: 11px; color: #64748b;">
-            💡 Tip: Enter # (and partial ₹ if paying less) & hit Enter!
+        <!-- Title & Subtitle Row -->
+        <div class="coll-title-row">
+          <h1 class="view-title" style="margin: 0; font-size: 21px; font-weight: 800; color: #0f172a;">Customer instalments</h1>
+          <span id="coll-header-summary" style="font-size: 13px; font-weight: 500; color: #64748b;">
+            0 customers • Tap to expand
           </span>
-        </form>
+        </div>
+
+        <!-- Search & Filter Controls -->
+        <div class="coll-search-row">
+          <div class="coll-search-wrap">
+            <span class="coll-search-icon">🔍</span>
+            <input type="text" id="global-search-input" class="coll-search-input" placeholder="Search customer / ID / mobile (or *BK)" autocomplete="off">
+          </div>
+          <select id="collection-filter-select" class="coll-filter-select">
+            <option value="active" selected>Active Only</option>
+            <option value="all">All Loans (Weekly & Daily)</option>
+            <option value="overdue">⚠️ Overdue (Behind ≥2)</option>
+            <option value="partial">½ Partial Payments</option>
+            <option value="completed">Completed Only</option>
+            <option value="weekly">Weekly Loans Only</option>
+            <option value="daily">Daily Loans Only (100 Days)</option>
+          </select>
+        </div>
+
+        <!-- Combined Action Buttons Toolbar -->
+        <div class="coll-action-toolbar">
+          <button type="button" class="coll-btn-action" id="btn-expand-all" onclick="expandAllSchedules()" title="Expand all customer schedules">
+            <span>⌵</span> Expand all
+          </button>
+          <button type="button" class="coll-btn-action" id="btn-collapse-all" onclick="collapseAllSchedules()" title="Collapse all customer schedules">
+            <span>︿</span> Collapse all
+          </button>
+          <button type="button" class="coll-btn-action" onclick="exportCollectionSheetCSV()" title="Export CSV">
+            <span style="color: #ea580c;">📄</span> Export CSV
+          </button>
+          <button type="button" class="coll-btn-action" onclick="window.print()" title="Print Sheet">
+            <span>🖨️</span> Print
+          </button>
+          <button type="button" class="coll-btn-add" onclick="openAddCustomerModal()" title="Add New Customer">
+            <span>👤+</span> Add
+          </button>
+        </div>
+
+        <!-- Collapsible Quick Receive Section (Collapsed by Default) -->
+        <div class="coll-quick-receive" id="coll-quick-receive-container">
+          <div class="coll-quick-header" onclick="toggleQuickReceive()">
+            <div class="coll-quick-title">
+              <span class="coll-quick-lightning">⚡</span>
+              <span>Quick Receive</span>
+            </div>
+            <span class="coll-quick-chevron" id="coll-quick-chevron">⌵</span>
+          </div>
+          <form class="coll-quick-body" id="coll-quick-body" style="display: none;" onsubmit="handleQuickReceive(event)">
+            <div class="input-group">
+              <label for="quick-cust-num" style="font-size: 12px; font-weight: 600; color: #1e3a8a;">Cust # / Loan:</label>
+              <input type="text" id="quick-cust-num" class="form-control" placeholder="e.g. 1 or 1-2" style="width: 110px;" oninput="handleQuickCustNumChange()" required>
+            </div>
+            <div class="input-group">
+              <label for="quick-amount" style="font-size: 12px; font-weight: 600; color: #1e3a8a;">Amount (₹):</label>
+              <input type="number" id="quick-amount" class="form-control" placeholder="e.g. 200 or 100" style="width: 120px;" step="1" min="1">
+            </div>
+            <button type="submit" class="btn btn-success" style="padding: 7px 16px; font-weight: 700; font-size: 13px;">
+              Mark Received ↵
+            </button>
+            <span style="font-size: 11.5px; color: #64748b; margin-left: 6px;">
+              💡 Enter # (and amount if partial) & hit Enter
+            </span>
+          </form>
+        </div>
 
         <!-- Sheet Info Strip & Legend -->
-        <div class="sheet-info-strip">
-          <div class="schedule-legend" style="margin-bottom: 0;">
-            <div class="sched-legend-item">
-              <span class="sched-legend-box paid">✓</span>
+        <div class="coll-legend-row">
+          <div class="coll-legend-items">
+            <div class="coll-legend-badge">
+              <span class="coll-legend-box box-paid">✓</span>
               <span>Paid</span>
             </div>
-            <div class="sched-legend-item">
-              <span class="sched-legend-box pending"> </span>
+            <div class="coll-legend-badge">
+              <span class="coll-legend-box box-pending"></span>
               <span>Pending</span>
             </div>
-            <div class="sched-legend-item">
-              <span class="sched-legend-box partial">-</span>
+            <div class="coll-legend-badge">
+              <span class="coll-legend-box box-partial">-</span>
               <span>Partial</span>
             </div>
           </div>
-          <div style="font-size: 12px; color: #64748b; font-weight: 500;">
-            💡 Tap any customer row or "Expand all" to view/hide 52-week schedule
+          <div class="coll-legend-rule">
+            52 instalments per customer
           </div>
         </div>
 
-        <!-- The 52-Column Spreadhseet Matrix (Desktop Only) -->
-        <div class="collection-table-container desktop-only-collections">
-          <table class="matrix-table">
-            <thead id="matrix-table-head">
-              <!-- Dynamically rendered with sticky customer columns and Weeks 1-52 -->
-            </thead>
-            <tbody id="matrix-table-body">
-              <!-- Dynamically populated customer rows -->
-            </tbody>
-          </table>
+        <!-- Unified Responsive Customer Cards List -->
+        <div id="collection-cards-list" class="coll-cards-list">
+          <!-- Populated dynamically by app.js -->
         </div>
 
-        <!-- Mobile Customer Cards List (Mobile Only <= 900px, matching media_1791982219543.png) -->
-        <div id="collection-cards-mobile" class="mobile-only-collections">
-          <!-- Dynamically populated customer cards -->
+        <!-- Hidden backward-compatibility anchors -->
+        <div style="display: none;">
+          <table class="matrix-table"><thead id="matrix-table-head"></thead><tbody id="matrix-table-body"></tbody></table>
+          <div id="collection-cards-mobile"></div>
         </div>
       </section>
 
@@ -1230,8 +1303,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=30"></script>
-  <script src="firebase-sync.js?v=30"></script>
-  <script src="app.js?v=30"></script>
+  <script src="firebase-config.js?v=31"></script>
+  <script src="firebase-sync.js?v=31"></script>
+  <script src="app.js?v=31"></script>
 </body>
 </html>
