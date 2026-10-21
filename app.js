@@ -554,6 +554,7 @@ function renderCommandPaletteResults(query) {
   // Quick Action Commands
   const actions = [
     { title: 'Add New Customer', sub: 'Create new 52-week or 100-day loan', icon: '👤+', run: "closeCommandPalette(); openAddCustomerModal();" },
+    { title: 'Import Loans from Excel / CSV', sub: 'Bulk migrate old ledgers with exact balance matching', icon: '📥', run: "closeCommandPalette(); openExcelImportModal();" },
     { title: 'End-of-Day Cash Tally', sub: 'Count currency notes & print handover slip', icon: '💵', run: "closeCommandPalette(); openCashTallyModal();" },
     { title: 'Instalment Receiving Sheet', sub: 'Jump to 52-week customer grid', icon: '📋', run: "closeCommandPalette(); switchTab('collections');" },
     { title: 'Executive Summary Dashboard', sub: 'View portfolio capital & recovery', icon: '📊', run: "closeCommandPalette(); switchTab('summary');" },
@@ -3965,6 +3966,466 @@ function importDataBackup(event) {
     }
   };
   reader.readAsText(file);
+}
+
+// ====================================================
+// EXCEL & CSV DATA IMPORT ENGINE WITH BALANCE RECONCILIATION
+// ====================================================
+let parsedExcelCustomers = [];
+
+function openExcelImportModal() {
+  parsedExcelCustomers = [];
+  const fileInput = document.getElementById('excel-file-input');
+  if (fileInput) fileInput.value = '';
+  const filenameEl = document.getElementById('excel-selected-filename');
+  if (filenameEl) {
+    filenameEl.style.display = 'none';
+    filenameEl.textContent = '';
+  }
+  const previewContainer = document.getElementById('excel-preview-container');
+  if (previewContainer) previewContainer.style.display = 'none';
+  const errorEl = document.getElementById('excel-import-error');
+  if (errorEl) errorEl.style.display = 'none';
+  const confirmBtn = document.getElementById('btn-confirm-excel-import');
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Confirm & Import Customers ↵';
+  }
+  openModal('modal-excel-import');
+}
+
+function downloadExcelImportTemplate() {
+  const headers = [
+    'Customer Number',
+    'Full Name',
+    'Mobile Phone',
+    'Area / Route',
+    'Address',
+    'Loan Given Amount',
+    'Total Instalments',
+    'Instalment Amount',
+    'Frequency',
+    'Loan Start Date',
+    'Paid Instalments Count',
+    'Total Paid Amount',
+    'Remaining Balance',
+    'Instructions'
+  ];
+
+  const sampleRows = [
+    [
+      1,
+      'Ramesh Kumar',
+      '9876543210',
+      'Market Line',
+      'Shop #12, Market Road',
+      10000,
+      52,
+      200,
+      'Weekly',
+      '2026-08-01',
+      15,
+      3000,
+      7400,
+      'Example 1: Weekly loan with 15 paid instalments (7400 balance remaining)'
+    ],
+    [
+      2,
+      'Priya Sharma',
+      '9845123456',
+      'Gandhi Nagar',
+      'H.No 4-51, 2nd Cross',
+      10000,
+      100,
+      100,
+      'Daily',
+      '2026-09-01',
+      25,
+      2500,
+      7500,
+      'Example 2: Daily 100-day loan with remaining balance of 7500'
+    ],
+    [
+      3,
+      'Suresh Reddy',
+      '9988776655',
+      'Station Area',
+      'Near Platform 1',
+      10000,
+      52,
+      200,
+      'Weekly',
+      '2026-10-15',
+      0,
+      0,
+      10400,
+      'Example 3: Fresh loan with 0 paid and full 10400 balance'
+    ]
+  ];
+
+  if (typeof XLSX !== 'undefined') {
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
+    ws['!cols'] = [
+      { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 16 }, { wch: 24 },
+      { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 15 },
+      { wch: 22 }, { wch: 18 }, { wch: 18 }, { wch: 45 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Loan Ledger');
+    XLSX.writeFile(wb, 'JSR_Finance_Import_Template.xlsx');
+  } else {
+    // Pure CSV fallback
+    const csvContent = [headers.join(','), ...sampleRows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'JSR_Finance_Import_Template.csv';
+    link.click();
+  }
+}
+
+function handleExcelFileSelect(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const filenameEl = document.getElementById('excel-selected-filename');
+  if (filenameEl) {
+    filenameEl.textContent = `📄 Selected: ${file.name} (${Math.round(file.size / 1024)} KB)`;
+    filenameEl.style.display = 'block';
+  }
+
+  const errorEl = document.getElementById('excel-import-error');
+  if (errorEl) errorEl.style.display = 'none';
+
+  const reader = new FileReader();
+
+  if (file.name.endsWith('.csv')) {
+    reader.onload = function(e) {
+      try {
+        const text = e.target.result;
+        processRawImportData(parseCSVTextToRows(text));
+      } catch (err) {
+        showExcelImportError('Failed to parse CSV file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  } else {
+    reader.onload = function(e) {
+      try {
+        if (typeof XLSX === 'undefined') {
+          showExcelImportError('Excel parser library is loading. Please try again in a moment or use CSV.');
+          return;
+        }
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rawJson = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+        processRawImportData(rawJson);
+      } catch (err) {
+        showExcelImportError('Failed to parse Excel file: ' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function parseCSVTextToRows(csvText) {
+  const rows = [];
+  const lines = csvText.split(/\r?\n/);
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+    const row = [];
+    let insideQuotes = false;
+    let entry = '';
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        insideQuotes = !insideQuotes;
+      } else if (c === ',' && !insideQuotes) {
+        row.push(entry.trim());
+        entry = '';
+      } else {
+        entry += c;
+      }
+    }
+    row.push(entry.trim());
+    rows.push(row);
+  }
+  return rows;
+}
+
+function showExcelImportError(msg) {
+  const errorEl = document.getElementById('excel-import-error');
+  if (errorEl) {
+    errorEl.innerHTML = `<strong>⚠️ Import Error:</strong> ${msg}`;
+    errorEl.style.display = 'flex';
+  }
+}
+
+function processRawImportData(rows) {
+  if (!rows || rows.length < 2) {
+    showExcelImportError('The selected file does not contain enough data rows.');
+    return;
+  }
+
+  // Find header row and map columns
+  const rawHeaders = rows[0].map(h => String(h || '').trim().toLowerCase().replace(/[\s\-_#\/]/g, ''));
+
+  const findCol = (synonyms) => {
+    for (let syn of synonyms) {
+      const cleanSyn = syn.toLowerCase().replace(/[\s\-_#\/]/g, '');
+      const idx = rawHeaders.findIndex(h => h.includes(cleanSyn));
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+
+  const colCustNum = findCol(['customernumber', 'custnumber', 'custno', 'customerid', 'accountno', 'id', 'no']);
+  const colName = findCol(['fullname', 'customername', 'name', 'clientname', 'customer']);
+  const colPhone = findCol(['mobilephone', 'mobile', 'phone', 'contact', 'phonenumber']);
+  const colArea = findCol(['arearoute', 'area', 'route', 'location', 'line']);
+  const colAddress = findCol(['address', 'fulladdress', 'landmark', 'street']);
+  const colGiven = findCol(['loangivenamount', 'givenamount', 'principal', 'loanamount', 'disbursed', 'given']);
+  const colInstCount = findCol(['totalinstalments', 'instalments', 'weeks', 'days', 'duration', 'tenure']);
+  const colInstAmt = findCol(['instalmentamount', 'emi', 'weeklyamount', 'dailyamount', 'amount', 'rate']);
+  const colFreq = findCol(['frequency', 'type', 'scheme', 'freq']);
+  const colDate = findCol(['loanstartdate', 'startdate', 'disbursaldate', 'loandate', 'date']);
+  const colPaidCount = findCol(['paidinstalmentscount', 'paidinstalments', 'paidcount', 'paidweeks', 'paiddays']);
+  const colTotalPaid = findCol(['totalpaidamount', 'totalpaid', 'paidamount', 'collected', 'recovered', 'amountpaid']);
+  const colBalance = findCol(['remainingbalance', 'balanceamount', 'balance', 'pendingbalance', 'duebalance', 'bal']);
+
+  if (colName === -1 && colCustNum === -1) {
+    showExcelImportError('Could not find Customer Name or Number columns in your sheet. Please use our template.');
+    return;
+  }
+
+  const parsedCustomers = [];
+  const todayStr = getISTDateString();
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row || row.length === 0 || row.every(cell => !cell)) continue;
+
+    const fullName = String(row[colName !== -1 ? colName : 1] || '').trim();
+    if (!fullName) continue;
+
+    const customerNumber = parseInt(row[colCustNum !== -1 ? colCustNum : 0], 10) || (r);
+    const phone = colPhone !== -1 ? String(row[colPhone] || '').trim() : '';
+    const areaRoute = colArea !== -1 ? String(row[colArea] || 'General').trim() : 'General';
+    const address = colAddress !== -1 ? String(row[colAddress] || '').trim() : '';
+    const givenAmount = Math.max(100, Number(row[colGiven !== -1 ? colGiven : -1]) || 10000);
+    const totalInstalments = Math.max(1, parseInt(row[colInstCount !== -1 ? colInstCount : -1], 10) || 52);
+    const instalmentAmount = Math.max(1, Number(row[colInstAmt !== -1 ? colInstAmt : -1]) || Math.round((givenAmount * 1.04) / totalInstalments));
+    const totalPayable = totalInstalments * instalmentAmount;
+
+    let frequency = colFreq !== -1 ? String(row[colFreq] || '').trim() : '';
+    if (!frequency) {
+      frequency = totalInstalments === 100 ? 'Daily' : 'Weekly';
+    }
+
+    let startDate = colDate !== -1 ? String(row[colDate] || '').trim() : '';
+    if (!startDate || startDate.length < 4) {
+      startDate = todayStr;
+    }
+
+    // Exact balance reconciliation logic
+    const rawBalance = colBalance !== -1 && row[colBalance] !== '' ? Number(row[colBalance]) : null;
+    const rawTotalPaid = colTotalPaid !== -1 && row[colTotalPaid] !== '' ? Number(row[colTotalPaid]) : null;
+    const rawPaidCount = colPaidCount !== -1 && row[colPaidCount] !== '' ? Number(row[colPaidCount]) : null;
+
+    let targetPaid = 0;
+    if (rawBalance !== null && !isNaN(rawBalance)) {
+      targetPaid = Math.max(0, Math.min(totalPayable, totalPayable - rawBalance));
+    } else if (rawTotalPaid !== null && !isNaN(rawTotalPaid)) {
+      targetPaid = Math.max(0, Math.min(totalPayable, rawTotalPaid));
+    } else if (rawPaidCount !== null && !isNaN(rawPaidCount)) {
+      targetPaid = Math.max(0, Math.min(totalPayable, rawPaidCount * instalmentAmount));
+    }
+
+    // Build schedule
+    const instalments = [];
+    let accumulatedPaid = 0;
+    const startMs = new Date(startDate).getTime() || new Date(todayStr).getTime();
+
+    for (let i = 1; i <= totalInstalments; i++) {
+      const daysOffset = frequency === 'Daily' ? (i - 1) : (i - 1) * 7;
+      const instDate = new Date(startMs + daysOffset * 86400000).toISOString().split('T')[0];
+      const remainingToAllocate = targetPaid - accumulatedPaid;
+
+      if (remainingToAllocate >= instalmentAmount) {
+        instalments.push({
+          number: i,
+          dueAmount: instalmentAmount,
+          paidAmount: instalmentAmount,
+          status: 'Received',
+          paidDate: instDate,
+          paidTimestamp: instDate + 'T10:00:00.000Z',
+          receiptNumber: `IMP-REC-${customerNumber}-L1-${i}`
+        });
+        accumulatedPaid += instalmentAmount;
+      } else if (remainingToAllocate > 0) {
+        instalments.push({
+          number: i,
+          dueAmount: instalmentAmount,
+          paidAmount: remainingToAllocate,
+          status: 'Partial',
+          paidDate: instDate,
+          paidTimestamp: instDate + 'T10:00:00.000Z',
+          receiptNumber: `IMP-PART-${customerNumber}-L1-${i}`
+        });
+        accumulatedPaid += remainingToAllocate;
+      } else {
+        instalments.push({
+          number: i,
+          dueAmount: instalmentAmount,
+          paidAmount: 0,
+          status: 'Pending'
+        });
+      }
+    }
+
+    const newId = `CUST-${customerNumber}-L1-${Date.now()}-${r}`;
+    parsedCustomers.push({
+      id: newId,
+      customerNumber,
+      loanNumber: 1,
+      fullName,
+      phone,
+      areaRoute,
+      address,
+      givenAmount,
+      totalInstalments,
+      instalmentAmount,
+      totalPayable,
+      startDate,
+      status: targetPaid >= totalPayable ? 'Completed' : 'Active',
+      frequency,
+      instalments,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  if (parsedCustomers.length === 0) {
+    showExcelImportError('No valid customer records could be read from this file.');
+    return;
+  }
+
+  parsedExcelCustomers = parsedCustomers;
+  renderExcelImportPreview(parsedCustomers);
+}
+
+function renderExcelImportPreview(customers) {
+  let totalDisbursed = 0;
+  let totalCollected = 0;
+  let totalBalance = 0;
+
+  customers.forEach(c => {
+    totalDisbursed += (c.givenAmount || 0);
+    const s = getCustomerStats(c);
+    totalCollected += s.totalPaid;
+    totalBalance += s.balance;
+  });
+
+  const countEl = document.getElementById('excel-preview-count');
+  const disbEl = document.getElementById('excel-preview-disbursed');
+  const collEl = document.getElementById('excel-preview-collected');
+  const balEl = document.getElementById('excel-preview-balance');
+
+  if (countEl) countEl.textContent = customers.length;
+  if (disbEl) disbEl.textContent = formatMoney(totalDisbursed);
+  if (collEl) collEl.textContent = formatMoney(totalCollected);
+  if (balEl) balEl.textContent = formatMoney(totalBalance);
+
+  const tbody = document.getElementById('excel-preview-table-body');
+  if (tbody) {
+    const previewRows = customers.slice(0, 5);
+    tbody.innerHTML = previewRows.map(c => {
+      const s = getCustomerStats(c);
+      return `
+        <tr>
+          <td><strong>#${c.customerNumber}</strong></td>
+          <td><strong>${c.fullName}</strong></td>
+          <td>${c.phone || '-'}</td>
+          <td>${c.areaRoute}</td>
+          <td>${formatMoney(c.givenAmount)}</td>
+          <td>${formatMoney(c.instalmentAmount)}</td>
+          <td><span class="badge-received" style="padding:2px 8px; width:auto;">${s.paidCount} / ${c.totalInstalments}</span></td>
+          <td style="color:#16a34a; font-weight:700;">${formatMoney(s.totalPaid)}</td>
+          <td style="color:#b45309; font-weight:700;">${formatMoney(s.balance)}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  const container = document.getElementById('excel-preview-container');
+  if (container) container.style.display = 'block';
+
+  const confirmBtn = document.getElementById('btn-confirm-excel-import');
+  if (confirmBtn) {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = `Confirm & Import ${customers.length} Customers ↵`;
+  }
+}
+
+async function executeExcelImport() {
+  if (!parsedExcelCustomers || parsedExcelCustomers.length === 0) return;
+
+  const modeRadio = document.querySelector('input[name="excel-import-mode"]:checked');
+  const mode = modeRadio ? modeRadio.value : 'merge';
+
+  const confirmBtn = document.getElementById('btn-confirm-excel-import');
+  if (confirmBtn) {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '⏳ Importing & Syncing to Cloud...';
+  }
+
+  if (mode === 'replace') {
+    state.customers = [];
+    state.transactions = [];
+  }
+
+  parsedExcelCustomers.forEach(imported => {
+    const existingIdx = state.customers.findIndex(c => 
+      c.customerNumber.toString() === imported.customerNumber.toString() && (c.loanNumber || 1) === (imported.loanNumber || 1)
+    );
+    if (existingIdx !== -1) {
+      state.customers[existingIdx] = imported;
+    } else {
+      state.customers.push(imported);
+    }
+  });
+
+  // Sort customers numerically by customer number
+  state.customers.sort((a, b) => Number(a.customerNumber) - Number(b.customerNumber));
+
+  // Update next customer number
+  let maxNum = 0;
+  state.customers.forEach(c => {
+    const n = Number(c.customerNumber) || 0;
+    if (n > maxNum) maxNum = n;
+  });
+  state.settings.nextCustNumber = maxNum + 1;
+
+  saveData();
+
+  // Cloud Firestore Batch / Concurrent Sync
+  if (typeof syncCustomerToFirestore === 'function') {
+    for (const c of parsedExcelCustomers) {
+      syncCustomerToFirestore(c);
+    }
+  }
+
+  updateHeaderStats();
+  renderCollectionMatrix();
+  renderCustomersTable();
+  if (state.activeTab === 'summary') renderDashboard();
+  if (state.activeTab === 'analytics') renderAnalytics();
+
+  playCashChime();
+  showToast(`✓ Successfully imported ${parsedExcelCustomers.length} customers from Excel with exact balances!`);
+  closeModal('modal-excel-import');
 }
 
 // Export Collection Sheet as CSV
