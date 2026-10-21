@@ -4,11 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=29">
+  <link rel="stylesheet" href="styles.css?v=30">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- SheetJS (Excel .xlsx / .xls parser & generator) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -413,8 +415,11 @@
             <h1 class="view-title">Customer Master</h1>
             <p class="view-subtitle">Manage customer profiles, loans, disbursed amounts, and view individual passbooks.</p>
           </div>
-          <div class="btn-group">
-            <button class="btn btn-primary" onclick="openAddCustomerModal()">+ Add New Customer</button>
+          <div class="btn-group" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-outline" onclick="openExcelImportModal()" title="Import customer loans from Excel (.xlsx) or CSV">
+              📥 Import from Excel / CSV
+            </button>
+            <button type="button" class="btn btn-primary" onclick="openAddCustomerModal()">+ Add New Customer</button>
           </div>
         </div>
 
@@ -686,6 +691,14 @@
             </p>
 
             <div style="display: flex; flex-direction: column; gap: 12px;">
+              <button type="button" class="btn btn-outline" onclick="openExcelImportModal()" style="width: 100%; justify-content: flex-start; background: #f0fdf4; border-color: #86efac; color: #166534; font-weight: 700;">
+                📊 Import from Excel / CSV (Bulk Migration)
+              </button>
+
+              <button type="button" class="btn btn-outline" onclick="downloadExcelImportTemplate()" style="width: 100%; justify-content: flex-start; color: #1e40af; border-color: #bfdbfe; background: #eff6ff;">
+                📥 Download Excel Import Template (.xlsx)
+              </button>
+
               <button class="btn btn-outline" onclick="exportDataBackup()" style="width: 100%; justify-content: flex-start;">
                 Download Complete Backup (.json)
               </button>
@@ -1047,6 +1060,110 @@
     </div>
   </div>
 
+  <!-- ============================================== -->
+  <!-- MODAL: EXCEL & CSV DATA IMPORT & RECONCILIATION -->
+  <!-- ============================================== -->
+  <div id="modal-excel-import" class="modal-overlay">
+    <div class="modal-dialog large" style="max-width: 840px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>📊</span> Import Loan Ledger from Excel / CSV
+        </h3>
+        <button class="modal-close" onclick="closeModal('modal-excel-import')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <!-- Template Banner -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px;">
+          <div>
+            <strong style="color: #1e40af; font-size: 13.5px;">Need the official Excel template?</strong>
+            <p style="margin: 2px 0 0 0; font-size: 12px; color: #475569;">
+              Includes column format and 3 sample customers with exact balance matching.
+            </p>
+          </div>
+          <button type="button" class="btn btn-primary" onclick="downloadExcelImportTemplate()" style="font-size: 12px; padding: 7px 14px;">
+            📥 Download Sample Excel Template (.xlsx)
+          </button>
+        </div>
+
+        <!-- File Upload Drag & Drop Zone -->
+        <input type="file" id="excel-file-input" accept=".xlsx, .xls, .csv" onchange="handleExcelFileSelect(event)" style="display: none;">
+        <div id="excel-drop-zone" class="excel-drop-zone" onclick="document.getElementById('excel-file-input').click()">
+          <div class="excel-drop-icon">📁</div>
+          <div class="excel-drop-title">Click to browse or drag & drop Excel / CSV file here</div>
+          <div class="excel-drop-subtitle">Supports Microsoft Excel (.xlsx, .xls) and Comma-Separated Values (.csv)</div>
+          <div id="excel-selected-filename" style="margin-top: 10px; font-weight: 700; color: #2563eb; display: none;"></div>
+        </div>
+
+        <!-- Import Summary & Pre-Commit Preview -->
+        <div id="excel-preview-container" style="display: none;">
+          <div class="excel-preview-summary-grid">
+            <div class="excel-preview-stat-card">
+              <div class="excel-preview-stat-label">Total Loans Detected</div>
+              <div class="excel-preview-stat-val" id="excel-preview-count">0</div>
+            </div>
+            <div class="excel-preview-stat-card">
+              <div class="excel-preview-stat-label">Total Disbursed</div>
+              <div class="excel-preview-stat-val" id="excel-preview-disbursed" style="color: #1e40af;">₹ 0</div>
+            </div>
+            <div class="excel-preview-stat-card">
+              <div class="excel-preview-stat-label">Total Recovered</div>
+              <div class="excel-preview-stat-val" id="excel-preview-collected" style="color: #16a34a;">₹ 0</div>
+            </div>
+            <div class="excel-preview-stat-card">
+              <div class="excel-preview-stat-label">Total Balance Due</div>
+              <div class="excel-preview-stat-val" id="excel-preview-balance" style="color: #b45309;">₹ 0</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="font-weight: 700; font-size: 13.5px; color: #1e293b;">
+              Parsed Customers Preview (First 5 Rows)
+            </div>
+            <div style="display: flex; gap: 14px; font-size: 12.5px; color: #475569;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="radio" name="excel-import-mode" value="merge" checked>
+                <span>Append / Merge with existing records</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                <input type="radio" name="excel-import-mode" value="replace">
+                <span style="color: #b91c1c; font-weight: 700;">Clean Slate (Replace all data)</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="data-table-container" style="max-height: 230px; overflow-y: auto; margin-bottom: 14px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Cust #</th>
+                  <th>Full Name</th>
+                  <th>Phone</th>
+                  <th>Area / Route</th>
+                  <th>Given (₹)</th>
+                  <th>Instalment</th>
+                  <th>Paid (Count)</th>
+                  <th>Total Paid (₹)</th>
+                  <th>Balance (₹)</th>
+                </tr>
+              </thead>
+              <tbody id="excel-preview-table-body">
+                <!-- Injected dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="excel-import-error" class="login-error-alert" style="display: none; margin-top: 10px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-excel-import')">Cancel</button>
+        <button type="button" id="btn-confirm-excel-import" class="btn btn-success" onclick="executeExcelImport()" disabled>
+          Confirm & Import Customers ↵
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div id="app-toast" style="display: none; position: fixed; bottom: 24px; right: 24px; background: #1e293b; color: #ffffff; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 500; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); z-index: 200;"></div>
 
@@ -1113,8 +1230,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=29"></script>
-  <script src="firebase-sync.js?v=29"></script>
-  <script src="app.js?v=29"></script>
+  <script src="firebase-config.js?v=30"></script>
+  <script src="firebase-sync.js?v=30"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>
