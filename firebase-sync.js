@@ -97,6 +97,31 @@ function setupFirestoreRealtimeListeners() {
       updateHeaderStats();
     }
   });
+
+  // 3. Listen to Transactions collection in real-time (preserves all payments & undos)
+  firestoreDb.collection('transactions').limit(500).onSnapshot((snapshot) => {
+    if (!snapshot.empty) {
+      const cloudTxns = [];
+      snapshot.forEach((doc) => {
+        cloudTxns.push(doc.data());
+      });
+      cloudTxns.sort((a, b) => {
+        const timeA = a.createdAt || a.timestamp || a.date || '';
+        const timeB = b.createdAt || b.timestamp || b.date || '';
+        return timeB.localeCompare(timeA);
+      });
+      state.transactions = cloudTxns;
+      try {
+        const storageKey = (typeof STORAGE_KEYS !== 'undefined' && STORAGE_KEYS.TRANSACTIONS) ? STORAGE_KEYS.TRANSACTIONS : 'jsr_finance_transactions';
+        localStorage.setItem(storageKey, JSON.stringify(cloudTxns));
+      } catch (e) {}
+      if (typeof renderRecentTransactions === 'function' && state.activeTab === 'summary') {
+        renderRecentTransactions();
+      }
+    }
+  }, (err) => {
+    console.warn('Firestore transactions listener:', err);
+  });
 }
 
 // Save customer directly to Google Cloud Firestore
