@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=35">
+  <link rel="stylesheet" href="styles.css?v=36">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -211,7 +211,13 @@
             <h1 class="view-title">Financial Summary & Overview</h1>
             <p class="view-subtitle">High-level portfolio performance, capital recovery, and collection tracking.</p>
           </div>
-          <div class="btn-group">
+          <div class="btn-group" style="align-items: center; gap: 8px; flex-wrap: wrap;">
+            <select id="summary-loan-filter" class="form-control" onchange="handleSummaryLoanFilterChange(this.value)" style="font-size: 13px; padding: 7px 12px; font-weight: 600; min-width: 155px; border-color: #cbd5e1; background: #ffffff;">
+              <option value="all">📋 All Loans (Overall)</option>
+              <option value="1">Loan #1 (L1)</option>
+              <option value="2">Loan #2 (L2)</option>
+              <option value="3">Loan #3 (L3)</option>
+            </select>
             <button class="btn btn-primary" onclick="openAddCustomerModal()">+ Add Customer</button>
           </div>
         </div>
@@ -280,12 +286,18 @@
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
             <div style="font-size: 15px; font-weight: 700; color: #0f172a;">Recent Collections & Audit Activity</div>
-            <div class="btn-group" style="gap: 8px;">
+            <div class="btn-group" style="gap: 8px; flex-wrap: wrap;">
               <select id="recent-type-filter" class="form-control" onchange="renderRecentTransactions()" style="font-size: 12px; padding: 6px 10px;">
                 <option value="all">⚡ All Activity</option>
                 <option value="payment">✓ Received Payments</option>
                 <option value="partial">½ Partial Payments</option>
                 <option value="undo">↩️ Undos & Rollbacks</option>
+              </select>
+              <select id="recent-loan-filter" class="form-control" onchange="renderRecentTransactions()" style="font-size: 12px; padding: 6px 10px;">
+                <option value="all">📋 All Loans</option>
+                <option value="1">Loan #1 (L1)</option>
+                <option value="2">Loan #2 (L2)</option>
+                <option value="3">Loan #3 (L3)</option>
               </select>
               <select id="recent-date-filter" class="form-control" onchange="renderRecentTransactions()" style="font-size: 12px; padding: 6px 10px;">
                 <option value="all">📅 All Dates</option>
@@ -1265,8 +1277,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=35"></script>
-  <script src="firebase-sync.js?v=35"></script>
-  <script src="app.js?v=35"></script>
+  <script src="firebase-config.js?v=36"></script>
+  <script src="firebase-sync.js?v=36"></script>
+  <script src="app.js?v=36"></script>
 </body>
 </html>
