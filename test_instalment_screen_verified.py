@@ -520,6 +520,102 @@ def main():
         assert "₹" in iso_data["partialBtnHtml"], "Partial checkbox must include currency symbol ₹"
         print("  [PASS] Screen view isolation, undo payment flow, loan number filter, and partial amount in checkbox verified.")
 
+        # Step 4.6: Multi-User Sync Pill, Customer ID Matcher (#1, CUS001, 1-2), Loan Filter & Checkbox Tooltip Timestamp
+        multi_user_check_js = """
+        (() => {
+            const results = {};
+            // 1. Verify cloud status pill
+            const pill = document.getElementById('cloud-status-pill');
+            results.hasCloudPill = !!pill;
+            results.hasRefreshFunc = typeof refreshSessionData === 'function';
+
+            // 2. Verify collection loan filter
+            const collLoanSelect = document.getElementById('collection-loan-filter');
+            results.hasCollLoanFilter = !!collLoanSelect;
+            results.hasCollLoanHandler = typeof handleCollectionLoanFilterChange === 'function';
+
+            // 3. Verify Customer ID search matching logic
+            const testCust = {
+                id: 'cust-test-123',
+                customerNumber: 1,
+                loanNumber: 2,
+                fullName: 'Sri Ram',
+                phone: '8297625494',
+                areaRoute: 'Main Road'
+            };
+            results.matchExactNum = customerMatchesQuery(testCust, '1');
+            results.matchHash = customerMatchesQuery(testCust, '#1');
+            results.matchPadded = customerMatchesQuery(testCust, '001');
+            results.matchCusPadded = customerMatchesQuery(testCust, 'CUS001');
+            results.matchCusDirect = customerMatchesQuery(testCust, 'cus1');
+            results.matchCusHyphen = customerMatchesQuery(testCust, 'cus-1');
+            results.matchComboHyphen = customerMatchesQuery(testCust, '1-2');
+            results.matchComboBadge = customerMatchesQuery(testCust, '1 l2');
+            results.matchPhone = customerMatchesQuery(testCust, '8297625494');
+            results.matchName = customerMatchesQuery(testCust, 'Sri ram');
+            results.noMatchWrong = customerMatchesQuery(testCust, '999');
+
+            // 4. Verify checkbox tooltip has timestamp
+            switchTab('collections');
+            const firstCard = document.querySelector('.cust-compact-card');
+            const targetCustId = firstCard ? firstCard.dataset.customerId : null;
+            const targetCust = state.customers.find(c => c.id === targetCustId);
+            if (targetCust) {
+                if (!targetCust.instalments || targetCust.instalments.length === 0) {
+                    targetCust.instalments = [];
+                    for (let i = 1; i <= (targetCust.totalInstalments || 52); i++) {
+                        targetCust.instalments.push({ number: i, status: 'Pending', paidAmount: 0 });
+                    }
+                }
+                targetCust.instalments[0].status = 'Received';
+                targetCust.instalments[0].paidAmount = targetCust.instalmentAmount || 200;
+                targetCust.instalments[0].receivedAt = '2026-10-21T15:28:00.000Z';
+
+                openCustomerScheduleDirect(targetCust.id);
+                const firstReceivedBtn = document.querySelector(`.cust-compact-card[data-customer-id="${targetCust.id}"] .sched-box-btn.is-paid`);
+                if (firstReceivedBtn) {
+                    results.receivedTooltip = firstReceivedBtn.getAttribute('title') || '';
+                    results.hasTimestampInTooltip = /(AM|PM|\\d{2}:\\d{2})/i.test(results.receivedTooltip) || /on\\s+\\d{1,2}-[A-Za-z]{3}-\\d{4}/i.test(results.receivedTooltip);
+                } else {
+                    results.receivedTooltip = 'none';
+                    results.hasTimestampInTooltip = false;
+                }
+            }
+
+            // 5. Verify direct schedule opener
+            results.hasDirectOpener = typeof openCustomerScheduleDirect === 'function';
+            if (targetCust) {
+                openCustomerScheduleDirect(targetCust.id);
+                results.targetCustExpandedAfterDirect = state.expandedCustomerIds.has(targetCust.id);
+            }
+
+            return JSON.stringify(results);
+        })()
+        """
+        res_mu = simple_ws_send_recv(ws_url, {"id": 56, "method": "Runtime.evaluate", "params": {"expression": multi_user_check_js, "returnByValue": True}})
+        mu_data = get_cdp_value(res_mu)
+        print("4.6. Multi-User Sync, Customer ID Matcher & Checkbox Tooltips: Validating assertions...")
+        assert mu_data["hasCloudPill"] is True, "Header must contain #cloud-status-pill for session refresh"
+        assert mu_data["hasRefreshFunc"] is True, "refreshSessionData() must be globally defined"
+        assert mu_data["hasCollLoanFilter"] is True, "Collections search bar must contain #collection-loan-filter"
+        assert mu_data["hasCollLoanHandler"] is True, "handleCollectionLoanFilterChange() must be globally defined"
+        assert mu_data["matchExactNum"] is True, "customerMatchesQuery must match '1'"
+        assert mu_data["matchHash"] is True, "customerMatchesQuery must match '#1'"
+        assert mu_data["matchPadded"] is True, "customerMatchesQuery must match '001'"
+        assert mu_data["matchCusPadded"] is True, "customerMatchesQuery must match 'CUS001'"
+        assert mu_data["matchCusDirect"] is True, "customerMatchesQuery must match 'cus1'"
+        assert mu_data["matchCusHyphen"] is True, "customerMatchesQuery must match 'cus-1'"
+        assert mu_data["matchComboHyphen"] is True, "customerMatchesQuery must match '1-2'"
+        assert mu_data["matchComboBadge"] is True, "customerMatchesQuery must match '1 l2'"
+        assert mu_data["matchPhone"] is True, "customerMatchesQuery must match phone '8297625494'"
+        assert mu_data["matchName"] is True, "customerMatchesQuery must match name 'Sri ram'"
+        assert mu_data["noMatchWrong"] is False, "customerMatchesQuery must NOT match non-existent '999'"
+        assert mu_data["hasTimestampInTooltip"] is True, f"Checkbox tooltip must contain date/timestamp, got: {mu_data.get('receivedTooltip')}"
+        assert mu_data["hasDirectOpener"] is True, "openCustomerScheduleDirect must be defined"
+        assert mu_data["targetCustExpandedAfterDirect"] is True, "openCustomerScheduleDirect must expand customer card"
+        print(f"  [PASS] Tooltip: \"{mu_data.get('receivedTooltip')}\"")
+        print("  [PASS] Multi-User sync pill, customer ID matcher (#1, CUS001, 1-2), loan filter, and tooltip verified.")
+
         time.sleep(1)
 
         # Step 5: Capture Screenshot of the new Instalments screen
