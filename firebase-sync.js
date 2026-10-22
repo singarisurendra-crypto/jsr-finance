@@ -51,17 +51,17 @@ function updateCloudStatusIndicator(connected, projectId = '', errorMsg = '') {
   if (connected) {
     pill.style.background = 'rgba(34, 197, 94, 0.15)';
     pill.style.borderColor = '#22c55e';
-    pill.innerHTML = `<span>☁️ Live Sync:</span> <strong style="color:#16a34a;">Connected ↻</strong>`;
+    pill.innerHTML = `<span>☁️ Sync:</span> <strong style="color:#16a34a;">Live ↻</strong>`;
     pill.title = 'Google Cloud Firestore Connected. Click to refresh session data.';
   } else if (errorMsg) {
     pill.style.background = 'rgba(239, 68, 68, 0.15)';
     pill.style.borderColor = '#ef4444';
-    pill.innerHTML = `<span>☁️ Live Sync:</span> <strong style="color:#dc2626;">Error ↻</strong>`;
+    pill.innerHTML = `<span>☁️ Sync:</span> <strong style="color:#dc2626;">Error ↻</strong>`;
     pill.title = `Cloud Connection Error: ${errorMsg}. Click to retry.`;
   } else {
     pill.style.background = 'rgba(255, 255, 255, 0.12)';
     pill.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-    pill.innerHTML = `<span>☁️ Storage:</span> <strong style="color:#cbd5e1;">Local Mode ↻</strong>`;
+    pill.innerHTML = `<span>☁️ Sync:</span> <strong style="color:#cbd5e1;">Local ↻</strong>`;
     pill.title = 'Working in Local Mode. Click to refresh session.';
   }
 }
