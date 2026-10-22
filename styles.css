@@ -4302,7 +4302,857 @@ select:focus-visible {
   }
 }
 
+/* ==========================================================================
+   MODERN FINTECH ANALYTICS & INSIGHTS (SCREENSHOTS 1-5 FIDELITY)
+   ========================================================================== */
 
+.ana-header-wrap {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
 
+.ana-desktop-actions {
+  display: flex;
+  gap: 8px;
+}
 
+@media (max-width: 640px) {
+  .ana-desktop-actions {
+    display: none;
+  }
+}
+
+.ana-period-section {
+  margin-bottom: 18px;
+}
+
+.ana-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.ana-segmented-control {
+  display: inline-flex;
+  background: #f1f5f9;
+  border-radius: 9999px;
+  padding: 3px;
+  gap: 3px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ana-period-btn, .ana-fin-btn {
+  border: none;
+  background: transparent;
+  border-radius: 9999px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.ana-period-btn:hover, .ana-fin-btn:hover {
+  color: #1e293b;
+}
+
+.ana-period-btn.active, .ana-fin-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* 4 Hero KPI Cards */
+.ana-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 960px) {
+  .ana-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
+
+@media (max-width: 440px) {
+  .ana-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+.ana-kpi-card {
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 96px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ana-kpi-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
+}
+
+.ana-kpi-blue {
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+}
+.ana-kpi-green {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+.ana-kpi-purple {
+  background: #faf5ff;
+  border: 1px solid #e9d5ff;
+}
+.ana-kpi-amber {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+}
+
+.ana-kpi-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.ana-kpi-icon {
+  font-size: 15px;
+}
+
+.ana-kpi-blue .ana-kpi-title { color: #2563eb; font-weight: 600; font-size: 12.5px; }
+.ana-kpi-blue .ana-kpi-val { color: #1d4ed8; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+
+.ana-kpi-green .ana-kpi-title { color: #16a34a; font-weight: 600; font-size: 12.5px; }
+.ana-kpi-green .ana-kpi-val { color: #15803d; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.ana-kpi-green .ana-kpi-sub { color: #166534; font-size: 11px; font-weight: 500; margin-top: 3px; }
+
+.ana-kpi-purple .ana-kpi-title { color: #9333ea; font-weight: 600; font-size: 12.5px; }
+.ana-kpi-purple .ana-kpi-val { color: #7e22ce; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+
+.ana-kpi-amber .ana-kpi-title { color: #ea580c; font-weight: 600; font-size: 12.5px; }
+.ana-kpi-amber .ana-kpi-val { color: #c2410c; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+
+/* Subnavigation Filter Chips */
+.ana-subnav-wrap {
+  margin-bottom: 20px;
+}
+
+.ana-subnav-pills {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.ana-subnav-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.ana-subnav-pills.mini {
+  gap: 6px;
+}
+
+.ana-subnav-btn {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+  border-radius: 9999px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.ana-subnav-pills.mini .ana-subnav-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.ana-subnav-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.ana-subnav-btn.active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.15);
+}
+
+/* Layout Stack */
+.ana-layout-stack {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .ana-layout-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+}
+
+.ana-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.ana-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.ana-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.ana-card-subtitle {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.ana-badge-tag {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 3px 10px;
+  border-radius: 9999px;
+}
+
+.ana-calendar-icon {
+  font-size: 18px;
+}
+
+/* Weekly Bar Chart */
+.ana-trend-bars {
+  height: 160px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 2px 0 2px;
+}
+
+.ana-bar-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 4px;
+}
+
+.ana-bar-amt {
+  font-size: 10px;
+  font-weight: 700;
+  color: #2563eb;
+  min-height: 14px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.ana-bar-slot {
+  width: 100%;
+  height: 110px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 2px 1px;
+}
+
+.ana-bar-fill-elem {
+  width: 100%;
+  max-width: 32px;
+  border-radius: 6px 6px 0 0;
+  transition: height 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.ana-bar-fill-elem.is-past {
+  background: #93c5fd;
+}
+
+.ana-bar-fill-elem.is-now {
+  background: #2563eb;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+
+.ana-bar-label {
+  font-size: 10.5px;
+  color: #64748b;
+  font-weight: 600;
+  min-height: 14px;
+  line-height: 14px;
+}
+
+/* Metric Rows */
+.ana-divider {
+  height: 1px;
+  background: #f1f5f9;
+  margin: 12px 0;
+}
+
+.ana-row-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13.5px;
+}
+
+.ana-metric-label {
+  color: #475569;
+  font-weight: 500;
+}
+
+.ana-metric-value {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.text-green { color: #16a34a !important; }
+.text-amber { color: #c2410c !important; }
+.text-blue { color: #2563eb !important; }
+.text-purple { color: #7e22ce !important; }
+.text-red { color: #dc2626 !important; }
+.text-teal { color: #0d9488 !important; }
+
+/* Accordions */
+.ana-accordion-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s ease;
+}
+
+.ana-accordion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ana-acc-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.ana-acc-title {
+  font-size: 15.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ana-acc-subtitle {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.ana-acc-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ana-acc-highlight {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ana-chevron {
+  font-size: 16px;
+  color: #64748b;
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+
+.ana-chevron.open {
+  transform: rotate(180deg);
+}
+
+.ana-accordion-body {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.ana-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.ana-breakdown-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.ana-bb-label {
+  display: block;
+  font-size: 11.5px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.ana-bb-val {
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+/* Loan Status Progress Bars */
+.ana-status-bars-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.ana-status-bar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ana-sbar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.ana-sbar-title {
+  color: #334155;
+  font-weight: 600;
+}
+
+.ana-sbar-count {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ana-sbar-track {
+  height: 7px;
+  background: #e2e8f0;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.ana-sbar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  transition: width 0.4s ease;
+}
+
+.bg-blue { background: #2563eb !important; }
+.bg-green { background: #16a34a !important; }
+.bg-amber { background: #d97706 !important; }
+.bg-red { background: #dc2626 !important; }
+
+.ana-pill-action-btn {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 9999px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.ana-pill-action-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+/* Route & Area Performance */
+.ana-filter-select-wrap {
+  margin-bottom: 14px;
+}
+
+.ana-select {
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #1e293b;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.ana-routes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ana-route-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.ana-route-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.ana-route-name {
+  font-weight: 700;
+  font-size: 14.5px;
+  color: #0f172a;
+}
+
+.ana-route-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+
+.ana-route-badge.is-high {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.ana-route-badge.is-mid {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.ana-route-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.ana-route-track {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.ana-route-fill {
+  height: 100%;
+  background: #16a34a;
+  border-radius: 9999px;
+  transition: width 0.4s ease;
+}
+
+.ana-route-bottom {
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+/* Follow-up Alerts */
+.ana-followup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ana-followup-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ana-followup-item:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.ana-fu-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.bg-soft-amber { background: #fef3c7; color: #b45309; }
+.bg-soft-red { background: #fee2e2; color: #b91c1c; }
+.bg-soft-green { background: #dcfce7; color: #15803d; }
+.bg-soft-blue { background: #eff6ff; color: #2563eb; }
+.bg-soft-purple { background: #faf5ff; color: #7e22ce; }
+
+.ana-fu-content {
+  flex: 1;
+}
+
+.ana-fu-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ana-fu-sub {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.ana-fu-count {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+/* Financial Overview */
+.ana-hero-box {
+  background: linear-gradient(180deg, #f0f7ff 0%, #ffffff 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin: 14px 0;
+}
+
+.ana-hero-box-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #2563eb;
+  margin-bottom: 4px;
+}
+
+.ana-hero-box-amount {
+  font-size: 26px;
+  font-weight: 800;
+  color: #1e40af;
+  letter-spacing: -0.5px;
+}
+
+.ana-hero-box-target {
+  font-size: 12.5px;
+  color: #475569;
+  margin: 6px 0 8px 0;
+}
+
+.ana-hero-progress-track {
+  height: 8px;
+  background: #dbeafe;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.ana-hero-progress-fill {
+  height: 100%;
+  background: #2563eb;
+  border-radius: 9999px;
+  transition: width 0.4s ease;
+}
+
+.ana-hero-progress-sub {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 6px;
+}
+
+.ana-fin-subgrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ana-fin-subcard {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.ana-fsub-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.ana-fsub-icon {
+  font-size: 14px;
+}
+
+.ana-fsub-label {
+  font-size: 11.5px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.ana-fsub-val {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.ana-disclaimer {
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: center;
+  margin-top: 6px;
+}
+
+/* Summary Details Accordions & Quick Actions */
+.ana-accordion-card.nested {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 10px;
+}
+
+.ana-acc-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ana-acc-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.ana-summary-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ana-sum-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.ana-sum-label {
+  color: #64748b;
+}
+
+.ana-sum-val {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ana-quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.ana-quick-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px 18px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ana-quick-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  border-color: #cbd5e1;
+}
+
+.ana-qc-icon {
+  font-size: 22px;
+  margin-bottom: 8px;
+}
+
+.ana-qc-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.ana-qc-sub {
+  font-size: 12px;
+  color: #64748b;
+}
+
+@media print {
+  .ana-desktop-actions,
+  .ana-period-section,
+  .ana-subnav-wrap,
+  .ana-pill-action-btn,
+  #ana-module-quick-actions {
+    display: none !important;
+  }
+  .ana-layout-stack {
+    display: block !important;
+  }
+  .ana-card, .ana-accordion-card {
+    page-break-inside: avoid;
+    margin-bottom: 20px;
+  }
+}
 
