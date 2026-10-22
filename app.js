@@ -191,6 +191,102 @@ function getGroupedCustomers() {
   return result;
 }
 
+// Universal Customer Search & ID Matcher (Supports #1, 1, 001, CUS001, cus001, CUS-1, 1-2, L2, Phone, Route, Name)
+function customerMatchesQuery(c, query) {
+  if (!query) return true;
+  const q = String(query).toLowerCase().trim();
+  if (!q) return true;
+
+  const numStr = (c.customerNumber || '').toString().toLowerCase();
+  const nameStr = (c.fullName || '').toLowerCase();
+  const phoneStr = (c.phone || '').toLowerCase();
+  const routeStr = (c.areaRoute || '').toLowerCase();
+  const docIdStr = (c.id || '').toLowerCase();
+  const loanNum = Number(c.loanNumber) || 1;
+  const loanBadge = `l${loanNum}`;
+
+  // Formats of customer ID: e.g. "1", "#1", "001", "cus001", "cus1", "cus-1", "cus 1"
+  const padded3 = numStr.padStart(3, '0');
+  const codePadded = `cus${padded3}`;
+  const codeDirect = `cus${numStr}`;
+  const codeHyphen = `cus-${numStr}`;
+  const codeSpace = `cus ${numStr}`;
+  const prefixHash = `#${numStr}`;
+
+  // Loan combinations: e.g. "1-2", "1 - 2", "1/2", "1l2", "1 l2", "#1 l2", "#1-l2", "cus001 l2", "cus001-l2"
+  const combo1 = `${numStr}-${loanNum}`;
+  const combo2 = `${numStr} ${loanBadge}`;
+  const combo3 = `${numStr}/${loanNum}`;
+  const combo4 = `${prefixHash} ${loanBadge}`;
+  const combo5 = `${prefixHash}-${loanBadge}`;
+  const combo6 = `${codePadded} ${loanBadge}`;
+  const combo7 = `${codePadded}-${loanBadge}`;
+
+  // Direct substring matches
+  if (
+    numStr.includes(q) ||
+    nameStr.includes(q) ||
+    phoneStr.includes(q) ||
+    routeStr.includes(q) ||
+    docIdStr.includes(q) ||
+    padded3.includes(q) ||
+    codePadded.includes(q) ||
+    codeDirect.includes(q) ||
+    codeHyphen.includes(q) ||
+    codeSpace.includes(q) ||
+    prefixHash.includes(q) ||
+    loanBadge.includes(q) ||
+    combo1.includes(q) ||
+    combo2.includes(q) ||
+    combo3.includes(q) ||
+    combo4.includes(q) ||
+    combo5.includes(q) ||
+    combo6.includes(q) ||
+    combo7.includes(q)
+  ) {
+    return true;
+  }
+
+  // Normalized alphanumeric check (ignores punctuation, hashes, whitespace)
+  const cleanQ = q.replace(/[^a-z0-9]/g, '');
+  if (cleanQ) {
+    if (
+      numStr === cleanQ ||
+      padded3 === cleanQ ||
+      codePadded === cleanQ ||
+      codeDirect === cleanQ ||
+      `${numStr}${loanNum}` === cleanQ ||
+      `${numStr}l${loanNum}` === cleanQ ||
+      `${codePadded}l${loanNum}` === cleanQ ||
+      cleanQ === `l${loanNum}` ||
+      cleanQ === `loan${loanNum}`
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Open and highlight a specific customer schedule in the Collections view
+function openCustomerScheduleDirect(customerId) {
+  switchTab('collections');
+  if (!state.expandedCustomerIds) state.expandedCustomerIds = new Set();
+  state.expandedCustomerIds.clear();
+  state.expandedCustomerIds.add(customerId);
+  renderCollectionMatrix();
+  setTimeout(() => {
+    const card = document.querySelector(`.cust-compact-card[data-customer-id="${customerId}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.style.outline = '2px solid #2563eb';
+      card.style.borderRadius = '12px';
+      card.style.transition = 'outline 0.3s ease';
+      setTimeout(() => { card.style.outline = 'none'; }, 2500);
+    }
+  }, 120);
+}
+
 // Interactive Tooltip Popover for Customer Loans Breakdown
 function toggleLoansTooltip(event, customerNumber) {
   if (event) {
@@ -582,25 +678,36 @@ function renderCommandPaletteResults(query) {
   }
 
   // Customer Results
-  const grouped = getGroupedCustomers();
-  const matchedCustomers = grouped.filter(g => 
-    !q || 
-    g.customerNumber.toString().includes(q) || 
-    g.fullName.toLowerCase().includes(q) || 
-    (g.activeLoan.mobile && g.activeLoan.mobile.includes(q))
-  ).slice(0, 8);
+  const matchedCustomers = [];
+  (state.customers || []).forEach(cust => {
+    if (customerMatchesQuery(cust, q)) {
+      matchedCustomers.push(cust);
+    }
+  });
+
+  // Sort by customer number then loan number
+  matchedCustomers.sort((a, b) => {
+    const numA = Number(a.customerNumber) || 0;
+    const numB = Number(b.customerNumber) || 0;
+    if (numA !== numB) return numA - numB;
+    return (Number(a.loanNumber) || 1) - (Number(b.loanNumber) || 1);
+  });
 
   if (matchedCustomers.length > 0) {
+    const displayList = q ? matchedCustomers : matchedCustomers.slice(0, 50);
     html += `<div style="font-size: 11px; font-weight: 700; color: #64748b; padding: 10px 10px 6px 10px; text-transform: uppercase;">Customers (${matchedCustomers.length})</div>`;
-    matchedCustomers.forEach((cust) => {
-      const stats = getCustomerStats(cust.activeLoan);
+    displayList.forEach((cust) => {
+      const stats = getCustomerStats(cust);
+      const isDaily = cust.frequency === 'Daily' || cust.totalInstalments === 100;
+      const unitLabel = isDaily ? 'Day' : 'Week';
+      const loanTag = (Number(cust.loanNumber) || 1) > 1 ? ` <span class="loan-badge">L${cust.loanNumber}</span>` : '';
       html += `
-        <div class="command-item" onclick="closeCommandPalette(); switchTab('collections'); toggleCustomerScheduleDrawer('${cust.activeLoan.id}');">
+        <div class="command-item" onclick="closeCommandPalette(); openCustomerScheduleDirect('${cust.id}');">
           <div class="command-item-left">
             <div class="command-item-icon" style="background: #e0f2fe; color: #0284c7;">#${cust.customerNumber}</div>
             <div>
-              <div class="command-item-title">${cust.fullName} <span style="font-size: 11px; color: #2563eb; font-weight: 600;">(${cust.loans.length} Loans)</span></div>
-              <div class="command-item-sub">${cust.activeLoan.area || 'Main Area'} • Balance: ${formatMoney(stats.balance)}</div>
+              <div class="command-item-title">${cust.fullName}${loanTag} <span style="font-size: 11px; color: #64748b; font-weight: normal;">• ${cust.phone || 'No Phone'}</span></div>
+              <div class="command-item-sub">${cust.areaRoute || 'Main Area'} • Balance: ${formatMoney(stats.balance)} (${stats.paidCount}/${cust.totalInstalments || 52} ${unitLabel.toLowerCase()}s paid)</div>
             </div>
           </div>
           <span style="font-size: 11px; color: #2563eb; font-weight: 600;">Open Schedule ↗</span>
@@ -1776,6 +1883,11 @@ function handleSummaryLoanFilterChange(val) {
   renderDashboard();
 }
 
+function handleCollectionLoanFilterChange(val) {
+  state.collectionLoanFilter = val;
+  renderCollectionMatrix();
+}
+
 function renderDashboard() {
   const loanFilterEl = document.getElementById('summary-loan-filter');
 
@@ -2069,7 +2181,13 @@ function renderRecentTransactions() {
           <td>${amountHtml}</td>
           <td>
             <div>${formatPassbookDate(item.paidDate, false)}</div>
-            ${item.timestamp ? `<div style="font-size:10.5px; color:#94a3b8;">${item.timestamp.split(' ').slice(1).join(' ')}</div>` : ''}
+            ${(function(ts) {
+              if (!ts) return '';
+              const str = String(ts).trim();
+              if (str.includes(' ')) return `<div style="font-size:10.5px; color:#94a3b8;">${str.split(' ').slice(1).join(' ')}</div>`;
+              if (str.includes('T')) return `<div style="font-size:10.5px; color:#94a3b8;">${str.split('T')[1].slice(0, 5)}</div>`;
+              return '';
+            })(item.timestamp)}
           </td>
           <td><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px;">${item.areaRoute}</span></td>
           <td>${statusHtml}</td>
@@ -2370,24 +2488,46 @@ function renderCollectionMatrix() {
   if (elColl) elColl.textContent = formatMoney(totalCollected);
   if (elDue) elDue.textContent = formatMoney(dueTodayDisplay);
 
+  // Dynamically populate available loan numbers in collection-loan-filter if present
+  const loanFilterEl = document.getElementById('collection-loan-filter');
+  if (loanFilterEl) {
+    const currentVal = loanFilterEl.value || state.collectionLoanFilter || 'all';
+    const uniqueLoans = Array.from(new Set([
+      ...state.customers.map(c => Number(c.loanNumber) || 1),
+      1
+    ])).sort((a, b) => a - b);
+    loanFilterEl.innerHTML = `
+      <option value="all" ${currentVal === 'all' ? 'selected' : ''}>All Loans (L1, L2, L3)</option>
+      ${uniqueLoans.map(l => `<option value="${l}" ${currentVal === String(l) ? 'selected' : ''}>Loan #${l}</option>`).join('')}
+    `;
+    state.collectionLoanFilter = currentVal;
+  }
+
   // Filter Customers across all loans
   const query = state.searchQuery.toLowerCase().trim();
+  const hasExplicitSearch = query.length > 0;
   const filtered = state.customers.filter((c) => {
-    const matchesSearch =
-      c.customerNumber.toString().toLowerCase().includes(query) ||
-      c.fullName.toLowerCase().includes(query) ||
-      (c.phone && c.phone.includes(query)) ||
-      (c.areaRoute && c.areaRoute.toLowerCase().includes(query));
+    if (!customerMatchesQuery(c, query)) return false;
 
-    if (!matchesSearch) return false;
+    // Filter by Loan Number
+    if (state.collectionLoanFilter && state.collectionLoanFilter !== 'all') {
+      if ((Number(c.loanNumber) || 1) !== Number(state.collectionLoanFilter)) return false;
+    }
 
     const stats = getCustomerStats(c);
-    if (state.filterStatus === 'active') return !stats.isCompleted;
-    if (state.filterStatus === 'overdue') return stats.isOverdue;
-    if (state.filterStatus === 'partial') return (c.instalments || []).some(i => i && i.status === 'Partial');
-    if (state.filterStatus === 'completed') return stats.isCompleted;
-    if (state.filterStatus === 'weekly') return c.frequency !== 'Daily' && (c.totalInstalments || 52) !== 100;
-    if (state.filterStatus === 'daily') return c.frequency === 'Daily' || c.totalInstalments === 100;
+    if (state.filterStatus === 'active') {
+      if (!hasExplicitSearch && stats.isCompleted) return false;
+    } else if (state.filterStatus === 'overdue') {
+      if (!stats.isOverdue) return false;
+    } else if (state.filterStatus === 'partial') {
+      if (!(c.instalments || []).some(i => i && i.status === 'Partial')) return false;
+    } else if (state.filterStatus === 'completed') {
+      if (!stats.isCompleted) return false;
+    } else if (state.filterStatus === 'weekly') {
+      if (c.frequency === 'Daily' || (c.totalInstalments || 52) === 100) return false;
+    } else if (state.filterStatus === 'daily') {
+      if (c.frequency !== 'Daily' && c.totalInstalments !== 100) return false;
+    }
     return true;
   });
 
@@ -2439,17 +2579,18 @@ function renderCollectionMatrix() {
         const isPartial = sqInst.status === 'Partial';
         let btnClass = 'is-pending';
         let btnIcon = '';
-        let instTitle = `${unitLabel} #${sq}: ${sqInst.status}. Tap to toggle.`;
+        const tsFormatted = formatInstalmentTimestamp(sqInst);
+        const tsSuffix = tsFormatted ? ` on ${tsFormatted}` : '';
 
         if (isReceived) {
           btnClass = 'is-paid';
           btnIcon = '✓';
-          instTitle = `${unitLabel} #${sq}: Received (${formatMoney(sqInst.paidAmount || cust.instalmentAmount)}). Tap to undo.`;
+          instTitle = `${unitLabel} #${sq}: Received (${formatMoney(sqInst.paidAmount || cust.instalmentAmount)})${tsSuffix}. Tap to undo.`;
         } else if (isPartial) {
           btnClass = 'is-partial';
           const pAmt = Number(sqInst.paidAmount) || 0;
           btnIcon = `<span class="sched-partial-amt"><span class="sched-partial-currency">₹</span>${pAmt}</span>`;
-          instTitle = `${unitLabel} #${sq}: Partial Paid ${formatMoney(pAmt)} of ${formatMoney(cust.instalmentAmount)}. Tap to complete or undo.`;
+          instTitle = `${unitLabel} #${sq}: Partial Paid ${formatMoney(pAmt)} of ${formatMoney(cust.instalmentAmount)})${tsSuffix}. Tap to complete or undo.`;
         } else {
           instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)}). Tap to receive.`;
         }
@@ -2907,12 +3048,7 @@ function renderCustomersTable() {
   const query = state.searchQuery.toLowerCase().trim();
 
   const filtered = state.customers.filter((c) => {
-    return (
-      c.customerNumber.toString().toLowerCase().includes(query) ||
-      c.fullName.toLowerCase().includes(query) ||
-      (c.phone && c.phone.includes(query)) ||
-      (c.areaRoute && c.areaRoute.toLowerCase().includes(query))
-    );
+    return customerMatchesQuery(c, query);
   });
 
   filtered.sort((a, b) => {
@@ -4435,6 +4571,38 @@ function showExcelImportError(msg) {
   }
 }
 
+// Robust Excel Date Parser (supports Excel serial numbers, DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD)
+function parseExcelDate(val) {
+  if (val === null || val === undefined || val === '') return null;
+  if (typeof val === 'number' || (!isNaN(val) && Number(val) > 20000 && !String(val).includes('-') && !String(val).includes('/'))) {
+    const serial = Number(val);
+    const utcDays = Math.floor(serial - 25569);
+    const utcValue = utcDays * 86400;
+    const dateInfo = new Date(utcValue * 1000);
+    return dateInfo.toISOString().split('T')[0];
+  }
+  const str = String(val).trim();
+  const dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmy) {
+    const d = dmy[1].padStart(2, '0');
+    const m = dmy[2].padStart(2, '0');
+    const y = dmy[3];
+    return `${y}-${m}-${d}`;
+  }
+  const ymd = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (ymd) {
+    const y = ymd[1];
+    const m = ymd[2].padStart(2, '0');
+    const d = ymd[3].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const dt = new Date(str);
+  if (!isNaN(dt.getTime())) {
+    return dt.toISOString().split('T')[0];
+  }
+  return null;
+}
+
 function processRawImportData(rows) {
   if (!rows || rows.length < 2) {
     showExcelImportError('The selected file does not contain enough data rows.');
@@ -4537,10 +4705,8 @@ function processRawImportData(rows) {
       frequency = totalInstalments === 100 ? 'Daily' : 'Weekly';
     }
 
-    let startDate = colDate !== -1 ? String(row[colDate] || '').trim() : '';
-    if (!startDate || startDate.length < 4) {
-      startDate = todayStr;
-    }
+    let rawDateVal = colDate !== -1 ? row[colDate] : null;
+    let parsedStartDate = parseExcelDate(rawDateVal);
 
     // Exact balance reconciliation logic
     const rawBalance = colBalance !== -1 && row[colBalance] !== '' ? Number(row[colBalance]) : null;
@@ -4559,10 +4725,31 @@ function processRawImportData(rows) {
     // Build schedule
     const instalments = [];
     let accumulatedPaid = 0;
-    const startMs = new Date(startDate).getTime() || new Date(todayStr).getTime();
+    const paidCountEstimated = instalmentAmount > 0 ? Math.floor(targetPaid / instalmentAmount) : 0;
+    const todayMs = new Date(todayStr).getTime();
+    const intervalDays = frequency === 'Daily' ? 1 : 7;
+    const intervalMs = intervalDays * 86400000;
+
+    let startMs;
+    if (parsedStartDate) {
+      startMs = new Date(parsedStartDate).getTime();
+      // If start date was set to today or future, but customer already has paid instalments,
+      // adjust start date into the past so that already-received instalments do not appear in the future!
+      if (startMs >= todayMs && paidCountEstimated > 1) {
+        startMs = todayMs - ((paidCountEstimated - 1) * intervalMs);
+      }
+    } else {
+      // No explicit date provided in Excel: anchor most recent paid instalment to today/past
+      if (paidCountEstimated > 0) {
+        startMs = todayMs - ((paidCountEstimated - 1) * intervalMs);
+      } else {
+        startMs = todayMs;
+      }
+    }
+    const finalStartDate = new Date(startMs).toISOString().split('T')[0];
 
     for (let i = 1; i <= totalInstalments; i++) {
-      const daysOffset = frequency === 'Daily' ? (i - 1) : (i - 1) * 7;
+      const daysOffset = (i - 1) * intervalDays;
       const instDate = new Date(startMs + daysOffset * 86400000).toISOString().split('T')[0];
       const remainingToAllocate = targetPaid - accumulatedPaid;
 
@@ -4573,7 +4760,7 @@ function processRawImportData(rows) {
           paidAmount: instalmentAmount,
           status: 'Received',
           paidDate: instDate,
-          paidTimestamp: instDate + 'T10:00:00.000Z',
+          paidTimestamp: `${instDate} 10:00 AM`,
           receiptNumber: `IMP-REC-${customerNumber}-L${loanNumber}-${i}`
         });
         accumulatedPaid += instalmentAmount;
@@ -4584,7 +4771,7 @@ function processRawImportData(rows) {
           paidAmount: remainingToAllocate,
           status: 'Partial',
           paidDate: instDate,
-          paidTimestamp: instDate + 'T10:00:00.000Z',
+          paidTimestamp: `${instDate} 10:00 AM`,
           receiptNumber: `IMP-PART-${customerNumber}-L${loanNumber}-${i}`
         });
         accumulatedPaid += remainingToAllocate;
@@ -4611,7 +4798,7 @@ function processRawImportData(rows) {
       totalInstalments,
       instalmentAmount,
       totalPayable,
-      startDate,
+      startDate: finalStartDate,
       status: targetPaid >= totalPayable ? 'Completed' : 'Active',
       frequency,
       instalments,
