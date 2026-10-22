@@ -49,19 +49,26 @@ function updateCloudStatusIndicator(connected, projectId = '', errorMsg = '') {
   if (!pill) return;
 
   if (connected) {
-    pill.style.background = 'rgba(34, 197, 94, 0.25)';
+    pill.style.background = 'rgba(34, 197, 94, 0.15)';
     pill.style.borderColor = '#22c55e';
-    pill.innerHTML = `<span>☁️ Storage:</span> <strong style="color:#4ade80;">Google Cloud (Live)</strong>`;
+    pill.innerHTML = `<span>☁️ Live Sync:</span> <strong style="color:#16a34a;">Connected ↻</strong>`;
+    pill.title = 'Google Cloud Firestore Connected. Click to refresh session data.';
   } else if (errorMsg) {
-    pill.style.background = 'rgba(239, 68, 68, 0.25)';
+    pill.style.background = 'rgba(239, 68, 68, 0.15)';
     pill.style.borderColor = '#ef4444';
-    pill.innerHTML = `☁️ Google Cloud: <span style="color:#fca5a5;">Connection Error</span>`;
+    pill.innerHTML = `<span>☁️ Live Sync:</span> <strong style="color:#dc2626;">Error ↻</strong>`;
+    pill.title = `Cloud Connection Error: ${errorMsg}. Click to retry.`;
   } else {
     pill.style.background = 'rgba(255, 255, 255, 0.12)';
     pill.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-    pill.innerHTML = `☁️ Storage: <strong style="color:#cbd5e1;">Local Mode</strong>`;
+    pill.innerHTML = `<span>☁️ Storage:</span> <strong style="color:#cbd5e1;">Local Mode ↻</strong>`;
+    pill.title = 'Working in Local Mode. Click to refresh session.';
   }
 }
+
+// Flags to differentiate initial data load from live updates by other users
+let isInitialCustomerSnapshot = true;
+let isInitialTxnSnapshot = true;
 
 // Real-Time Listeners: Sync changes from Google Cloud Firestore
 function setupFirestoreRealtimeListeners() {
@@ -69,27 +76,63 @@ function setupFirestoreRealtimeListeners() {
 
   // 1. Listen to Customers collection in real-time
   firestoreDb.collection('customers').onSnapshot((snapshot) => {
+    const isRemote = !snapshot.metadata.hasPendingWrites;
+
+    // Detect and notify on remote changes from other sessions/users
+    if (!isInitialCustomerSnapshot && isRemote && typeof showToast === 'function') {
+      snapshot.docChanges().forEach((change) => {
+        const c = change.doc.data();
+        if (!c) return;
+        const loanTag = (Number(c.loanNumber) || 1) > 1 ? ` (Loan #${c.loanNumber})` : '';
+
+        if (change.type === 'added') {
+          showToast(`✨ Customer #${c.customerNumber}${loanTag} (${c.fullName}) added in another session.`);
+        } else if (change.type === 'modified') {
+          // Reconcile pending local modifications on this customer to prevent collision/stale writes
+          if (state.pendingModifications && state.pendingModifications[c.id]) {
+            delete state.pendingModifications[c.id];
+            showToast(`🔄 Customer #${c.customerNumber}${loanTag} updated remotely. Session refreshed with latest ledger.`, 4000);
+          } else {
+            showToast(`🔄 Customer #${c.customerNumber}${loanTag} updated in another session.`);
+          }
+        } else if (change.type === 'removed') {
+          if (state.expandedCustomerIds) state.expandedCustomerIds.delete(c.id);
+          if (state.pendingModifications) delete state.pendingModifications[c.id];
+          showToast(`🗑️ Customer #${c.customerNumber}${loanTag} deleted in another session.`, 4000);
+        }
+      });
+    }
+    isInitialCustomerSnapshot = false;
+
+    // Assemble full updated customer list
+    const cloudCustomers = [];
     if (!snapshot.empty) {
-      const cloudCustomers = [];
       snapshot.forEach((doc) => {
         cloudCustomers.push(doc.data());
       });
-      // Sort by customerNumber numerically
-      cloudCustomers.sort((a, b) => Number(a.customerNumber) - Number(b.customerNumber));
-      state.customers = cloudCustomers;
-
-      // Automatically enforce data invariants and self-healing across all customers & loans
-      if (typeof healCustomerInvariants === 'function') {
-        healCustomerInvariants();
-      }
-
-      // Update state and UI
-      saveDataLocallyOnly();
-      updateHeaderStats();
-      if (state.activeTab === 'summary') renderDashboard();
-      if (state.activeTab === 'collections') renderCollectionMatrix();
-      if (state.activeTab === 'customers') renderCustomersTable();
+      // Sort numerically by customerNumber, then loanNumber
+      cloudCustomers.sort((a, b) => {
+        const numA = Number(a.customerNumber) || 0;
+        const numB = Number(b.customerNumber) || 0;
+        if (numA !== numB) return numA - numB;
+        return (Number(a.loanNumber) || 1) - (Number(b.loanNumber) || 1);
+      });
     }
+    state.customers = cloudCustomers;
+
+    // Automatically enforce data invariants and self-healing across all customers & loans
+    if (typeof healCustomerInvariants === 'function') {
+      healCustomerInvariants();
+    }
+
+    // Update state and refresh all active screens
+    saveDataLocallyOnly();
+    updateHeaderStats();
+    if (state.activeTab === 'summary') renderDashboard();
+    if (state.activeTab === 'collections') renderCollectionMatrix();
+    if (state.activeTab === 'customers') renderCustomersTable();
+    if (state.activeTab === 'analytics' && typeof renderAnalytics === 'function') renderAnalytics();
+    if (state.activeTab === 'settings' && typeof renderSettings === 'function') renderSettings();
   }, (err) => {
     console.error('Firestore customers listener error:', err);
   });
@@ -104,30 +147,154 @@ function setupFirestoreRealtimeListeners() {
   });
 
   // 3. Listen to Transactions collection in real-time (preserves all payments & undos)
-  firestoreDb.collection('transactions').limit(500).onSnapshot((snapshot) => {
-    if (!snapshot.empty) {
+  const attachTxnListener = (queryRef) => {
+    return queryRef.onSnapshot((snapshot) => {
+      const isRemoteTxn = !snapshot.metadata.hasPendingWrites;
+
+      if (!isInitialTxnSnapshot && isRemoteTxn && typeof showToast === 'function') {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const t = change.doc.data();
+            if (!t) return;
+            const amtStr = typeof formatMoney === 'function' ? formatMoney(t.amount) : `₹${t.amount}`;
+            if (t.type === 'undo') {
+              showToast(`↩️ Live Undo: Instalment #${t.instalmentNumber} for #${t.customerNumber} undone remotely.`, 3500);
+            } else {
+              showToast(`⚡ Live Payment: ${amtStr} received for #${t.customerNumber} (${t.customerName || 'Customer'})`, 3500);
+            }
+          }
+        });
+      }
+      isInitialTxnSnapshot = false;
+
       const cloudTxns = [];
-      snapshot.forEach((doc) => {
-        cloudTxns.push(doc.data());
+      if (!snapshot.empty) {
+        snapshot.forEach((doc) => {
+          cloudTxns.push(doc.data());
+        });
+        cloudTxns.sort((a, b) => {
+          const timeA = a.createdAt || a.timestamp || a.date || '';
+          const timeB = b.createdAt || b.timestamp || b.date || '';
+          return timeB.localeCompare(timeA);
+        });
+      }
+      state.transactions = cloudTxns;
+      try {
+        const storageKey = (typeof STORAGE_KEYS !== 'undefined' && STORAGE_KEYS.TRANSACTIONS) ? STORAGE_KEYS.TRANSACTIONS : 'jsr_finance_transactions';
+        localStorage.setItem(storageKey, JSON.stringify(cloudTxns));
+      } catch (e) {}
+
+      updateHeaderStats();
+      if (typeof renderRecentTransactions === 'function' && state.activeTab === 'summary') {
+        renderRecentTransactions();
+      }
+      if (state.activeTab === 'summary') renderDashboard();
+    }, (err) => {
+      console.warn('Firestore transactions listener:', err);
+    });
+  };
+
+  try {
+    attachTxnListener(firestoreDb.collection('transactions').orderBy('createdAt', 'desc').limit(500));
+  } catch (e) {
+    attachTxnListener(firestoreDb.collection('transactions').limit(500));
+  }
+}
+
+// Global Manual & Automatic Session Refresh Function
+async function refreshSessionData(notifyUser = true) {
+  if (notifyUser && typeof showToast === 'function') {
+    showToast('🔄 Refreshing live session data...');
+  }
+  const pill = document.getElementById('cloud-status-pill');
+  if (pill) {
+    pill.style.opacity = '0.6';
+  }
+
+  if (firestoreDb && isCloudSyncActive) {
+    try {
+      const custSnap = await firestoreDb.collection('customers').get();
+      const cloudCustomers = [];
+      custSnap.forEach(d => cloudCustomers.push(d.data()));
+      cloudCustomers.sort((a, b) => {
+        const numA = Number(a.customerNumber) || 0;
+        const numB = Number(b.customerNumber) || 0;
+        if (numA !== numB) return numA - numB;
+        return (Number(a.loanNumber) || 1) - (Number(b.loanNumber) || 1);
       });
+      state.customers = cloudCustomers;
+
+      const txnSnap = await firestoreDb.collection('transactions').limit(500).get();
+      const cloudTxns = [];
+      txnSnap.forEach(d => cloudTxns.push(d.data()));
       cloudTxns.sort((a, b) => {
         const timeA = a.createdAt || a.timestamp || a.date || '';
         const timeB = b.createdAt || b.timestamp || b.date || '';
         return timeB.localeCompare(timeA);
       });
       state.transactions = cloudTxns;
-      try {
-        const storageKey = (typeof STORAGE_KEYS !== 'undefined' && STORAGE_KEYS.TRANSACTIONS) ? STORAGE_KEYS.TRANSACTIONS : 'jsr_finance_transactions';
-        localStorage.setItem(storageKey, JSON.stringify(cloudTxns));
-      } catch (e) {}
-      if (typeof renderRecentTransactions === 'function' && state.activeTab === 'summary') {
-        renderRecentTransactions();
-      }
+    } catch (e) {
+      console.warn('Direct cloud refresh failed, falling back to local state', e);
+      if (typeof loadData === 'function') loadData();
     }
-  }, (err) => {
-    console.warn('Firestore transactions listener:', err);
-  });
+  } else {
+    if (typeof loadData === 'function') loadData();
+  }
+
+  if (typeof healCustomerInvariants === 'function') {
+    healCustomerInvariants();
+  }
+  if (typeof saveDataLocallyOnly === 'function') {
+    saveDataLocallyOnly();
+  }
+  updateHeaderStats();
+  if (state.activeTab === 'summary') renderDashboard();
+  if (state.activeTab === 'collections') renderCollectionMatrix();
+  if (state.activeTab === 'customers') renderCustomersTable();
+  if (state.activeTab === 'analytics' && typeof renderAnalytics === 'function') renderAnalytics();
+  if (state.activeTab === 'settings' && typeof renderSettings === 'function') renderSettings();
+
+  if (pill) {
+    pill.style.opacity = '1';
+  }
+  if (notifyUser && typeof showToast === 'function') {
+    showToast('✓ Session refreshed with latest ledger data!');
+  }
 }
+
+// Cross-Tab / Multi-Window Storage Synchronization (Synchronizes tabs on the same machine)
+window.addEventListener('storage', (e) => {
+  const custKey = (typeof STORAGE_KEYS !== 'undefined' && STORAGE_KEYS.CUSTOMERS) ? STORAGE_KEYS.CUSTOMERS : 'jsr_finance_customers';
+  const txnKey = (typeof STORAGE_KEYS !== 'undefined' && STORAGE_KEYS.TRANSACTIONS) ? STORAGE_KEYS.TRANSACTIONS : 'jsr_finance_transactions';
+
+  if (e.key === custKey) {
+    try {
+      const updated = JSON.parse(e.newValue);
+      if (Array.isArray(updated)) {
+        state.customers = updated;
+        if (typeof healCustomerInvariants === 'function') healCustomerInvariants();
+        updateHeaderStats();
+        if (state.activeTab === 'summary') renderDashboard();
+        if (state.activeTab === 'collections') renderCollectionMatrix();
+        if (state.activeTab === 'customers') renderCustomersTable();
+        if (state.activeTab === 'analytics' && typeof renderAnalytics === 'function') renderAnalytics();
+        if (typeof showToast === 'function') showToast('🔄 Session synced from another open window.');
+      }
+    } catch (err) {}
+  } else if (e.key === txnKey) {
+    try {
+      const updatedTxns = JSON.parse(e.newValue);
+      if (Array.isArray(updatedTxns)) {
+        state.transactions = updatedTxns;
+        updateHeaderStats();
+        if (state.activeTab === 'summary') {
+          renderDashboard();
+          if (typeof renderRecentTransactions === 'function') renderRecentTransactions();
+        }
+      }
+    } catch (err) {}
+  }
+});
 
 // Save customer directly to Google Cloud Firestore
 async function syncCustomerToFirestore(customer) {
