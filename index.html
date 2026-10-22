@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=40">
+  <link rel="stylesheet" href="styles.css?v=41">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -139,6 +139,10 @@
       <button class="stat-pill" onclick="openCashTallyModal()" style="cursor: pointer; background: #fffbeb; border-color: #fde68a;" title="End-of-day Cash Tally & Handover Slip">
         <span>💵 Cash Tally:</span>
         <strong style="color: #b45309;">Count Notes ↵</strong>
+      </button>
+      <button class="stat-pill" id="cloud-status-pill" onclick="refreshSessionData(true)" style="cursor: pointer; background: rgba(34, 197, 94, 0.15); border-color: #22c55e;" title="Click to refresh session data">
+        <span>☁️ Live Sync:</span>
+        <strong style="color: #16a34a;">Connected ↻</strong>
       </button>
     </div>
   </header>
@@ -370,6 +374,9 @@
             <option value="completed">Completed Only</option>
             <option value="weekly">Weekly Loans Only</option>
             <option value="daily">Daily Loans Only (100 Days)</option>
+          </select>
+          <select id="collection-loan-filter" class="coll-filter-select" onchange="handleCollectionLoanFilterChange(this.value)" style="min-width: 130px;">
+            <option value="all">All Loans (L1, L2, L3)</option>
           </select>
         </div>
 
@@ -1289,8 +1296,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=40"></script>
-  <script src="firebase-sync.js?v=40"></script>
-  <script src="app.js?v=40"></script>
+  <script src="firebase-config.js?v=41"></script>
+  <script src="firebase-sync.js?v=41"></script>
+  <script src="app.js?v=41"></script>
 </body>
 </html>
