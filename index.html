@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=42">
+  <link rel="stylesheet" href="styles.css?v=43">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -511,152 +511,510 @@
       <!-- SCREEN: ANALYTICS & FINANCIAL INSIGHTS         -->
       <!-- ============================================== -->
       <section id="view-analytics" class="screen-view">
-        <div class="view-header">
+        <div class="view-header ana-header-wrap">
           <div>
             <h1 class="view-title">Analytics & Insights</h1>
-            <p class="view-subtitle">High-level financial intelligence, collection velocity, capital recovery, and portfolio health.</p>
+            <p class="view-subtitle">Portfolio performance · Interactive preview</p>
           </div>
-          <div class="btn-group">
+          <div class="btn-group ana-desktop-actions">
             <button class="btn btn-outline" onclick="renderAnalytics()">🔄 Refresh Analytics</button>
             <button class="btn btn-outline" onclick="window.print()">🖨️ Print Report</button>
           </div>
         </div>
 
-        <!-- 4 Top Analytics Intelligence Cards -->
-        <div class="cards-grid analytics-kpi-grid">
-          <div class="card">
-            <div class="kpi-header">
-              <span class="kpi-title">Capital Recovery Rate</span>
-              <span class="kpi-icon" style="background: #eff6ff; color: #2563eb;">📈</span>
-            </div>
-            <div class="kpi-value" id="ana-recovery-rate" style="color: #2563eb;">0%</div>
-            <div class="kpi-sub">
-              <span id="ana-recovery-sub">₹0 of ₹0 Disbursed</span>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="kpi-header">
-              <span class="kpi-title">Net Portfolio Yield</span>
-              <span class="kpi-icon" style="background: #faf5ff; color: #7c3aed;">💰</span>
-            </div>
-            <div class="kpi-value" id="ana-profit-yield" style="color: #7c3aed;">0%</div>
-            <div class="kpi-sub">
-              <span id="ana-profit-sub">+ ₹0 Profit Earned</span>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="kpi-header">
-              <span class="kpi-title">Collection Velocity</span>
-              <span class="kpi-icon" style="background: #f0fdf4; color: #16a34a;">⚡</span>
-            </div>
-            <div class="kpi-value" id="ana-collection-rate" style="color: #16a34a;">0%</div>
-            <div class="kpi-sub">
-              <span id="ana-velocity-sub">0 of 0 Due Weeks</span>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="kpi-header">
-              <span class="kpi-title">Projected Weekly Inflow</span>
-              <span class="kpi-icon" style="background: #fffbeb; color: #d97706;">🎯</span>
-            </div>
-            <div class="kpi-value" id="ana-projected-week" style="color: #d97706;">₹ 0</div>
-            <div class="kpi-sub">
-              <span id="ana-projected-sub">Expected next 7 days</span>
-            </div>
+        <!-- Reporting Period Segmented Control (Screenshot 1) -->
+        <div class="ana-period-section">
+          <div class="ana-section-label">Reporting period</div>
+          <div class="ana-segmented-control" role="group" aria-label="Reporting Period">
+            <button class="ana-period-btn" data-period="today" onclick="setAnalyticsPeriod('today')">Today</button>
+            <button class="ana-period-btn" data-period="week" onclick="setAnalyticsPeriod('week')">This Week</button>
+            <button class="ana-period-btn" data-period="month" onclick="setAnalyticsPeriod('month')">Month</button>
+            <button class="ana-period-btn active" data-period="all" onclick="setAnalyticsPeriod('all')">All Time</button>
           </div>
         </div>
 
-        <!-- Visual Analytics 2-Column Grid -->
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;" class="analytics-grid">
-          <!-- Chart Card 1: Weekly Collection Volume -->
-          <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-              <div style="font-weight: 700; font-size: 15px; color: #0f172a;">Weekly Collection Velocity</div>
-              <span style="font-size: 11px; color: #64748b; background: #f1f5f9; padding: 3px 8px; border-radius: 6px;">Live Ledger</span>
+        <!-- 4 Top Analytics Intelligence Cards (Screenshot 1) -->
+        <div class="ana-kpi-grid">
+          <!-- Active Loans -->
+          <div class="ana-kpi-card ana-kpi-blue">
+            <div class="ana-kpi-top">
+              <span class="ana-kpi-icon">📅</span>
+              <span class="ana-kpi-title">Active Loans</span>
             </div>
-            <div id="ana-weekly-chart" style="height: 200px; min-height: 200px; display: flex; align-items: flex-end; justify-content: space-around; gap: 4px; padding-top: 10px;">
-              <!-- Dynamically populated SVG Bar Chart -->
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 10px; margin-top: 12px;">
-              <span>📅 Past 8 Calendar Weeks</span>
-              <span>Current Week 📈</span>
-            </div>
+            <div class="ana-kpi-val" id="ana-active-loans">0</div>
           </div>
 
-          <!-- Chart Card 2: Capital vs Profit Breakdown -->
-          <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-              <div style="font-weight: 700; font-size: 15px; color: #0f172a;">Capital & Profit Recovery Meter</div>
-              <span style="font-size: 11px; color: #16a34a; font-weight: 700; background: #f0fdf4; padding: 3px 8px; border-radius: 6px;" id="ana-recovery-badge">Active</span>
+          <!-- Capital Recovered -->
+          <div class="ana-kpi-card ana-kpi-green">
+            <div class="ana-kpi-top">
+              <span class="ana-kpi-icon">₹</span>
+              <span class="ana-kpi-title">Capital Recovered</span>
             </div>
-            
-            <div style="margin: 20px 0;">
-              <div style="font-size: 12px; color: #64748b; margin-bottom: 6px; display: flex; justify-content: space-between;">
+            <div class="ana-kpi-val" id="ana-capital-recovered">₹0</div>
+            <div class="ana-kpi-sub" id="ana-capital-recovered-sub">0% of disbursed</div>
+          </div>
+
+          <!-- Profit Earned -->
+          <div class="ana-kpi-card ana-kpi-purple">
+            <div class="ana-kpi-top">
+              <span class="ana-kpi-icon">📈</span>
+              <span class="ana-kpi-title">Profit Earned</span>
+            </div>
+            <div class="ana-kpi-val" id="ana-profit-earned">₹0</div>
+          </div>
+
+          <!-- Outstanding -->
+          <div class="ana-kpi-card ana-kpi-amber">
+            <div class="ana-kpi-top">
+              <span class="ana-kpi-icon">🕒</span>
+              <span class="ana-kpi-title">Outstanding</span>
+            </div>
+            <div class="ana-kpi-val" id="ana-outstanding">₹0</div>
+          </div>
+        </div>
+
+        <!-- Sub-navigation category pills (Screenshot 1) -->
+        <div class="ana-subnav-wrap">
+          <div class="ana-subnav-pills" role="tablist">
+            <button class="ana-subnav-btn active" data-tab="overview" onclick="setAnalyticsSubnav('overview')">Overview</button>
+            <button class="ana-subnav-btn" data-tab="collections" onclick="setAnalyticsSubnav('collections')">Collections</button>
+            <button class="ana-subnav-btn" data-tab="profit" onclick="setAnalyticsSubnav('profit')">Profit</button>
+            <button class="ana-subnav-btn" data-tab="loans" onclick="setAnalyticsSubnav('loans')">Loans</button>
+            <button class="ana-subnav-btn" data-tab="routes" onclick="setAnalyticsSubnav('routes')">Routes</button>
+            <button class="ana-subnav-btn" data-tab="risk" onclick="setAnalyticsSubnav('risk')">Risk</button>
+          </div>
+        </div>
+
+        <!-- Analytics Body Sections (Responsive Grid / Stack) -->
+        <div class="ana-layout-stack">
+
+          <!-- 1. COLLECTION TREND CARD (Screenshot 1) -->
+          <div class="ana-card" id="ana-module-collections">
+            <div class="ana-card-header">
+              <div>
+                <h3 class="ana-card-title">Collection Trend</h3>
+                <div class="ana-card-subtitle">Live weekly collection velocity from receipts ledger</div>
+              </div>
+              <span class="ana-badge-tag" id="ana-trend-badge">All Time</span>
+            </div>
+
+            <!-- Dynamic 6-Bar Weekly Chart -->
+            <div id="ana-trend-chart" class="ana-trend-bars">
+              <!-- Rendered dynamically by app.js: W-5, W-4, W-3, W-2, W-1, Now -->
+            </div>
+
+            <div class="ana-divider"></div>
+
+            <div class="ana-row-metric">
+              <span class="ana-metric-label">Projected weekly inflow</span>
+              <span class="ana-metric-value" id="ana-projected-week">₹0</span>
+            </div>
+            <div class="ana-divider"></div>
+
+            <div class="ana-row-metric">
+              <span class="ana-metric-label">Capital recovered</span>
+              <span class="ana-metric-value text-green" id="ana-stat-prin-rec">₹0</span>
+            </div>
+            <div class="ana-row-metric">
+              <span class="ana-metric-label">Outstanding</span>
+              <span class="ana-metric-value text-amber" id="ana-stat-remaining">₹0</span>
+            </div>
+
+            <!-- Accessibility / Reconciliation elements preserved for PR-004 test suite -->
+            <div style="margin-top: 16px; padding-top: 14px; border-top: 1px dashed #e2e8f0;">
+              <div style="display: flex; justify-content: space-between; font-size: 11px; color: #64748b; margin-bottom: 6px;">
                 <span>Total Portfolio Recovery:</span>
                 <strong id="ana-meter-pct">0%</strong>
               </div>
-              <div style="height: 14px; background: #e2e8f0; border-radius: 10px; overflow: hidden; display: flex;" role="progressbar" aria-label="Capital and Profit Recovery Progress">
+              <div style="height: 8px; background: #e2e8f0; border-radius: 9999px; overflow: hidden; display: flex;" role="progressbar" aria-label="Capital and Profit Recovery Progress">
                 <div id="ana-bar-principal" style="background: #2563eb; width: 0%; transition: width 0.4s ease;" title="Principal Recovered"></div>
                 <div id="ana-bar-profit" style="background: #16a34a; width: 0%; transition: width 0.4s ease;" title="Profit Earned"></div>
               </div>
-              <div style="display: flex; gap: 14px; font-size: 11px; margin-top: 8px;" aria-label="Progress Legend">
-                <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #2563eb; border-radius: 50%;"></span> 💼 Principal Rec.</span>
-                <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #16a34a; border-radius: 50%;"></span> 💰 Profit Earned</span>
-                <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #cbd5e1; border-radius: 50%;"></span> ⏳ Unrecovered</span>
-              </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 12px; background: #f8fafc; border-radius: 10px;">
-              <div>
-                <div style="font-size: 11px; color: #64748b;">Principal Recovered</div>
-                <div style="font-size: 14px; font-weight: 700; color: #1e3a8a;" id="ana-stat-prin-rec">₹ 0</div>
-              </div>
-              <div>
-                <div style="font-size: 11px; color: #64748b;">Profit Realized</div>
-                <div style="font-size: 14px; font-weight: 700; color: #15803d;" id="ana-stat-prof-rec">₹ 0</div>
-              </div>
-              <div>
-                <div style="font-size: 11px; color: #64748b;">Remaining Outlay</div>
-                <div style="font-size: 14px; font-weight: 700; color: #b45309;" id="ana-stat-remaining">₹ 0</div>
+              <div style="display: flex; gap: 14px; font-size: 11px; margin-top: 6px; color: #64748b;" aria-label="Progress Legend">
+                <span>💼 Principal: <span id="ana-recovery-sub">₹0</span></span>
+                <span>💰 Yield: <span id="ana-profit-sub">₹0</span></span>
+                <span>⚡ Velocity: <span id="ana-velocity-sub">0 Due Weeks</span></span>
               </div>
             </div>
           </div>
-        </div>
 
-        <!-- Route Performance & Portfolio Health -->
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;" class="analytics-grid">
-          <!-- Route Breakdown Table -->
-          <div class="card">
-            <div style="font-weight: 700; font-size: 15px; color: #0f172a; margin-bottom: 12px;">Route & Area Collection Performance</div>
-            <div class="data-table-container">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Route / Area</th>
-                    <th>Loans</th>
-                    <th>Disbursed</th>
-                    <th>Collected</th>
-                    <th>Recovery %</th>
-                  </tr>
-                </thead>
-                <tbody id="ana-routes-table-body">
-                  <!-- Populated by app.js -->
-                </tbody>
-              </table>
+          <!-- 2. PROFIT PERFORMANCE ACCORDION (Screenshot 1) -->
+          <div class="ana-accordion-card" id="ana-module-profit">
+            <div class="ana-accordion-header" onclick="toggleAnalyticsAccordion('profit')">
+              <div class="ana-acc-left">
+                <div class="ana-acc-title">Profit Performance</div>
+                <div class="ana-acc-subtitle">Expected versus earned profit</div>
+              </div>
+              <div class="ana-acc-right">
+                <span class="ana-acc-highlight text-purple" id="ana-acc-profit-val">₹0</span>
+                <span class="ana-chevron" id="ana-chevron-profit">⌵</span>
+              </div>
+            </div>
+            <div class="ana-accordion-body" id="ana-acc-body-profit" style="display: none;">
+              <div class="ana-breakdown-grid">
+                <div class="ana-breakdown-box">
+                  <span class="ana-bb-label">Expected Net Profit</span>
+                  <strong class="ana-bb-val" id="ana-stat-exp-profit">₹0</strong>
+                </div>
+                <div class="ana-breakdown-box">
+                  <span class="ana-bb-label">Profit Earned To Date</span>
+                  <strong class="ana-bb-val text-green" id="ana-stat-prof-rec">₹0</strong>
+                </div>
+                <div class="ana-breakdown-box">
+                  <span class="ana-bb-label">Net Portfolio Yield</span>
+                  <strong class="ana-bb-val text-purple" id="ana-profit-yield">0%</strong>
+                </div>
+                <div class="ana-breakdown-box">
+                  <span class="ana-bb-label">Unrealized Profit</span>
+                  <strong class="ana-bb-val text-amber" id="ana-stat-unrealized-profit">₹0</strong>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Portfolio Health Status -->
-          <div class="card">
-            <div style="font-weight: 700; font-size: 15px; color: #0f172a; margin-bottom: 12px;">Loan Status & Risk Radar</div>
-            <div id="ana-health-list" style="display: flex; flex-direction: column; gap: 10px;">
-              <!-- Populated by app.js -->
+          <!-- 3. LOAN STATUS ACCORDION (Screenshots 1 & 2) -->
+          <div class="ana-accordion-card" id="ana-module-loans">
+            <div class="ana-accordion-header" onclick="toggleAnalyticsAccordion('loans')">
+              <div class="ana-acc-left">
+                <div class="ana-acc-title">Loan Status</div>
+                <div class="ana-acc-subtitle">Portfolio overview</div>
+              </div>
+              <div class="ana-acc-right">
+                <span class="ana-chevron open" id="ana-chevron-loans">⤓</span>
+              </div>
+            </div>
+            <div class="ana-accordion-body open" id="ana-acc-body-loans">
+              <div class="ana-status-bars-wrap">
+                <!-- Active loans -->
+                <div class="ana-status-bar-item">
+                  <div class="ana-sbar-header">
+                    <span class="ana-sbar-title">Active loans</span>
+                    <strong class="ana-sbar-count" id="ana-status-active-count">0</strong>
+                  </div>
+                  <div class="ana-sbar-track">
+                    <div class="ana-sbar-fill bg-blue" id="ana-sbar-active-fill" style="width: 0%;"></div>
+                  </div>
+                </div>
+
+                <!-- Completed loans -->
+                <div class="ana-status-bar-item">
+                  <div class="ana-sbar-header">
+                    <span class="ana-sbar-title">Completed loans</span>
+                    <strong class="ana-sbar-count" id="ana-status-completed-count">0</strong>
+                  </div>
+                  <div class="ana-sbar-track">
+                    <div class="ana-sbar-fill bg-green" id="ana-sbar-completed-fill" style="width: 0%;"></div>
+                  </div>
+                </div>
+
+                <!-- Overdue loans -->
+                <div class="ana-status-bar-item">
+                  <div class="ana-sbar-header">
+                    <span class="ana-sbar-title">Overdue loans</span>
+                    <strong class="ana-sbar-count" id="ana-status-overdue-count">0</strong>
+                  </div>
+                  <div class="ana-sbar-track">
+                    <div class="ana-sbar-fill bg-amber" id="ana-sbar-overdue-fill" style="width: 0%;"></div>
+                  </div>
+                </div>
+
+                <!-- At risk loans -->
+                <div class="ana-status-bar-item">
+                  <div class="ana-sbar-header">
+                    <span class="ana-sbar-title">At risk loans</span>
+                    <strong class="ana-sbar-count" id="ana-status-atrisk-count">0</strong>
+                  </div>
+                  <div class="ana-sbar-track">
+                    <div class="ana-sbar-fill bg-red" id="ana-sbar-atrisk-fill" style="width: 0%;"></div>
+                  </div>
+                </div>
+              </div>
+
+              <button class="ana-pill-action-btn" onclick="switchTab('customers')">
+                View loan details →
+              </button>
             </div>
           </div>
-        </div>
+
+          <!-- 4. ROUTE & AREA PERFORMANCE CARD (Screenshot 2) -->
+          <div class="ana-card" id="ana-module-routes">
+            <div class="ana-card-header">
+              <h3 class="ana-card-title">Route & Area Performance</h3>
+            </div>
+
+            <!-- Route dropdown filter -->
+            <div class="ana-filter-select-wrap">
+              <select id="ana-route-select" class="ana-select" onchange="filterAnalyticsRoutes(this.value)">
+                <option value="all">All Routes</option>
+              </select>
+            </div>
+
+            <!-- List of route progress cards -->
+            <div id="ana-routes-cards-list" class="ana-routes-list">
+              <!-- Rendered dynamically by app.js -->
+            </div>
+          </div>
+
+          <!-- 5. COLLECTION FOLLOW-UP CARD (Screenshots 2 & 3) -->
+          <div class="ana-card" id="ana-module-risk">
+            <div class="ana-card-header">
+              <h3 class="ana-card-title">Collection Follow-up</h3>
+            </div>
+
+            <!-- Follow-up status filter dropdown -->
+            <div class="ana-filter-select-wrap">
+              <select id="ana-followup-select" class="ana-select" onchange="filterAnalyticsFollowups(this.value)">
+                <option value="all">All statuses</option>
+                <option value="overdue">Overdue instalments</option>
+                <option value="atrisk">At-risk loans</option>
+                <option value="completed">Completed loans</option>
+              </select>
+            </div>
+
+            <div class="ana-followup-list" id="ana-followup-list">
+              <!-- Overdue item -->
+              <div class="ana-followup-item" id="ana-fu-item-overdue" onclick="switchTabWithFollowupFilter('overdue')">
+                <div class="ana-fu-icon-box bg-soft-amber">🕒</div>
+                <div class="ana-fu-content">
+                  <div class="ana-fu-title">Overdue instalments</div>
+                  <div class="ana-fu-sub">Customers needing a payment follow-up</div>
+                </div>
+                <div class="ana-fu-count text-amber" id="ana-fu-overdue-count">0</div>
+              </div>
+
+              <!-- At-risk item -->
+              <div class="ana-followup-item" id="ana-fu-item-atrisk" onclick="switchTabWithFollowupFilter('atrisk')">
+                <div class="ana-fu-icon-box bg-soft-red">⚠️</div>
+                <div class="ana-fu-content">
+                  <div class="ana-fu-title">At-risk loans</div>
+                  <div class="ana-fu-sub">Review recent collection history</div>
+                </div>
+                <div class="ana-fu-count text-red" id="ana-fu-atrisk-count">0</div>
+              </div>
+
+              <!-- Completed item -->
+              <div class="ana-followup-item" id="ana-fu-item-completed" onclick="switchTabWithFollowupFilter('completed')">
+                <div class="ana-fu-icon-box bg-soft-green">✅</div>
+                <div class="ana-fu-content">
+                  <div class="ana-fu-title">Completed loans</div>
+                  <div class="ana-fu-sub">Fully repaid loans</div>
+                </div>
+                <div class="ana-fu-count text-teal" id="ana-fu-completed-count">0</div>
+              </div>
+            </div>
+
+            <button class="ana-pill-action-btn" onclick="switchTabWithFollowupFilter('all')">
+              Review follow-ups →
+            </button>
+          </div>
+
+          <!-- 6. FINANCIAL OVERVIEW CARD (Screenshot 4) -->
+          <div class="ana-card" id="ana-module-financial">
+            <div class="ana-card-header">
+              <h3 class="ana-card-title">Financial overview</h3>
+              <span class="ana-calendar-icon">📅</span>
+            </div>
+
+            <!-- Segmented Pill Buttons: Today | Week | Month | Total -->
+            <div class="ana-segmented-control" role="group" aria-label="Financial Overview Range">
+              <button class="ana-fin-btn active" data-range="today" onclick="setFinOverviewPeriod('today')">Today</button>
+              <button class="ana-fin-btn" data-range="week" onclick="setFinOverviewPeriod('week')">Week</button>
+              <button class="ana-fin-btn" data-range="month" onclick="setFinOverviewPeriod('month')">Month</button>
+              <button class="ana-fin-btn" data-range="total" onclick="setFinOverviewPeriod('total')">Total</button>
+            </div>
+
+            <!-- Hero Amount Box -->
+            <div class="ana-hero-box">
+              <div class="ana-hero-box-label">
+                Total amount collected · <span id="ana-fin-period-text">Today</span>
+              </div>
+              <div class="ana-hero-box-amount" id="ana-fin-collected-hero">₹0</div>
+              <div class="ana-hero-box-target">
+                🎯 Target: <span id="ana-fin-target-amt">₹0</span>
+              </div>
+              <div class="ana-hero-progress-track">
+                <div class="ana-hero-progress-fill" id="ana-fin-progress-fill" style="width: 0%;"></div>
+              </div>
+              <div class="ana-hero-progress-sub" id="ana-fin-progress-pct">0% of collection target</div>
+            </div>
+
+            <!-- 4 Sub-Metrics Grid -->
+            <div class="ana-fin-subgrid">
+              <div class="ana-fin-subcard">
+                <div class="ana-fsub-top">
+                  <span class="ana-fsub-icon text-green">🧾</span>
+                  <span class="ana-fsub-label">Expected collection</span>
+                </div>
+                <div class="ana-fsub-val" id="ana-fin-expected-val">₹0</div>
+              </div>
+
+              <div class="ana-fin-subcard">
+                <div class="ana-fsub-top">
+                  <span class="ana-fsub-icon text-blue">👥</span>
+                  <span class="ana-fsub-label">Customers</span>
+                </div>
+                <div class="ana-fsub-val" id="ana-fin-customers-val">0</div>
+              </div>
+
+              <div class="ana-fin-subcard">
+                <div class="ana-fsub-top">
+                  <span class="ana-fsub-icon text-amber">🤝</span>
+                  <span class="ana-fsub-label">Loans issued</span>
+                </div>
+                <div class="ana-fsub-val" id="ana-fin-loans-val">0</div>
+              </div>
+
+              <div class="ana-fin-subcard">
+                <div class="ana-fsub-top">
+                  <span class="ana-fsub-icon text-purple">📈</span>
+                  <span class="ana-fsub-label">Profit estimate</span>
+                </div>
+                <div class="ana-fsub-val" id="ana-fin-profit-val">₹0</div>
+              </div>
+            </div>
+
+            <div class="ana-disclaimer">
+              Live ledger analytics — computed from real transactions.
+            </div>
+          </div>
+
+          <!-- 7. SUMMARY DETAILS ACCORDIONS (Screenshot 5) -->
+          <div class="ana-card" id="ana-module-summary">
+            <h3 class="ana-card-title" style="margin-bottom: 12px;">Summary details</h3>
+
+            <!-- Secondary Subnav Chips -->
+            <div class="ana-subnav-pills mini" style="margin-bottom: 14px;">
+              <button class="ana-subnav-btn active" onclick="filterSummaryAccordions('overview', this)">Overview</button>
+              <button class="ana-subnav-btn" onclick="filterSummaryAccordions('collections', this)">Collections</button>
+              <button class="ana-subnav-btn" onclick="filterSummaryAccordions('loans', this)">Loans</button>
+              <button class="ana-subnav-btn" onclick="filterSummaryAccordions('profit', this)">Profit</button>
+              <button class="ana-subnav-btn" onclick="filterSummaryAccordions('risk', this)">Risk</button>
+            </div>
+
+            <!-- Accordion 1: Collection Status -->
+            <div class="ana-accordion-card nested" id="ana-sum-acc-collection">
+              <div class="ana-accordion-header" onclick="toggleAnalyticsAccordion('sum-collection')">
+                <div class="ana-acc-left">
+                  <div class="ana-acc-icon-row">
+                    <span class="ana-acc-icon bg-soft-blue">📅</span>
+                    <div>
+                      <div class="ana-acc-title">Collection status</div>
+                      <div class="ana-acc-subtitle">Received, pending and remaining target</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="ana-acc-right">
+                  <span class="ana-chevron open" id="ana-chevron-sum-collection">⤓</span>
+                </div>
+              </div>
+              <div class="ana-accordion-body open" id="ana-acc-body-sum-collection">
+                <div class="ana-summary-table">
+                  <div class="ana-sum-row">
+                    <span class="ana-sum-label">Target remaining</span>
+                    <strong class="ana-sum-val" id="ana-sum-rem">₹0</strong>
+                  </div>
+                  <div class="ana-sum-row">
+                    <span class="ana-sum-label">Collected</span>
+                    <strong class="ana-sum-val text-green" id="ana-sum-col">₹0</strong>
+                  </div>
+                  <div class="ana-sum-row">
+                    <span class="ana-sum-label">Collection completion</span>
+                    <strong class="ana-sum-val" id="ana-sum-pct">0%</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Accordion 2: Loan Portfolio -->
+            <div class="ana-accordion-card nested" id="ana-sum-acc-loans">
+              <div class="ana-accordion-header" onclick="toggleAnalyticsAccordion('sum-loans')">
+                <div class="ana-acc-left">
+                  <div class="ana-acc-icon-row">
+                    <span class="ana-acc-icon bg-soft-purple">💼</span>
+                    <div>
+                      <div class="ana-acc-title">Loan portfolio</div>
+                      <div class="ana-acc-subtitle">Principal currently issued</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="ana-acc-right">
+                  <span class="ana-chevron" id="ana-chevron-sum-loans">⌵</span>
+                </div>
+              </div>
+              <div class="ana-accordion-body" id="ana-acc-body-sum-loans" style="display: none;">
+                <div class="ana-summary-table">
+                  <div class="ana-sum-row">
+                    <span class="ana-sum-label">Total Principal Disbursed</span>
+                    <strong class="ana-sum-val" id="ana-sum-disbursed">₹0</strong>
+                  </div>
+                  <div class="ana-sum-row">
+                    <span class="ana-sum-label">Principal Recovered</span>
+                    <strong class="ana-sum-val text-blue" id="ana-sum-prin-rec">₹0</strong>
+                  </div>
+                  <div class="ana-sum-row">
+                    <span class="ana-sum-label">Principal Outstanding</span>
+                    <strong class="ana-sum-val text-amber" id="ana-sum-prin-out">₹0</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Accordion 3: Profit Overview -->
+            <div class="ana-accordion-card nested" id="ana-sum-acc-profit">
+              <div class="ana-accordion-header" onclick="toggleAnalyticsAccordion('sum-profit')">
+                <div class="ana-acc-left">
+                  <div class="ana-acc-icon-row">
+                    <span class="ana-acc-icon bg-soft-green">📈</span>
+                    <div>
+                      <div class="ana-acc-title">Profit overview</div>
+                      <div class="ana-acc-subtitle">Estimated return for selected period</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="ana-acc-right">
+                  <span class="ana-chevron" id="ana-chevron-sum-profit">⌵</span>
+                </div>
+              </div>
+              <div class="ana-accordion-body" id="ana-acc-body-sum-profit" style="display: none;">
+                <div class="ana-summary-table">
+                  <div class="ana-sum-row">
+                    <span class="ana-sum-label">Total Expected Profit</span>
+                    <strong class="ana-sum-val text-purple" id="ana-sum-exp-prof">₹0</strong>
+                  </div>
+                  <div class="ana-sum-row">
+                    <span class="ana-sum-label">Realized Profit</span>
+                    <strong class="ana-sum-val text-green" id="ana-sum-real-prof">₹0</strong>
+                  </div>
+                  <div class="ana-sum-row">
+                    <span class="ana-sum-label">Pending Profit</span>
+                    <strong class="ana-sum-val text-amber" id="ana-sum-pend-prof">₹0</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 8. QUICK ACTIONS (Screenshot 5) -->
+          <div class="ana-card" id="ana-module-quick-actions">
+            <h3 class="ana-card-title" style="margin-bottom: 12px;">Quick actions</h3>
+            <div class="ana-quick-actions-grid">
+              <!-- Instalments Card -->
+              <div class="ana-quick-card" onclick="switchTab('collections')">
+                <div class="ana-qc-icon text-blue">📅</div>
+                <div class="ana-qc-title text-blue">Instalments</div>
+                <div class="ana-qc-sub">Update collections</div>
+              </div>
+
+              <!-- Customers Card -->
+              <div class="ana-quick-card" onclick="switchTab('customers')">
+                <div class="ana-qc-icon text-green">👥</div>
+                <div class="ana-qc-title text-green">Customers</div>
+                <div class="ana-qc-sub">Open customer list</div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /.ana-layout-stack -->
       </section>
 
 
@@ -1295,8 +1653,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=42"></script>
-  <script src="firebase-sync.js?v=42"></script>
-  <script src="app.js?v=42"></script>
+  <script src="firebase-config.js?v=43"></script>
+  <script src="firebase-sync.js?v=43"></script>
+  <script src="app.js?v=43"></script>
 </body>
 </html>
