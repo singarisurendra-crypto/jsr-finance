@@ -25,5 +25,10 @@ service cloud.firestore {
       allow create, update: if true;
       allow delete: if false;
     }
+
+    // 4. Collaborative Editing Locks (Real-time concurrency control)
+    match /editing_locks/{lockId} {
+      allow read, create, update, delete: if true;
+    }
   }
 }
