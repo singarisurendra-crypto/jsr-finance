@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=47">
+  <link rel="stylesheet" href="styles.css?v=48">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -381,10 +381,10 @@
 
         <!-- Combined Action Buttons Toolbar -->
         <div class="coll-action-toolbar">
-          <button type="button" class="coll-btn-action" id="btn-expand-all" onclick="expandAllSchedules()" title="Expand all customer schedules">
+          <button type="button" class="coll-btn-action" id="btn-expand-all" onclick="toggleExpandAllSchedules()" title="Expand or collapse all customer schedules">
             <span>⌵</span> Expand all
           </button>
-          <button type="button" class="coll-btn-action" id="btn-collapse-all" onclick="collapseAllSchedules()" title="Collapse all customer schedules">
+          <button type="button" class="coll-btn-action" id="btn-collapse-all" style="display: none;" onclick="collapseAllSchedules()" title="Collapse all customer schedules">
             <span>︿</span> Collapse all
           </button>
           <button type="button" class="coll-btn-action" onclick="exportCollectionSheetCSV()" title="Export CSV">
@@ -1702,8 +1702,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=47"></script>
-  <script src="firebase-sync.js?v=47"></script>
-  <script src="app.js?v=47"></script>
+  <script src="firebase-config.js?v=48"></script>
+  <script src="firebase-sync.js?v=48"></script>
+  <script src="app.js?v=48"></script>
 </body>
 </html>
