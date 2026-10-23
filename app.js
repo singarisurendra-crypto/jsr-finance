@@ -117,6 +117,27 @@ function findNextAvailableCustomerNumber(preferred = 1) {
 // ====================================================
 let _lockHeartbeatInterval = null;
 
+// Check if a customer has non-zero net differences between their current modified state and initial state
+function hasActualPendingChanges(customerId) {
+  const pending = state.pendingModifications && state.pendingModifications[customerId];
+  if (!pending) return false;
+  const init = pending.initialInstalments || [];
+  const curr = pending.modifiedInstalments || [];
+  if (init.length !== curr.length) return true;
+  for (let i = 0; i < curr.length; i++) {
+    const a = init[i] || {};
+    const b = curr[i] || {};
+    const aStatus = a.status || 'Pending';
+    const bStatus = b.status || 'Pending';
+    const aPaid = Number(a.paidAmount || 0);
+    const bPaid = Number(b.paidAmount || 0);
+    if (aStatus !== bStatus || aPaid !== bPaid) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function getActiveEditLock(customerId) {
   if (!state.activeLocks || !state.activeLocks[customerId]) return null;
   const lock = state.activeLocks[customerId];
@@ -176,6 +197,15 @@ function refreshActiveLocksHeartbeat() {
 
   const now = Date.now();
   pendingIds.forEach((cid) => {
+    // If user has reverted all changes, immediately clean up and release lock!
+    if (!hasActualPendingChanges(cid)) {
+      delete state.pendingModifications[cid];
+      if (typeof releaseEditLock === 'function') {
+        releaseEditLock(cid);
+      }
+      return;
+    }
+
     const cur = state.activeLocks && state.activeLocks[cid];
     if (cur && cur.sessionId === CURRENT_SESSION_ID) {
       cur.expiresAt = now + 45000;
@@ -206,6 +236,58 @@ function releaseEditLock(customerId) {
     _lockHeartbeatInterval = null;
   }
 }
+
+// Fallback manual or remote refresh to clear expired/released locks directly from Firestore
+async function checkAndRefreshCustomerLock(customerId) {
+  if (typeof showToast === 'function') {
+    showToast('🔍 Checking lock status with Google Cloud Firestore...');
+  }
+  if (typeof firestoreDb !== 'undefined' && firestoreDb && typeof isCloudSyncActive !== 'undefined' && isCloudSyncActive) {
+    try {
+      const docSnap = await firestoreDb.collection('editing_locks').doc(customerId).get();
+      if (!docSnap.exists) {
+        if (state.activeLocks && state.activeLocks[customerId]) {
+          delete state.activeLocks[customerId];
+          try {
+            localStorage.setItem('jsr_finance_editing_locks', JSON.stringify(state.activeLocks));
+          } catch (e) {}
+        }
+        showToast('✅ Lock has been released! You can now edit.', 3000);
+        renderCollectionMatrix();
+        return;
+      }
+      const data = docSnap.data();
+      const now = Date.now();
+      if (!data || !data.expiresAt || Number(data.expiresAt) <= now) {
+        await firestoreDb.collection('editing_locks').doc(customerId).delete();
+        if (state.activeLocks && state.activeLocks[customerId]) {
+          delete state.activeLocks[customerId];
+          try {
+            localStorage.setItem('jsr_finance_editing_locks', JSON.stringify(state.activeLocks));
+          } catch (e) {}
+        }
+        showToast('✅ Expired lock released! You can now edit.', 3000);
+        renderCollectionMatrix();
+        return;
+      }
+      showToast(`🔒 Still locked by ${data.lockedBy || 'another user'}. Lease active.`, 3000);
+    } catch (err) {
+      console.warn('Error checking lock:', err);
+    }
+  } else {
+    const lock = state.activeLocks && state.activeLocks[customerId];
+    if (!lock || Number(lock.expiresAt) <= Date.now()) {
+      if (state.activeLocks && state.activeLocks[customerId]) {
+        delete state.activeLocks[customerId];
+        try {
+          localStorage.setItem('jsr_finance_editing_locks', JSON.stringify(state.activeLocks));
+        } catch (e) {}
+      }
+      renderCollectionMatrix();
+    }
+  }
+}
+window.checkAndRefreshCustomerLock = checkAndRefreshCustomerLock;
 
 // Release locks automatically if user closes window or navigates away
 window.addEventListener('beforeunload', () => {
@@ -1054,8 +1136,11 @@ function checkAndPromptUnsaved(targetCustomerId, onProceed) {
   }
 
   const pending = state.pendingModifications[pendingId];
-  if (!pending || !pending.sessionAmount) {
+  if (!pending || !hasActualPendingChanges(pendingId)) {
     delete state.pendingModifications[pendingId];
+    if (typeof releaseEditLock === 'function') {
+      releaseEditLock(pendingId);
+    }
     if (onProceed) onProceed();
     return;
   }
@@ -1231,6 +1316,10 @@ function toggleCustomerSchedule(customerId, event) {
     }
     if (state.expandedCustomerIds.has(customerId)) {
       state.expandedCustomerIds.delete(customerId);
+      if (!hasActualPendingChanges(customerId)) {
+        if (state.pendingModifications) delete state.pendingModifications[customerId];
+        if (typeof releaseEditLock === 'function') releaseEditLock(customerId);
+      }
     } else {
       // Per user spec: Expand ONLY the selected customer (collapse previously opened ones)
       state.expandedCustomerIds.clear();
@@ -1343,6 +1432,9 @@ function handleInstalmentClick(customerId, instNumber, event) {
     // 3. Clear any pending modifications on this customer to prevent desync
     if (state.pendingModifications && state.pendingModifications[customerId]) {
       delete state.pendingModifications[customerId];
+    }
+    if (typeof releaseEditLock === 'function') {
+      releaseEditLock(customerId);
     }
 
     // 4. Record the undo transaction in the immutable audit ledger
@@ -1718,6 +1810,17 @@ function modifyInstalment(customerId, instNumber, customAmount) {
   });
 
   pending.sessionAmount = Math.max(0, currentTotal - initialTotal);
+
+  // If user has reverted all changes back to initial state, immediately release the collaborative edit lock!
+  if (!hasActualPendingChanges(customerId)) {
+    delete state.pendingModifications[customerId];
+    if (typeof releaseEditLock === 'function') {
+      releaseEditLock(customerId);
+    }
+    showToast(`ℹ️ Changes reverted for #${customer.customerNumber}. Edit lock released.`, 2500);
+    renderCollectionMatrix();
+    return;
+  }
 
   renderCollectionMatrix();
 }
@@ -3478,8 +3581,11 @@ function renderCollectionMatrix() {
                     Customer #${cust.customerNumber} (${cust.fullName}) is currently being updated by <u>${activeLock.lockedBy}</u>
                   </div>
                   <div class="lock-alert-sub">
-                    Instalment checkboxes are disabled to prevent duplicate entries. This screen will automatically update and re-enable as soon as they save.
+                    Instalment checkboxes are disabled to prevent duplicate entries. This screen will automatically update and re-enable as soon as they save or revert.
                   </div>
+                  <button type="button" class="btn-check-lock" onclick="checkAndRefreshCustomerLock('${cust.id}')" style="margin-top: 6px; padding: 4px 10px; font-size: 11px; background: #fef3c7; border: 1px solid #d97706; color: #92400e; border-radius: 4px; cursor: pointer; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                    ⚡ Check / Refresh Lock
+                  </button>
                 </div>
                 <div class="lock-spinner" title="Waiting for updates..."></div>
               </div>
