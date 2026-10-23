@@ -5261,3 +5261,36 @@ select:focus-visible {
   }
 }
 
+/* Customer Search & Filter Toolbar */
+.cust-search-toolbar {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.cust-search-toolbar select.form-control {
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background-color: #f8fafc;
+  color: #1e293b;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cust-search-toolbar select.form-control:focus {
+  background-color: #ffffff;
+  border-color: #2563eb;
+  outline: none;
+}
+
+/* Locked Form Field Styles for Ledger Safety */
+.form-control-locked,
+input.form-control:read-only.locked-field {
+  background-color: #f1f5f9 !important;
+  color: #64748b !important;
+  border-color: #cbd5e1 !important;
+  cursor: not-allowed !important;
+}
+
