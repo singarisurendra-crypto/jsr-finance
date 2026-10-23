@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=45">
+  <link rel="stylesheet" href="styles.css?v=46">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -473,6 +473,44 @@
               📥 Import from Excel / CSV
             </button>
             <button type="button" class="btn btn-primary" onclick="openAddCustomerModal()">+ Add New Customer</button>
+          </div>
+        </div>
+
+        <!-- Customer Search & Filter Toolbar -->
+        <div class="cust-search-toolbar card" style="margin-bottom: 16px; padding: 12px 16px;">
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex: 1; min-width: 280px;">
+              <div class="coll-search-wrap" style="flex: 1; min-width: 180px; max-width: 300px;">
+                <span class="coll-search-icon">🔍</span>
+                <input type="text" id="cust-search-input" class="coll-search-input" placeholder="Search customer, #, phone..." autocomplete="off">
+              </div>
+              <select id="cust-filter-status" class="form-control" style="font-size: 13px; padding: 7px 10px; min-width: 125px;">
+                <option value="all">⚡ All Statuses</option>
+                <option value="active">Active Loans</option>
+                <option value="overdue">⚠️ Overdue Only</option>
+                <option value="completed">✓ Completed (Paid)</option>
+                <option value="multi-loan">💳 Multiple Loans</option>
+              </select>
+              <select id="cust-filter-route" class="form-control" style="font-size: 13px; padding: 7px 10px; min-width: 120px;">
+                <option value="all">📍 All Routes</option>
+              </select>
+              <select id="cust-filter-frequency" class="form-control" style="font-size: 13px; padding: 7px 10px; min-width: 115px;">
+                <option value="all">🗓️ All Types</option>
+                <option value="weekly">Weekly Loans</option>
+                <option value="daily">Daily Loans</option>
+              </select>
+              <select id="cust-filter-sort" class="form-control" style="font-size: 13px; padding: 7px 10px; min-width: 135px;">
+                <option value="id-asc">🔢 Cust # (Low → High)</option>
+                <option value="id-desc">🔢 Cust # (High → Low)</option>
+                <option value="name-asc">🔤 Name (A → Z)</option>
+                <option value="amount-desc">💰 Disbursed (Highest)</option>
+                <option value="balance-desc">⚖️ Balance Due (Highest)</option>
+              </select>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+              <span id="cust-filter-count-badge" style="font-size: 12px; font-weight: 600; color: #64748b;">Showing 0 customers</span>
+              <button type="button" id="cust-filter-reset-btn" class="btn btn-outline btn-sm" onclick="resetCustomerFilters()" style="display: none; padding: 4px 8px; font-size: 11px;">✕ Reset</button>
+            </div>
           </div>
         </div>
 
@@ -1042,6 +1080,12 @@
                 </div>
 
                 <div>
+                  <label class="form-label">Minimum Allowed Principal (₹):</label>
+                  <input type="number" id="setting-min-given" class="form-control" min="1" required style="width: 100%;">
+                  <div class="form-help">Disbursal floor (default ₹1,000; set to ₹500 if smaller loans are issued)</div>
+                </div>
+
+                <div>
                   <label class="form-label">Default Number of Instalments:</label>
                   <input type="number" id="setting-default-instalments" class="form-control" required style="width: 100%;">
                   <div class="form-help">Standard collection duration (e.g. 52 instalments)</div>
@@ -1230,9 +1274,14 @@
               <input type="text" id="cust-form-address" class="form-control" placeholder="Address..." style="width: 100%;">
             </div>
 
+            <!-- Notice shown when financial terms are locked due to recorded payments -->
+            <div id="cust-form-lock-notice" class="form-full" style="display: none; background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 8px; padding: 10px 14px; margin-bottom: 4px; font-size: 12px; color: #92400e; line-height: 1.4;">
+              <strong>🔒 Financial Terms Locked:</strong> One or more instalments have already been received for this loan. Principal Amount, Number of Instalments, and Instalment Amount cannot be edited while payment history exists. To modify these terms, undo all received instalments first in the collection sheet.
+            </div>
+
             <div>
               <label class="form-label">Given Principal Amount (₹):</label>
-              <input type="number" id="cust-form-given" class="form-control" value="10000" required style="width: 100%;" oninput="calculateFromMargin()">
+              <input type="number" id="cust-form-given" class="form-control" value="10000" min="500" required style="width: 100%;" oninput="calculateFromMargin()">
             </div>
 
             <input type="hidden" id="cust-form-margin" value="4.0">
@@ -1240,7 +1289,7 @@
             <div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <label class="form-label" style="margin: 0;">Number of Instalments:</label>
-                <div style="display: flex; gap: 4px;">
+                <div id="cust-form-presets-wrap" style="display: flex; gap: 4px;">
                   <button type="button" class="preset-pill" onclick="setInstalmentsPreset(52)">52 Wk</button>
                   <button type="button" class="preset-pill" onclick="setInstalmentsPreset(20)">20 Wk</button>
                   <button type="button" class="preset-pill" onclick="setInstalmentsPreset(100)">100 Day</button>
@@ -1653,8 +1702,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=45"></script>
-  <script src="firebase-sync.js?v=45"></script>
-  <script src="app.js?v=45"></script>
+  <script src="firebase-config.js?v=46"></script>
+  <script src="firebase-sync.js?v=46"></script>
+  <script src="app.js?v=46"></script>
 </body>
 </html>
