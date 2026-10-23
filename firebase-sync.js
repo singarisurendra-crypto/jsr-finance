@@ -199,6 +199,30 @@ function setupFirestoreRealtimeListeners() {
   } catch (e) {
     attachTxnListener(firestoreDb.collection('transactions').limit(500));
   }
+
+  // 4. Listen to Editing Locks in real-time (Collaborative edit locks)
+  firestoreDb.collection('editing_locks').onSnapshot((snapshot) => {
+    const now = Date.now();
+    const locks = {};
+    if (!snapshot.empty) {
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data && data.expiresAt && data.expiresAt > now) {
+          locks[doc.id] = data;
+        }
+      });
+    }
+    state.activeLocks = locks;
+    try {
+      localStorage.setItem('jsr_finance_editing_locks', JSON.stringify(locks));
+    } catch (e) {}
+
+    if (state.activeTab === 'collections') {
+      renderCollectionMatrix();
+    }
+  }, (err) => {
+    console.warn('Firestore editing_locks listener:', err);
+  });
 }
 
 // Global Manual & Automatic Session Refresh Function
@@ -293,8 +317,72 @@ window.addEventListener('storage', (e) => {
         }
       }
     } catch (err) {}
+  } else if (e.key === 'jsr_finance_editing_locks') {
+    try {
+      const updatedLocks = JSON.parse(e.newValue);
+      if (updatedLocks && typeof updatedLocks === 'object') {
+        state.activeLocks = updatedLocks;
+        if (state.activeTab === 'collections') renderCollectionMatrix();
+      }
+    } catch (err) {}
   }
 });
+
+// Save edit lock to Google Cloud Firestore
+async function syncEditLockToFirestore(lockData) {
+  if (!firestoreDb || !isCloudSyncActive || !lockData || !lockData.customerId) return;
+  try {
+    await firestoreDb.collection('editing_locks').doc(lockData.customerId).set(lockData);
+  } catch (err) {
+    console.error('Error saving edit lock to Google Cloud Firestore:', err);
+  }
+}
+
+// Delete edit lock from Google Cloud Firestore
+async function deleteEditLockFromFirestore(customerId) {
+  if (!firestoreDb || !isCloudSyncActive || !customerId) return;
+  try {
+    await firestoreDb.collection('editing_locks').doc(customerId).delete();
+  } catch (err) {
+    console.error('Error deleting edit lock from Google Cloud Firestore:', err);
+  }
+}
+
+// Query Firestore to verify or allocate next atomic customer number
+async function getNextAtomicCustomerNumber(requestedNumber, customerName) {
+  if (!firestoreDb || !isCloudSyncActive) {
+    return requestedNumber;
+  }
+  try {
+    const snap = await firestoreDb.collection('customers').get();
+    let maxNum = 0;
+    const usedByOther = new Set();
+    const reqNorm = (customerName || '').trim().toLowerCase();
+
+    snap.forEach((doc) => {
+      const data = doc.data();
+      if (!data) return;
+      const num = Number(data.customerNumber);
+      if (!isNaN(num) && num > 0) {
+        if (num > maxNum) maxNum = num;
+        const existName = (data.fullName || '').trim().toLowerCase();
+        // If different name, record as taken by someone else
+        if (!reqNorm || existName !== reqNorm) {
+          usedByOther.add(num);
+        }
+      }
+    });
+
+    let target = Number(requestedNumber);
+    if (isNaN(target) || target <= 0 || usedByOther.has(target)) {
+      target = maxNum + 1;
+    }
+    return target;
+  } catch (err) {
+    console.warn('Error verifying atomic customer number from Firestore:', err);
+    return requestedNumber;
+  }
+}
 
 // Save customer directly to Google Cloud Firestore
 async function syncCustomerToFirestore(customer) {
