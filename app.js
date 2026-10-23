@@ -305,6 +305,17 @@ function toggleLoansTooltip(event, customerNumber) {
   const custGroup = grouped.find((g) => g.customerNumber === customerNumber);
   if (!custGroup) return;
 
+  let totalDisbursed = 0;
+  let totalPaid = 0;
+  let totalBalance = 0;
+
+  custGroup.loans.forEach((loan) => {
+    totalDisbursed += (Number(loan.givenAmount) || 0);
+    const s = getCustomerStats(loan);
+    totalPaid += s.totalPaid;
+    totalBalance += s.balance;
+  });
+
   let html = `
     <div class="loans-tooltip-header">
       <span style="display: flex; align-items: center; gap: 6px;">
@@ -313,12 +324,36 @@ function toggleLoansTooltip(event, customerNumber) {
       </span>
       <button type="button" class="modal-close" style="font-size: 20px; line-height: 1; padding: 2px 8px; cursor: pointer;" onclick="hideLoansTooltip()">&times;</button>
     </div>
-    <div style="display: flex; flex-direction: column; gap: 10px; max-height: 55dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 2px 2px 6px 2px;">
+
+    <!-- Customer Aggregate Loans Summary Banner -->
+    <div class="loans-customer-summary-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <span style="font-size: 11px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.3px;">Customer Loans Summary</span>
+        <span style="font-size: 11px; background: #dbeafe; color: #1d4ed8; padding: 2px 7px; border-radius: 9999px; font-weight: 700;">${custGroup.loans.length} ${custGroup.loans.length === 1 ? 'Loan' : 'Loans'}</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center;">
+        <div>
+          <div style="font-size: 10px; color: #64748b; font-weight: 600;">Disbursed</div>
+          <div style="font-size: 13px; font-weight: 800; color: #1e3a8a;">${formatMoney(totalDisbursed)}</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; color: #64748b; font-weight: 600;">Collected</div>
+          <div style="font-size: 13px; font-weight: 800; color: #16a34a;">${formatMoney(totalPaid)}</div>
+        </div>
+        <div>
+          <div style="font-size: 10px; color: #64748b; font-weight: 600;">Balance</div>
+          <div style="font-size: 13px; font-weight: 800; color: #b45309;">${formatMoney(totalBalance)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px; max-height: 50dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 2px 2px 6px 2px;">
   `;
 
   custGroup.loans.forEach((loan, idx) => {
     const stats = getCustomerStats(loan);
     const isCurrent = loan.id === custGroup.activeLoan.id;
+    const loanNum = Number(loan.loanNumber) || (idx + 1);
     const statusBadge = stats.isCompleted 
       ? '<span style="color: #16a34a; font-weight: 700; font-size: 11.5px; background: #dcfce7; padding: 2px 7px; border-radius: 9999px;">✓ Completed</span>'
       : '<span style="color: #2563eb; font-weight: 700; font-size: 11.5px; background: #eff6ff; padding: 2px 7px; border-radius: 9999px;">Active Loan</span>';
@@ -326,7 +361,7 @@ function toggleLoansTooltip(event, customerNumber) {
     html += `
       <div class="loans-tooltip-item ${isCurrent ? 'active' : ''}">
         <div class="loans-tooltip-loan-title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <strong style="color: #0f172a; font-size: 13.5px;">Loan #${loan.loanNumber || (idx + 1)} (${loan.frequency || 'Weekly'})</strong>
+          <strong style="color: #0f172a; font-size: 13.5px;">Loan #${loanNum} (${loan.frequency || 'Weekly'})</strong>
           <span>${statusBadge}</span>
         </div>
         <div class="loans-tooltip-stat" style="font-size: 12px; line-height: 1.6; color: #475569;">
@@ -1539,6 +1574,52 @@ function healCustomerInvariants() {
   if (!state.customers || !Array.isArray(state.customers)) return false;
   let modified = false;
 
+  // 1. Group by customerNumber and normalize loan numbers sequentially
+  const custGroups = {};
+  state.customers.forEach((c) => {
+    if (!c || !c.customerNumber) return;
+    const num = c.customerNumber.toString();
+    if (!custGroups[num]) custGroups[num] = [];
+    custGroups[num].push(c);
+  });
+
+  Object.values(custGroups).forEach((loans) => {
+    if (loans.length === 1) {
+      if (!loans[0].loanNumber || Number(loans[0].loanNumber) !== 1) {
+        loans[0].loanNumber = 1;
+        modified = true;
+      }
+    } else {
+      // Check if loans have missing or duplicate loanNumber
+      const seen = new Set();
+      let hasDuplicates = false;
+      loans.forEach((l) => {
+        const n = Number(l.loanNumber);
+        if (!n || n < 1 || seen.has(n)) hasDuplicates = true;
+        seen.add(n);
+      });
+
+      if (hasDuplicates) {
+        // Sort chronologically by startDate / createdAt
+        loans.sort((a, b) => {
+          const dateA = a.startDate || a.createdAt || '';
+          const dateB = b.startDate || b.createdAt || '';
+          if (dateA !== dateB) return dateA.localeCompare(dateB);
+          return (a.id || '').localeCompare(b.id || '');
+        });
+
+        loans.forEach((l, idx) => {
+          const expected = idx + 1;
+          if (Number(l.loanNumber) !== expected) {
+            l.loanNumber = expected;
+            modified = true;
+          }
+        });
+      }
+    }
+  });
+
+  // 2. Validate financial parameters & repair corrupted date formats (+046316 etc.)
   state.customers.forEach((c) => {
     if (!c) return;
     const instAmt = Number(c.instalmentAmount) || 200;
@@ -1548,6 +1629,14 @@ function healCustomerInvariants() {
     if (c.totalPayable !== expectedPayable) {
       c.totalPayable = expectedPayable;
       modified = true;
+    }
+
+    if (c.startDate) {
+      const cleanStart = sanitizeDateYear(c.startDate);
+      if (cleanStart && cleanStart !== c.startDate) {
+        c.startDate = cleanStart;
+        modified = true;
+      }
     }
 
     if (!c.instalments || !Array.isArray(c.instalments)) {
@@ -1575,6 +1664,20 @@ function healCustomerInvariants() {
         inst.number = idx + 1;
         modified = true;
       }
+      if (inst.paidDate) {
+        const cleanPaidDate = sanitizeDateYear(inst.paidDate);
+        if (cleanPaidDate && cleanPaidDate !== inst.paidDate) {
+          inst.paidDate = cleanPaidDate;
+          modified = true;
+        }
+      }
+      if (inst.paidTimestamp) {
+        const cleanTimestamp = sanitizeDateYear(inst.paidTimestamp);
+        if (cleanTimestamp && cleanTimestamp !== inst.paidTimestamp) {
+          inst.paidTimestamp = cleanTimestamp;
+          modified = true;
+        }
+      }
       if (inst.status === 'Received') {
         if (Number(inst.paidAmount) !== instAmt) {
           inst.paidAmount = instAmt;
@@ -1601,6 +1704,27 @@ function healCustomerInvariants() {
       }
     });
   });
+
+  // 3. Also sanitize dates in state.transactions
+  if (state.transactions && Array.isArray(state.transactions)) {
+    state.transactions.forEach((t) => {
+      if (!t) return;
+      if (t.date) {
+        const cleanD = sanitizeDateYear(t.date);
+        if (cleanD && cleanD !== t.date) {
+          t.date = cleanD;
+          modified = true;
+        }
+      }
+      if (t.timestamp) {
+        const cleanT = sanitizeDateYear(t.timestamp);
+        if (cleanT && cleanT !== t.timestamp) {
+          t.timestamp = cleanT;
+          modified = true;
+        }
+      }
+    });
+  }
 
   return modified;
 }
@@ -3504,6 +3628,9 @@ function renderCustomersTable() {
     const allLoans = state.customers.filter(x => x.customerNumber.toString() === c.customerNumber.toString());
     const hasMultipleLoans = allLoans.length > 1 || (c.loanNumber && c.loanNumber > 1);
     const loanBadgeHtml = hasMultipleLoans ? ` <span class="loan-badge">L${c.loanNumber || 1}</span>` : '';
+    const totalCustGiven = allLoans.reduce((sum, x) => sum + (Number(x.givenAmount) || 0), 0);
+    const totalCustPayable = allLoans.reduce((sum, x) => sum + (Number(x.totalPayable) || 0), 0);
+    const totalCustBal = allLoans.reduce((sum, x) => sum + getCustomerStats(x).balance, 0);
 
     return `
       <tr>
@@ -3524,14 +3651,20 @@ function renderCustomersTable() {
             <span style="font-size:10px;">▾</span>
           </button>
         </td>
-        <td><strong>${formatMoney(c.givenAmount)}</strong></td>
+        <td>
+          <strong>${formatMoney(c.givenAmount)}</strong>
+          ${hasMultipleLoans ? `<div class="cust-total-sub" title="Combined across ${allLoans.length} loans">Total: ${formatMoney(totalCustGiven)}</div>` : ''}
+        </td>
         <td>
           <div style="font-weight:600;">${formatMoney(c.instalmentAmount)} ${c.frequency === 'Daily' || totalInst === 100 ? '/day' : '/wk'}</div>
           ${c.frequency === 'Daily' || totalInst === 100 
             ? '<span style="background:#fef3c7; color:#b45309; padding:1px 5px; border-radius:3px; font-size:10px; font-weight:700;">Daily</span>'
             : '<span style="background:#eff6ff; color:#1d4ed8; padding:1px 5px; border-radius:3px; font-size:10px; font-weight:700;">Weekly</span>'}
         </td>
-        <td><strong>${formatMoney(stats.totalPayable)}</strong></td>
+        <td>
+          <strong>${formatMoney(stats.totalPayable)}</strong>
+          ${hasMultipleLoans ? `<div class="cust-total-sub" title="Combined payable across ${allLoans.length} loans">Total: ${formatMoney(totalCustPayable)}</div>` : ''}
+        </td>
         <td>
           <strong style="color: #7c3aed;">+ ${formatMoney(stats.expectedProfit)}</strong>
           <div style="font-size: 11px; color: #16a34a; font-weight: 600;">Earned: ${formatMoney(stats.realizedProfit)}</div>
@@ -3542,7 +3675,10 @@ function renderCustomersTable() {
             <div class="progress-bar-fill" style="width:${stats.progressPercent}%;"></div>
           </div>
         </td>
-        <td><strong style="color:#b45309;">${formatMoney(stats.balance)}</strong></td>
+        <td>
+          <strong style="color:#b45309;">${formatMoney(stats.balance)}</strong>
+          ${hasMultipleLoans ? `<div class="cust-total-sub" title="Combined balance across ${allLoans.length} loans">Total Bal: ${formatMoney(totalCustBal)}</div>` : ''}
+        </td>
         <td>
           <div class="btn-group">
             <button class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
@@ -3565,6 +3701,9 @@ function renderCustomersTable() {
       const allLoans = state.customers.filter(x => x.customerNumber.toString() === c.customerNumber.toString());
       const hasMultipleLoans = allLoans.length > 1 || (c.loanNumber && c.loanNumber > 1);
       const loanBadgeHtml = hasMultipleLoans ? `<span class="loan-badge">L${c.loanNumber || 1}</span>` : '';
+      const totalCustGiven = allLoans.reduce((sum, x) => sum + (Number(x.givenAmount) || 0), 0);
+      const totalCustPayable = allLoans.reduce((sum, x) => sum + (Number(x.totalPayable) || 0), 0);
+      const totalCustBal = allLoans.reduce((sum, x) => sum + getCustomerStats(x).balance, 0);
 
       return `
         <div class="customer-card">
@@ -3591,11 +3730,17 @@ function renderCustomersTable() {
           <div class="customer-card-grid">
             <div>
               <div class="card-stat-label">Given Amount</div>
-              <div class="card-stat-val" style="color:#1e3a8a;">${formatMoney(c.givenAmount)}</div>
+              <div class="card-stat-val" style="color:#1e3a8a;">
+                ${formatMoney(c.givenAmount)}
+                ${hasMultipleLoans ? `<div class="cust-total-sub">Total: ${formatMoney(totalCustGiven)}</div>` : ''}
+              </div>
             </div>
             <div>
               <div class="card-stat-label">Total Repayable</div>
-              <div class="card-stat-val">${formatMoney(stats.totalPayable)}</div>
+              <div class="card-stat-val">
+                ${formatMoney(stats.totalPayable)}
+                ${hasMultipleLoans ? `<div class="cust-total-sub">Total: ${formatMoney(totalCustPayable)}</div>` : ''}
+              </div>
             </div>
             <div>
               <div class="card-stat-label">Collected (${stats.paidCount}/${totalInst})</div>
@@ -3603,7 +3748,10 @@ function renderCustomersTable() {
             </div>
             <div>
               <div class="card-stat-label">Remaining Balance</div>
-              <div class="card-stat-val" style="color:#b45309;">${formatMoney(stats.balance)}</div>
+              <div class="card-stat-val" style="color:#b45309;">
+                ${formatMoney(stats.balance)}
+                ${hasMultipleLoans ? `<div class="cust-total-sub">Total Bal: ${formatMoney(totalCustBal)}</div>` : ''}
+              </div>
             </div>
             <div>
               <div class="card-stat-label">Expected Profit</div>
@@ -4113,16 +4261,55 @@ function deleteCustomer(customerId) {
   }
 }
 
+// Helper: Sanitize corrupted years (e.g. +046316-02-18 or 46315 -> 2025/2026)
+function sanitizeDateYear(dateStr) {
+  if (!dateStr || dateStr === '-') return '';
+  let str = String(dateStr).trim();
+  if (str.startsWith('+')) str = str.slice(1);
+
+  // Match YYYY-MM-DD or YYYYY-MM-DD or YYYYYY-MM-DD
+  const m = str.match(/^0*(\d{4,6})[\/\-](\d{1,2})[\/\-](\d{1,2})(.*)$/);
+  if (m) {
+    let year = parseInt(m[1], 10);
+    const month = m[2].padStart(2, '0');
+    const day = m[3].padStart(2, '0');
+    const rest = m[4] || '';
+
+    // If year was corrupted by Excel serial date offset (e.g. 46315 -> 2025, 46316 -> 2026)
+    if (year >= 40000 && year <= 60000) {
+      year = year - 44290;
+    } else if (year > 2100) {
+      year = 2026;
+    }
+    return `${year}-${month}-${day}${rest}`;
+  }
+  return str;
+}
+
 // Helper: Format Dates consistently (YYYY-MM-DD -> DD/MM/YYYY or DD/MM/YY)
 function formatPassbookDate(dateStr, isCompact = false) {
   if (!dateStr || dateStr === '-') return '-';
-  const str = String(dateStr).trim();
-  const parts = str.split('-');
-  if (parts.length === 3 && parts[0].length === 4) {
-    const [y, m, d] = parts;
+  const cleanStr = sanitizeDateYear(dateStr);
+  const parts = cleanStr.split(/[\/\-]/);
+  if (parts.length >= 3) {
+    let y = parts[0], m = parts[1], d = parts[2];
+    if (d.length === 4) {
+      const temp = y; y = d; d = temp;
+    }
+    d = d.split(' ')[0].split('T')[0];
+    if (y.length === 4) {
+      return isCompact ? `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y.slice(2)}` : `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    }
+  }
+
+  const dt = new Date(cleanStr);
+  if (!isNaN(dt.getTime())) {
+    const d = String(dt.getDate()).padStart(2, '0');
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const y = String(dt.getFullYear());
     return isCompact ? `${d}/${m}/${y.slice(2)}` : `${d}/${m}/${y}`;
   }
-  return str;
+  return cleanStr;
 }
 
 // ----------------------------------------------------
@@ -5002,34 +5189,42 @@ function showExcelImportError(msg) {
   }
 }
 
-// Robust Excel Date Parser (supports Excel serial numbers, DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD)
+// Robust Excel Date Parser (supports Excel serial numbers, DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, 2-digit years, Date objects)
 function parseExcelDate(val) {
   if (val === null || val === undefined || val === '') return null;
+  if (val instanceof Date) {
+    if (!isNaN(val.getTime())) {
+      return getISTDateString(val);
+    }
+    return null;
+  }
   if (typeof val === 'number' || (!isNaN(val) && Number(val) > 20000 && !String(val).includes('-') && !String(val).includes('/'))) {
     const serial = Number(val);
     const utcDays = Math.floor(serial - 25569);
     const utcValue = utcDays * 86400;
     const dateInfo = new Date(utcValue * 1000);
-    return dateInfo.toISOString().split('T')[0];
+    return sanitizeDateYear(dateInfo.toISOString().split('T')[0]);
   }
   const str = String(val).trim();
-  const dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  const dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
   if (dmy) {
     const d = dmy[1].padStart(2, '0');
     const m = dmy[2].padStart(2, '0');
-    const y = dmy[3];
-    return `${y}-${m}-${d}`;
+    let y = dmy[3];
+    if (y.length === 2) y = '20' + y;
+    return sanitizeDateYear(`${y}-${m}-${d}`);
   }
-  const ymd = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  const ymd = str.match(/^(\d{2,6})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
   if (ymd) {
-    const y = ymd[1];
+    let y = ymd[1];
     const m = ymd[2].padStart(2, '0');
     const d = ymd[3].padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    if (y.length === 2) y = '20' + y;
+    return sanitizeDateYear(`${y}-${m}-${d}`);
   }
   const dt = new Date(str);
   if (!isNaN(dt.getTime())) {
-    return dt.toISOString().split('T')[0];
+    return sanitizeDateYear(dt.toISOString().split('T')[0]);
   }
   return null;
 }
@@ -5177,11 +5372,11 @@ function processRawImportData(rows) {
         startMs = todayMs;
       }
     }
-    const finalStartDate = new Date(startMs).toISOString().split('T')[0];
+    const finalStartDate = sanitizeDateYear(new Date(startMs).toISOString().split('T')[0]);
 
     for (let i = 1; i <= totalInstalments; i++) {
       const daysOffset = (i - 1) * intervalDays;
-      const instDate = new Date(startMs + daysOffset * 86400000).toISOString().split('T')[0];
+      const instDate = sanitizeDateYear(new Date(startMs + daysOffset * 86400000).toISOString().split('T')[0]);
       const remainingToAllocate = targetPaid - accumulatedPaid;
 
       if (remainingToAllocate >= instalmentAmount) {
