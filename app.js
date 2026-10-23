@@ -1850,6 +1850,26 @@ function healCustomerInvariants() {
   if (!state.customers || !Array.isArray(state.customers)) return false;
   let modified = false;
 
+  // 0. Permanently purge test automation accounts (e.g. #9999) from system
+  const initialCount = state.customers.length;
+  state.customers = state.customers.filter((c) => {
+    if (!c) return false;
+    const isTest = String(c.customerNumber) === '9999' ||
+                   (c.fullName && c.fullName.toLowerCase().includes('test automation')) ||
+                   (c.id && (c.id === 'TEST-ISOLATED-AUTOMATION-CUST' || c.id.startsWith('DEMO-')));
+    if (isTest) {
+      if (typeof deleteCustomerFromFirestore === 'function' && c.id) {
+        deleteCustomerFromFirestore(c.id);
+      }
+      return false;
+    }
+    return true;
+  });
+  if (state.customers.length !== initialCount) {
+    modified = true;
+    saveDataLocallyOnly();
+  }
+
   // 1. Detect and separate multi-user Customer ID collisions:
   // If multiple customer records share the same customerNumber but have different names/phones,
   // they were created simultaneously by different users!
@@ -2093,8 +2113,16 @@ function loadData() {
     if (savedCustomers) {
       try {
         const parsed = JSON.parse(savedCustomers);
-        // Automatically filter out any starter demo data for live production use
-        state.customers = Array.isArray(parsed) ? parsed.filter(c => c && c.id && !c.id.startsWith('DEMO-')) : [];
+        // Automatically filter out any starter demo data and test automation accounts (#9999)
+        const isTestOrDemoCust = (c) => {
+          if (!c || !c.id) return true;
+          if (c.id.startsWith('DEMO-') || c.id === 'TEST-ISOLATED-AUTOMATION-CUST') return true;
+          if (String(c.customerNumber) === '9999') return true;
+          const name = (c.fullName || '').toLowerCase();
+          if (name.includes('test automation')) return true;
+          return false;
+        };
+        state.customers = Array.isArray(parsed) ? parsed.filter(c => !isTestOrDemoCust(c)) : [];
         healCustomerInvariants();
       } catch (e) {
         state.customers = [];
@@ -3421,7 +3449,7 @@ function renderCollectionMatrix() {
       1
     ])).sort((a, b) => a - b);
     loanFilterEl.innerHTML = `
-      <option value="all" ${currentVal === 'all' ? 'selected' : ''}>All Loans (L1, L2, L3)</option>
+      <option value="all" ${currentVal === 'all' ? 'selected' : ''}>All Loans</option>
       ${uniqueLoans.map(l => `<option value="${l}" ${currentVal === String(l) ? 'selected' : ''}>Loan #${l}</option>`).join('')}
     `;
     state.collectionLoanFilter = currentVal;
