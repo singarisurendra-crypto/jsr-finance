@@ -517,14 +517,14 @@ function openCustomerScheduleDirect(customerId) {
 
 // Interactive Tooltip Popover for Customer Loans Breakdown
 function toggleLoansTooltip(event, customerNumber) {
-  if (event) {
+  if (event && event.stopPropagation) {
     event.stopPropagation();
   }
   const popover = document.getElementById('loans-tooltip-popover');
   const backdrop = document.getElementById('loans-popover-backdrop');
   if (!popover) return;
 
-  if (popover.dataset.openCust === customerNumber && popover.style.display === 'block') {
+  if (popover.dataset.openCust === customerNumber && popover.style.display !== 'none' && popover.style.display !== '') {
     hideLoansTooltip();
     return;
   }
@@ -546,9 +546,9 @@ function toggleLoansTooltip(event, customerNumber) {
 
   let html = `
     <div class="loans-tooltip-header">
-      <span style="display: flex; align-items: center; gap: 6px;">
+      <span style="display: flex; align-items: center; gap: 8px;">
         <span style="font-size: 16px;">💳</span>
-        <span>Loans for #${custGroup.customerNumber} - ${custGroup.fullName}</span>
+        <span style="font-weight: 800; font-size: 13.5px; color: #0f172a;">Loans for #${custGroup.customerNumber} - ${custGroup.fullName}</span>
       </span>
       <button type="button" class="modal-close" style="font-size: 20px; line-height: 1; padding: 2px 8px; cursor: pointer;" onclick="hideLoansTooltip()">&times;</button>
     </div>
@@ -575,7 +575,7 @@ function toggleLoansTooltip(event, customerNumber) {
       </div>
     </div>
 
-    <div style="display: flex; flex-direction: column; gap: 10px; max-height: 50dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 2px 2px 6px 2px;">
+    <div class="loans-tooltip-body">
   `;
 
   custGroup.loans.forEach((loan, idx) => {
@@ -589,7 +589,7 @@ function toggleLoansTooltip(event, customerNumber) {
     html += `
       <div class="loans-tooltip-item ${isCurrent ? 'active' : ''}">
         <div class="loans-tooltip-loan-title" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <strong style="color: #0f172a; font-size: 13.5px;">Loan #${loanNum} (${loan.frequency || 'Weekly'})</strong>
+          <strong style="color: #0f172a; font-size: 13px;">Loan #${loanNum} (${loan.frequency || 'Weekly'})</strong>
           <span>${statusBadge}</span>
         </div>
         <div class="loans-tooltip-stat" style="font-size: 12px; line-height: 1.6; color: #475569;">
@@ -608,7 +608,7 @@ function toggleLoansTooltip(event, customerNumber) {
 
   html += `
     </div>
-    <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #f1f5f9;">
+    <div class="loans-tooltip-footer">
       <button type="button" class="btn btn-primary" onclick="hideLoansTooltip(); openAddLoanForCustomer('${custGroup.customerNumber}')" style="width: 100%; font-size: 13px; padding: 10px 14px; font-weight: 700; justify-content: center;">
         + Issue Additional Loan
       </button>
@@ -616,39 +616,14 @@ function toggleLoansTooltip(event, customerNumber) {
   `;
   popover.innerHTML = html;
   popover.dataset.openCust = customerNumber;
-  popover.style.display = 'block';
+  popover.style.display = 'flex';
+  popover.style.top = '';
+  popover.style.left = '';
+  popover.style.right = '';
+  popover.style.bottom = '';
+  popover.style.transform = '';
   if (backdrop) backdrop.style.display = 'block';
   document.body.classList.add('modal-open');
-
-  const isMobile = window.innerWidth <= 768;
-  if (!isMobile) {
-    const btn = event.currentTarget || event.target;
-    const rect = btn.getBoundingClientRect();
-    const popoverWidth = 360;
-    const popoverHeight = 350;
-
-    let top = rect.bottom + 8;
-    if (top + popoverHeight > window.innerHeight && rect.top > popoverHeight) {
-      top = rect.top - popoverHeight - 8;
-    }
-    top = Math.max(12, Math.min(window.innerHeight - popoverHeight - 12, top));
-
-    let left = rect.left - 20;
-    if (left + popoverWidth > window.innerWidth - 16) {
-      left = window.innerWidth - popoverWidth - 16;
-    }
-    left = Math.max(16, left);
-
-    popover.style.top = `${top}px`;
-    popover.style.left = `${left}px`;
-    popover.style.right = 'auto';
-    popover.style.bottom = 'auto';
-  } else {
-    popover.style.top = '';
-    popover.style.left = '';
-    popover.style.right = '';
-    popover.style.bottom = '';
-  }
 }
 
 function hideLoansTooltip() {
@@ -669,7 +644,7 @@ function hideLoansTooltip() {
 // Global document click listener to close loans tooltip when clicking outside
 document.addEventListener('click', (e) => {
   const popover = document.getElementById('loans-tooltip-popover');
-  if (popover && popover.style.display === 'block') {
+  if (popover && popover.style.display !== 'none' && popover.style.display !== '') {
     if (!popover.contains(e.target) && !e.target.closest('.loans-badge')) {
       hideLoansTooltip();
     }
