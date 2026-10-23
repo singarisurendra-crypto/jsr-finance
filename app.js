@@ -72,7 +72,147 @@ let state = {
   allExpanded: false,
   pendingModifications: {},
   unsavedPromptCallback: null,
+  activeLocks: {},
 };
+
+// Unique Session ID for Multi-User & Multi-Tab Concurrency Control
+const CURRENT_SESSION_ID = 'sess_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+
+// Helper to get formatted display name of currently active operator
+function getCurrentUserDisplayName() {
+  if (typeof getCurrentUser === 'function') {
+    const u = getCurrentUser();
+    if (u) {
+      if (u.email) return u.email;
+      if (u.username) return u.username;
+      if (u.name) return u.name;
+    }
+  }
+  try {
+    const auth = JSON.parse(localStorage.getItem('jsr_auth_session') || '{}');
+    if (auth.email) return auth.email;
+    if (auth.username) return auth.username;
+  } catch (e) {}
+  return 'Another User';
+}
+
+// Find next free customer number starting from candidate without gap skipping
+function findNextAvailableCustomerNumber(preferred = 1) {
+  const existingNums = new Set((state.customers || []).map(c => Number(c.customerNumber)).filter(n => !isNaN(n) && n > 0));
+  let candidate = Math.max(1, Number(preferred) || 1);
+  while (existingNums.has(candidate)) {
+    candidate++;
+  }
+  return candidate;
+}
+
+// ====================================================
+// REAL-TIME COLLABORATIVE EDIT LOCK CONTROLLERS
+// ====================================================
+let _lockHeartbeatInterval = null;
+
+function getActiveEditLock(customerId) {
+  if (!state.activeLocks || !state.activeLocks[customerId]) return null;
+  const lock = state.activeLocks[customerId];
+  const now = Date.now();
+  if (!lock || !lock.expiresAt || Number(lock.expiresAt) <= now) return null;
+  if (lock.sessionId === CURRENT_SESSION_ID) return null; // Current tab owns the lock
+  return lock;
+}
+
+function acquireEditLock(customerId) {
+  const customer = state.customers.find(c => c.id === customerId);
+  if (!customer) return false;
+
+  const existingLock = getActiveEditLock(customerId);
+  if (existingLock) {
+    return false; // Locked by another active user
+  }
+
+  const userName = getCurrentUserDisplayName();
+  const now = Date.now();
+  const lockData = {
+    customerId,
+    customerNumber: customer.customerNumber,
+    customerName: customer.fullName,
+    lockedBy: userName,
+    sessionId: CURRENT_SESSION_ID,
+    lockedAt: now,
+    expiresAt: now + 45000 // 45 seconds lease
+  };
+
+  if (!state.activeLocks) state.activeLocks = {};
+  state.activeLocks[customerId] = lockData;
+
+  try {
+    localStorage.setItem('jsr_finance_editing_locks', JSON.stringify(state.activeLocks));
+  } catch (e) {}
+
+  if (typeof syncEditLockToFirestore === 'function') {
+    syncEditLockToFirestore(lockData);
+  }
+
+  if (!_lockHeartbeatInterval) {
+    _lockHeartbeatInterval = setInterval(refreshActiveLocksHeartbeat, 15000);
+  }
+  return true;
+}
+
+function refreshActiveLocksHeartbeat() {
+  const pendingIds = Object.keys(state.pendingModifications || {});
+  if (pendingIds.length === 0) {
+    if (_lockHeartbeatInterval) {
+      clearInterval(_lockHeartbeatInterval);
+      _lockHeartbeatInterval = null;
+    }
+    return;
+  }
+
+  const now = Date.now();
+  pendingIds.forEach((cid) => {
+    const cur = state.activeLocks && state.activeLocks[cid];
+    if (cur && cur.sessionId === CURRENT_SESSION_ID) {
+      cur.expiresAt = now + 45000;
+      if (typeof syncEditLockToFirestore === 'function') {
+        syncEditLockToFirestore(cur);
+      }
+    }
+  });
+}
+
+function releaseEditLock(customerId) {
+  if (state.activeLocks && state.activeLocks[customerId]) {
+    const lock = state.activeLocks[customerId];
+    if (lock.sessionId === CURRENT_SESSION_ID) {
+      delete state.activeLocks[customerId];
+      try {
+        localStorage.setItem('jsr_finance_editing_locks', JSON.stringify(state.activeLocks));
+      } catch (e) {}
+      if (typeof deleteEditLockFromFirestore === 'function') {
+        deleteEditLockFromFirestore(customerId);
+      }
+    }
+  }
+
+  const ourLocks = Object.values(state.activeLocks || {}).filter(l => l && l.sessionId === CURRENT_SESSION_ID);
+  if (ourLocks.length === 0 && _lockHeartbeatInterval) {
+    clearInterval(_lockHeartbeatInterval);
+    _lockHeartbeatInterval = null;
+  }
+}
+
+// Release locks automatically if user closes window or navigates away
+window.addEventListener('beforeunload', () => {
+  if (state.activeLocks) {
+    Object.values(state.activeLocks).forEach((l) => {
+      if (l && l.sessionId === CURRENT_SESSION_ID && l.customerId) {
+        if (typeof deleteEditLockFromFirestore === 'function') {
+          deleteEditLockFromFirestore(l.customerId);
+        }
+      }
+    });
+  }
+});
 
 // Web Audio API Cash Register Chime & Sound Effects (Zero External Files)
 function playCashChime() {
@@ -1018,6 +1158,11 @@ function saveCustomerModifications(customerId) {
     syncCustomerToFirestore(customer);
   }
 
+  // Release collaborative edit lock immediately upon saving
+  if (typeof releaseEditLock === 'function') {
+    releaseEditLock(customerId);
+  }
+
   if (collectedAmount > 0) {
     showCollectionSuccessBanner(customer, collectedAmount);
   } else {
@@ -1032,6 +1177,9 @@ function saveCustomerModifications(customerId) {
 function discardCustomerModifications(customerId) {
   if (state.pendingModifications) {
     delete state.pendingModifications[customerId];
+  }
+  if (typeof releaseEditLock === 'function') {
+    releaseEditLock(customerId);
   }
   renderCollectionMatrix();
 }
@@ -1141,6 +1289,12 @@ function handleInstalmentClick(customerId, instNumber, event) {
   }
   const customer = state.customers.find(c => c.id === customerId);
   if (!customer) return;
+
+  const activeLock = (typeof getActiveEditLock === 'function') ? getActiveEditLock(customerId) : null;
+  if (activeLock) {
+    showToast(`🔒 Customer #${customer.customerNumber} is currently being updated by ${activeLock.lockedBy}. Please wait for them to finish.`, 4500);
+    return;
+  }
 
   const totalInst = customer.totalInstalments || 52;
   const unitLabel = (customer.frequency === 'Daily' || totalInst === 100) ? 'Day' : 'Week';
@@ -1399,6 +1553,17 @@ function modifyInstalment(customerId, instNumber, customAmount) {
   const customer = state.customers.find(c => c.id === customerId);
   if (!customer) return;
 
+  const activeLock = (typeof getActiveEditLock === 'function') ? getActiveEditLock(customerId) : null;
+  if (activeLock) {
+    showToast(`🔒 Customer #${customer.customerNumber} is currently being updated by ${activeLock.lockedBy}. Please wait for them to finish.`, 4500);
+    return;
+  }
+
+  // Acquire collaborative lock for this session
+  if (typeof acquireEditLock === 'function') {
+    acquireEditLock(customerId);
+  }
+
   if (!state.pendingModifications) state.pendingModifications = {};
   if (!state.pendingModifications[customerId]) {
     const currentInstalments = (customer.instalments || []).map(i => ({ ...i }));
@@ -1574,7 +1739,72 @@ function healCustomerInvariants() {
   if (!state.customers || !Array.isArray(state.customers)) return false;
   let modified = false;
 
-  // 1. Group by customerNumber and normalize loan numbers sequentially
+  // 1. Detect and separate multi-user Customer ID collisions:
+  // If multiple customer records share the same customerNumber but have different names/phones,
+  // they were created simultaneously by different users!
+  const isSameCustomerIdentity = (c1, c2) => {
+    if (!c1 || !c2) return false;
+    const name1 = (c1.fullName || '').trim().toLowerCase();
+    const name2 = (c2.fullName || '').trim().toLowerCase();
+    const phone1 = (c1.phone || '').replace(/\D/g, '');
+    const phone2 = (c2.phone || '').replace(/\D/g, '');
+
+    if (name1 && name2 && name1 === name2) return true;
+    if (phone1 && phone2 && phone1.length >= 7 && phone1 === phone2) return true;
+    return false;
+  };
+
+  const initialCustGroups = {};
+  state.customers.forEach((c) => {
+    if (!c || !c.customerNumber) return;
+    const num = c.customerNumber.toString();
+    if (!initialCustGroups[num]) initialCustGroups[num] = [];
+    initialCustGroups[num].push(c);
+  });
+
+  Object.keys(initialCustGroups).forEach((numStr) => {
+    const group = initialCustGroups[numStr];
+    if (group.length > 1) {
+      // Sort chronologically: oldest first
+      group.sort((a, b) => {
+        const dateA = a.createdAt || a.startDate || '';
+        const dateB = b.createdAt || b.startDate || '';
+        if (dateA !== dateB) return dateA.localeCompare(dateB);
+        return (a.id || '').localeCompare(b.id || '');
+      });
+
+      const baseCustomer = group[0];
+      for (let i = 1; i < group.length; i++) {
+        const candidate = group[i];
+        if (!isSameCustomerIdentity(baseCustomer, candidate)) {
+          // Multi-user collision detected! Re-assign to next free customer number
+          const newFreeNum = findNextAvailableCustomerNumber(Number(numStr) + 1);
+          candidate.customerNumber = String(newFreeNum);
+          candidate.loanNumber = 1;
+          modified = true;
+
+          // Update any ledger transactions that were recorded under this customer's ID
+          if (state.transactions && Array.isArray(state.transactions)) {
+            state.transactions.forEach((t) => {
+              if (t.customerId === candidate.id) {
+                t.customerNumber = candidate.customerNumber;
+                t.loanNumber = 1;
+                if (typeof syncTransactionToFirestore === 'function') {
+                  syncTransactionToFirestore(t);
+                }
+              }
+            });
+          }
+
+          if (typeof syncCustomerToFirestore === 'function') {
+            syncCustomerToFirestore(candidate);
+          }
+        }
+      }
+    }
+  });
+
+  // Re-group and normalize sequential loan numbers (L1, L2, L3...)
   const custGroups = {};
   state.customers.forEach((c) => {
     if (!c || !c.customerNumber) return;
@@ -1618,6 +1848,10 @@ function healCustomerInvariants() {
       }
     }
   });
+
+  if (state.settings) {
+    state.settings.nextCustNumber = findNextAvailableCustomerNumber(1);
+  }
 
   // 2. Validate financial parameters & repair corrupted date formats (+046316 etc.)
   state.customers.forEach((c) => {
@@ -1767,6 +2001,23 @@ function loadData() {
       }
     } else {
       state.transactions = [];
+    }
+
+    const savedLocks = localStorage.getItem('jsr_finance_editing_locks');
+    if (savedLocks) {
+      try {
+        const parsedLocks = JSON.parse(savedLocks);
+        const now = Date.now();
+        const activeOnly = {};
+        Object.entries(parsedLocks || {}).forEach(([k, v]) => {
+          if (v && v.expiresAt > now) activeOnly[k] = v;
+        });
+        state.activeLocks = activeOnly;
+      } catch (e) {
+        state.activeLocks = {};
+      }
+    } else {
+      state.activeLocks = {};
     }
   } catch (err) {
     console.error('Error loading data from localStorage', err);
@@ -3115,6 +3366,10 @@ function renderCollectionMatrix() {
     const unitLabel = isDaily ? 'Day' : 'Week';
     const isExpanded = !!(state.expandedCustomerIds && state.expandedCustomerIds.has(cust.id));
 
+    // Collaborative Edit Lock check:
+    const activeLock = (typeof getActiveEditLock === 'function') ? getActiveEditLock(cust.id) : null;
+    const isLockedByOther = !!activeLock;
+
     const pendingMod = state.pendingModifications && state.pendingModifications[cust.id];
     const hasPendingMod = pendingMod && (Number(pendingMod.sessionAmount) > 0 || (pendingMod.modifiedInstalments && pendingMod.sessionAmount !== undefined));
     const effectiveStats = getCustomerEffectiveStats(cust);
@@ -3150,11 +3405,16 @@ function renderCollectionMatrix() {
           instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)}). Tap to receive.`;
         }
 
+        if (isLockedByOther) {
+          instTitle = `🔒 Locked: Currently being updated by ${activeLock.lockedBy}`;
+        }
+
         gridCellsHtml += `
           <div class="sched-cell">
             <span class="sched-num-label">${sq}</span>
             <button type="button" 
-                    class="sched-box-btn ${btnClass}" 
+                    class="sched-box-btn ${btnClass} ${isLockedByOther ? 'is-locked' : ''}" 
+                    ${isLockedByOther ? 'disabled' : ''}
                     onclick="handleInstalmentClick('${cust.id}', ${sq}, event)" 
                     title="${instTitle}">
               ${btnIcon}
@@ -3175,6 +3435,7 @@ function renderCollectionMatrix() {
               <div class="cust-name-row">
                 <span class="cust-name">${cust.fullName}</span>
                 <span class="cust-loan-badge">L${cust.loanNumber || 1}</span>
+                ${isLockedByOther ? `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-size:10px; padding:1px 6px; margin-left:4px; font-weight:700; border-radius:4px;">🔒 Editing by ${activeLock.lockedBy}</span>` : ''}
                 ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 5px; margin-left:4px;">⚠️ Due ${stats.missedCount}</span>` : ''}
               </div>
               <div class="cust-sub-details">
@@ -3203,11 +3464,26 @@ function renderCollectionMatrix() {
         <!-- Expanded 4-Row Checkbox Matrix -->
         ${isExpanded ? `
           <div class="cust-card-expanded-body" onclick="event.stopPropagation()">
+            ${isLockedByOther ? `
+              <div class="sched-lock-alert">
+                <span class="lock-alert-icon">🔒</span>
+                <div class="lock-alert-content">
+                  <div class="lock-alert-title">
+                    Customer #${cust.customerNumber} (${cust.fullName}) is currently being updated by <u>${activeLock.lockedBy}</u>
+                  </div>
+                  <div class="lock-alert-sub">
+                    Instalment checkboxes are disabled to prevent duplicate entries. This screen will automatically update and re-enable as soon as they save.
+                  </div>
+                </div>
+                <div class="lock-spinner" title="Waiting for updates..."></div>
+              </div>
+            ` : ''}
+
             <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
               ${gridCellsHtml}
             </div>
 
-            ${hasPendingMod && pendingMod.sessionAmount > 0 ? `
+            ${!isLockedByOther && hasPendingMod && pendingMod.sessionAmount > 0 ? `
               <div class="sched-modified-bar" style="margin-top: 14px; padding: 10px 14px; border-radius: 8px;">
                 <div>
                   <strong style="color: #166534; font-size: 13.5px;">Unsaved Collection:</strong>
@@ -3894,11 +4170,7 @@ function toggleLoanTypeMode(mode) {
     if (areaInput) areaInput.readOnly = false;
 
     // Suggest next customer number
-    let nextNum = state.settings.nextCustNumber || 1;
-    const existingNums = new Set(state.customers.map(c => Number(c.customerNumber)));
-    while (existingNums.has(nextNum)) {
-      nextNum++;
-    }
+    const nextNum = findNextAvailableCustomerNumber(state.settings.nextCustNumber || 1);
     if (custNumInput && !document.getElementById('form-customer-id').value) {
       custNumInput.value = nextNum;
     }
@@ -4048,7 +4320,7 @@ function openEditCustomerModal(customerId) {
 }
 
 // Save Customer (Create or Update with Multi-Loan & Frequency support)
-function handleSaveCustomer(event) {
+async function handleSaveCustomer(event) {
   event.preventDefault();
 
   const id = document.getElementById('form-customer-id').value;
@@ -4085,12 +4357,34 @@ function handleSaveCustomer(event) {
     return;
   }
 
-  const customerNumber = rawCustNum;
+  let customerNumber = rawCustNum;
   const fullName = rawFullName;
   const givenAmount = Number(rawGiven);
   const totalInstalments = Number(rawInstCount);
   const instalmentAmount = Number(rawInstAmt);
   const frequency = document.getElementById('cust-form-frequency')?.value || (totalInstalments === 100 ? 'Daily' : 'Weekly');
+
+  // Verify and auto-resolve customer ID collision for new customers in multi-user environments
+  if (!id && loanNumber === 1) {
+    if (typeof getNextAtomicCustomerNumber === 'function' && isCloudSyncActive) {
+      try {
+        const verified = await getNextAtomicCustomerNumber(customerNumber, fullName);
+        if (verified && String(verified) !== String(customerNumber)) {
+          showToast(`ℹ️ Customer #${customerNumber} was already taken. Auto-assigned Customer #${verified}.`, 4000);
+          customerNumber = String(verified);
+        }
+      } catch (e) {
+        console.warn('Atomic customer number check failed, falling back to local pool', e);
+      }
+    } else {
+      const existOther = state.customers.find(c => c.customerNumber.toString() === customerNumber.toString() && (c.fullName || '').trim().toLowerCase() !== fullName.toLowerCase());
+      if (existOther) {
+        const nextFree = findNextAvailableCustomerNumber(Number(customerNumber));
+        showToast(`ℹ️ Customer #${customerNumber} already exists. Auto-assigned Customer #${nextFree}.`, 4000);
+        customerNumber = String(nextFree);
+      }
+    }
+  }
 
   // Check duplicate customer number AND loan number combination
   const duplicate = state.customers.find((c) =>
@@ -4100,8 +4394,13 @@ function handleSaveCustomer(event) {
   );
 
   if (duplicate) {
-    alert(`Customer #${customerNumber} Loan #${loanNumber} already exists. Please choose a different loan number.`);
-    return;
+    if (id) {
+      alert(`Customer #${customerNumber} Loan #${loanNumber} already exists. Please choose a different loan number.`);
+      return;
+    } else {
+      const nextFree = findNextAvailableCustomerNumber(Number(customerNumber));
+      customerNumber = String(nextFree);
+    }
   }
 
   if (id) {
@@ -4207,7 +4506,7 @@ function handleSaveCustomer(event) {
     });
 
     if (loanNumber === 1) {
-      state.settings.nextCustNumber = Math.max(state.settings.nextCustNumber || 1, Number(customerNumber) + 1);
+      state.settings.nextCustNumber = findNextAvailableCustomerNumber(1);
     }
 
     // Sync contact info to existing loans of this customer if creating L2/L3
