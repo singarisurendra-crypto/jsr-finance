@@ -108,7 +108,18 @@ function setupFirestoreRealtimeListeners() {
     const cloudCustomers = [];
     if (!snapshot.empty) {
       snapshot.forEach((doc) => {
-        cloudCustomers.push(doc.data());
+        const data = doc.data();
+        if (!data) return;
+        const isTest = String(data.customerNumber) === '9999' ||
+                       (data.fullName && data.fullName.toLowerCase().includes('test automation')) ||
+                       doc.id === 'TEST-ISOLATED-AUTOMATION-CUST';
+        if (isTest) {
+          try {
+            doc.ref.delete();
+          } catch (e) {}
+          return;
+        }
+        cloudCustomers.push(data);
       });
       // Sort numerically by customerNumber, then loanNumber
       cloudCustomers.sort((a, b) => {
@@ -239,7 +250,18 @@ async function refreshSessionData(notifyUser = true) {
     try {
       const custSnap = await firestoreDb.collection('customers').get();
       const cloudCustomers = [];
-      custSnap.forEach(d => cloudCustomers.push(d.data()));
+      custSnap.forEach(d => {
+        const data = d.data();
+        if (!data) return;
+        const isTest = String(data.customerNumber) === '9999' ||
+                       (data.fullName && data.fullName.toLowerCase().includes('test automation')) ||
+                       d.id === 'TEST-ISOLATED-AUTOMATION-CUST';
+        if (isTest) {
+          try { d.ref.delete(); } catch (e) {}
+          return;
+        }
+        cloudCustomers.push(data);
+      });
       cloudCustomers.sort((a, b) => {
         const numA = Number(a.customerNumber) || 0;
         const numB = Number(b.customerNumber) || 0;
