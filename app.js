@@ -1325,6 +1325,7 @@ function toggleCustomerSchedule(customerId, event) {
       state.expandedCustomerIds.clear();
       state.expandedCustomerIds.add(customerId);
     }
+    state.allExpanded = (state.customers && state.customers.length > 0 && state.expandedCustomerIds.size === state.customers.length);
     renderCollectionMatrix();
   });
 }
@@ -1354,7 +1355,8 @@ function collapseAllSchedules() {
 }
 
 function toggleExpandAllSchedules() {
-  if (state.allExpanded) {
+  const isAnyExpanded = state.expandedCustomerIds && state.expandedCustomerIds.size > 0;
+  if (state.allExpanded || isAnyExpanded) {
     collapseAllSchedules();
   } else {
     expandAllSchedules();
@@ -3367,10 +3369,17 @@ function renderCollectionMatrix() {
   const tableHead = document.getElementById('matrix-table-head');
   const tableBody = document.getElementById('matrix-table-body');
 
-  // Synchronize Expand All / Collapse All button text if present
+  // Synchronize Expand All / Collapse All toggle button text and title
   const btnExpandAll = document.getElementById('btn-expand-all');
   if (btnExpandAll) {
-    btnExpandAll.innerHTML = state.allExpanded ? '<span>︿</span> Collapse all' : '<span>⌵</span> Expand all';
+    const isAnyExpanded = state.expandedCustomerIds && state.expandedCustomerIds.size > 0;
+    if (state.allExpanded || isAnyExpanded) {
+      btnExpandAll.innerHTML = '<span>︿</span> Collapse all';
+      btnExpandAll.title = 'Collapse all customer schedules';
+    } else {
+      btnExpandAll.innerHTML = '<span>⌵</span> Expand all';
+      btnExpandAll.title = 'Expand all customer schedules';
+    }
   }
 
   // Compute Top KPI numbers for the Instalment screen
