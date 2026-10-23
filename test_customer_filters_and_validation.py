@@ -22,10 +22,10 @@ def test_index_html_structure():
     assert 'id="cust-form-lock-notice"' in html, "Missing cust-form-lock-notice in index.html"
     assert 'id="cust-form-presets-wrap"' in html, "Missing cust-form-presets-wrap in index.html"
 
-    # Cache buster v=46
-    assert 'styles.css?v=46' in html, "styles.css not bumped to v=46"
-    assert 'app.js?v=46' in html, "app.js not bumped to v=46"
-    assert 'firebase-sync.js?v=46' in html, "firebase-sync.js not bumped to v=46"
+    # Cache buster v=47
+    assert 'styles.css?v=47' in html, "styles.css not bumped to v=47"
+    assert 'app.js?v=47' in html, "app.js not bumped to v=47"
+    assert 'firebase-sync.js?v=47' in html, "firebase-sync.js not bumped to v=47"
 
     print("[PASS] index.html structure, toolbar, settings input, and cache busters verified.")
 
