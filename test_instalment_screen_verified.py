@@ -144,6 +144,7 @@ def main():
         # Login as authorized operator
         login_js = """
         (function() {
+            isCloudSyncActive = false;
             verifyAndLoginGoogleUser('admin@jsrfinance.com', 'Surendra Singari');
             switchTab('collections');
             return true;
