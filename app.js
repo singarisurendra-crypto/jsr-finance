@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS = {
   phone: '+91 9876543210',
   address: 'Main Market, City Center',
   currency: '₹',
+  minGivenAmount: 1000,
   defaultGivenAmount: 10000,
   defaultInstalments: 52,
   defaultInstalmentAmount: 250,
@@ -68,6 +69,11 @@ let state = {
   activeTab: 'collections',
   searchQuery: '',
   filterStatus: 'active',
+  customerSearchQuery: '',
+  customerFilterStatus: 'all',
+  customerFilterRoute: 'all',
+  customerFilterFrequency: 'all',
+  customerFilterSort: 'id-asc',
   expandedCustomerIds: new Set(),
   allExpanded: false,
   pendingModifications: {},
@@ -3870,30 +3876,191 @@ function handleQuickReceive(event) {
   });
 }
 
+// Populate Customer Route Filter Dropdown dynamically from active customer list
+function populateCustomerRouteFilter() {
+  const routeSelect = document.getElementById('cust-filter-route');
+  if (!routeSelect) return;
+  const currentRoute = state.customerFilterRoute || 'all';
+  const uniqueRoutes = Array.from(new Set(
+    (state.customers || []).map(c => (c.areaRoute || 'General').trim()).filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b));
+
+  let optionsHtml = `<option value="all">📍 All Routes (${uniqueRoutes.length})</option>`;
+  uniqueRoutes.forEach(r => {
+    const isSel = (currentRoute === r) ? 'selected' : '';
+    optionsHtml += `<option value="${escapeHtml(r)}" ${isSel}>${escapeHtml(r)}</option>`;
+  });
+  routeSelect.innerHTML = optionsHtml;
+}
+
+// Handle real-time input / change in Customer Filter controls
+function handleCustomerFilterChange() {
+  const searchInput = document.getElementById('cust-search-input');
+  const statusSelect = document.getElementById('cust-filter-status');
+  const routeSelect = document.getElementById('cust-filter-route');
+  const freqSelect = document.getElementById('cust-filter-frequency');
+  const sortSelect = document.getElementById('cust-filter-sort');
+
+  if (searchInput) state.customerSearchQuery = searchInput.value;
+  if (statusSelect) state.customerFilterStatus = statusSelect.value;
+  if (routeSelect) state.customerFilterRoute = routeSelect.value;
+  if (freqSelect) state.customerFilterFrequency = freqSelect.value;
+  if (sortSelect) state.customerFilterSort = sortSelect.value;
+
+  renderCustomersTable();
+}
+
+// Reset all Customer Master filters to default
+function resetCustomerFilters() {
+  state.customerSearchQuery = '';
+  state.customerFilterStatus = 'all';
+  state.customerFilterRoute = 'all';
+  state.customerFilterFrequency = 'all';
+  state.customerFilterSort = 'id-asc';
+
+  const searchInput = document.getElementById('cust-search-input');
+  const statusSelect = document.getElementById('cust-filter-status');
+  const routeSelect = document.getElementById('cust-filter-route');
+  const freqSelect = document.getElementById('cust-filter-frequency');
+  const sortSelect = document.getElementById('cust-filter-sort');
+
+  if (searchInput) searchInput.value = '';
+  if (statusSelect) statusSelect.value = 'all';
+  if (routeSelect) routeSelect.value = 'all';
+  if (freqSelect) freqSelect.value = 'all';
+  if (sortSelect) sortSelect.value = 'id-asc';
+
+  renderCustomersTable();
+}
+
 // ----------------------------------------------------
 // SCREEN 3: CUSTOMER MASTER & PASSBOOK
 // ----------------------------------------------------
 function renderCustomersTable() {
   const tbody = document.getElementById('customers-table-body');
   if (!tbody) return;
-  const query = state.searchQuery.toLowerCase().trim();
+
+  populateCustomerRouteFilter();
+
+  const searchInput = document.getElementById('cust-search-input');
+  const statusSelect = document.getElementById('cust-filter-status');
+  const routeSelect = document.getElementById('cust-filter-route');
+  const freqSelect = document.getElementById('cust-filter-frequency');
+  const sortSelect = document.getElementById('cust-filter-sort');
+  const countBadge = document.getElementById('cust-filter-count-badge');
+  const resetBtn = document.getElementById('cust-filter-reset-btn');
+
+  // Keep control values synchronized with state
+  if (searchInput && searchInput.value !== (state.customerSearchQuery || '')) {
+    searchInput.value = state.customerSearchQuery || '';
+  }
+  if (statusSelect && statusSelect.value !== (state.customerFilterStatus || 'all')) {
+    statusSelect.value = state.customerFilterStatus || 'all';
+  }
+  if (routeSelect && routeSelect.value !== (state.customerFilterRoute || 'all')) {
+    routeSelect.value = state.customerFilterRoute || 'all';
+  }
+  if (freqSelect && freqSelect.value !== (state.customerFilterFrequency || 'all')) {
+    freqSelect.value = state.customerFilterFrequency || 'all';
+  }
+  if (sortSelect && sortSelect.value !== (state.customerFilterSort || 'id-asc')) {
+    sortSelect.value = state.customerFilterSort || 'id-asc';
+  }
+
+  const query = (state.customerSearchQuery || state.searchQuery || '').toLowerCase().trim();
+  const statusFilter = state.customerFilterStatus || 'all';
+  const routeFilter = state.customerFilterRoute || 'all';
+  const freqFilter = state.customerFilterFrequency || 'all';
+  const sortOrder = state.customerFilterSort || 'id-asc';
 
   const filtered = state.customers.filter((c) => {
-    return customerMatchesQuery(c, query);
+    // Search query match
+    if (query) {
+      const name = (c.fullName || '').toLowerCase();
+      const num = (c.customerNumber || '').toString().toLowerCase();
+      const phone = (c.phone || '').toLowerCase();
+      const area = (c.areaRoute || '').toLowerCase();
+      const addr = (c.address || '').toLowerCase();
+      const matches = name.includes(query) || num.includes(query) || phone.includes(query) || area.includes(query) || addr.includes(query);
+      if (!matches) return false;
+    }
+
+    const stats = getCustomerStats(c);
+    const allLoans = state.customers.filter(x => x.customerNumber.toString() === c.customerNumber.toString());
+    const hasMultipleLoans = allLoans.length > 1 || (c.loanNumber && c.loanNumber > 1);
+
+    // Status filter
+    if (statusFilter === 'active' && stats.balance <= 0) return false;
+    if (statusFilter === 'overdue' && !stats.isOverdue) return false;
+    if (statusFilter === 'completed' && stats.balance > 0) return false;
+    if (statusFilter === 'multi-loan' && !hasMultipleLoans) return false;
+
+    // Route filter
+    if (routeFilter !== 'all') {
+      const custRoute = (c.areaRoute || 'General').trim();
+      if (custRoute.toLowerCase() !== routeFilter.toLowerCase()) return false;
+    }
+
+    // Frequency filter
+    const isDaily = c.frequency === 'Daily' || (c.totalInstalments || 52) === 100;
+    if (freqFilter === 'weekly' && isDaily) return false;
+    if (freqFilter === 'daily' && !isDaily) return false;
+
+    return true;
   });
 
+  // Sorting
   filtered.sort((a, b) => {
+    const statsA = getCustomerStats(a);
+    const statsB = getCustomerStats(b);
     const numA = Number(a.customerNumber) || 0;
     const numB = Number(b.customerNumber) || 0;
-    if (numA !== numB) return numA - numB;
-    return (Number(b.loanNumber) || 1) - (Number(a.loanNumber) || 1);
+    const loanA = Number(a.loanNumber) || 1;
+    const loanB = Number(b.loanNumber) || 1;
+
+    if (sortOrder === 'id-asc') {
+      if (numA !== numB) return numA - numB;
+      return loanA - loanB;
+    }
+    if (sortOrder === 'id-desc') {
+      if (numA !== numB) return numB - numA;
+      return loanA - loanB;
+    }
+    if (sortOrder === 'name-asc') {
+      const nameComp = (a.fullName || '').localeCompare(b.fullName || '');
+      if (nameComp !== 0) return nameComp;
+      return loanA - loanB;
+    }
+    if (sortOrder === 'amount-desc') {
+      const diff = (Number(b.givenAmount) || 0) - (Number(a.givenAmount) || 0);
+      if (diff !== 0) return diff;
+      return numA - numB;
+    }
+    if (sortOrder === 'balance-desc') {
+      const diff = statsB.balance - statsA.balance;
+      if (diff !== 0) return diff;
+      return numA - numB;
+    }
+    return numA - numB;
   });
 
+  // Update summary badge & reset button
+  if (countBadge) {
+    countBadge.textContent = `Showing ${filtered.length} of ${state.customers.length} loans`;
+  }
+  const isFiltered = Boolean(query || statusFilter !== 'all' || routeFilter !== 'all' || freqFilter !== 'all' || sortOrder !== 'id-asc');
+  if (resetBtn) {
+    resetBtn.style.display = isFiltered ? 'inline-block' : 'none';
+  }
+
   if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:30px; color:#94a3b8;">No customers registered yet. Click "+ Add New Customer" to start.</td></tr>`;
+    const emptyMsg = isFiltered
+      ? 'No customers match the selected search or filters. Click "Reset" to view all.'
+      : 'No customers registered yet. Click "+ Add New Customer" to start.';
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:30px; color:#94a3b8;">${emptyMsg}</td></tr>`;
     const mobileContainer = document.getElementById('customers-mobile-cards');
     if (mobileContainer) {
-      mobileContainer.innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8; background:#fff; border-radius:12px; border:1px solid #e2e8f0;">No customers registered yet.</div>`;
+      mobileContainer.innerHTML = `<div style="text-align:center; padding:30px; color:#94a3b8; background:#fff; border-radius:12px; border:1px solid #e2e8f0;">${emptyMsg}</div>`;
     }
     return;
   }
@@ -4261,11 +4428,40 @@ function openAddCustomerModal() {
   if (radioNew) radioNew.checked = true;
   toggleLoanTypeMode('new');
 
+  const minPrincipal = (state.settings && !isNaN(state.settings.minGivenAmount) && Number(state.settings.minGivenAmount) > 0)
+    ? Number(state.settings.minGivenAmount)
+    : 1000;
+
+  const givenInput = document.getElementById('cust-form-given');
+  const instInput = document.getElementById('cust-form-instalments');
+  const amtInput = document.getElementById('cust-form-amount');
+  const lockNotice = document.getElementById('cust-form-lock-notice');
+  const presetsWrap = document.getElementById('cust-form-presets-wrap');
+
+  if (givenInput) {
+    givenInput.readOnly = false;
+    givenInput.classList.remove('locked-field');
+    givenInput.min = minPrincipal;
+    givenInput.title = '';
+  }
+  if (instInput) {
+    instInput.readOnly = false;
+    instInput.classList.remove('locked-field');
+    instInput.title = '';
+  }
+  if (amtInput) {
+    amtInput.readOnly = false;
+    amtInput.classList.remove('locked-field');
+    amtInput.title = '';
+  }
+  if (lockNotice) lockNotice.style.display = 'none';
+  if (presetsWrap) presetsWrap.style.display = 'flex';
+
   document.getElementById('cust-form-name').value = '';
   document.getElementById('cust-form-phone').value = '';
   document.getElementById('cust-form-address').value = '';
   document.getElementById('cust-form-area').value = 'Main Area';
-  document.getElementById('cust-form-given').value = state.settings.defaultGivenAmount || 10000;
+  document.getElementById('cust-form-given').value = Math.max(minPrincipal, state.settings.defaultGivenAmount || 10000);
   document.getElementById('cust-form-margin').value = '4.0';
   document.getElementById('cust-form-instalments').value = state.settings.defaultInstalments || 52;
   document.getElementById('cust-form-amount').value = state.settings.defaultInstalmentAmount || 200;
@@ -4289,6 +4485,60 @@ function openEditCustomerModal(customerId) {
 
   const loanNum = c.loanNumber || 1;
   const isDaily = c.frequency === 'Daily' || (c.totalInstalments === 100);
+
+  const minPrincipal = (state.settings && !isNaN(state.settings.minGivenAmount) && Number(state.settings.minGivenAmount) > 0)
+    ? Number(state.settings.minGivenAmount)
+    : 1000;
+
+  const hasAnyPayment = (c.instalments || []).some(
+    i => i && (i.status === 'Received' || i.status === 'Partial' || (Number(i.paidAmount) || 0) > 0)
+  );
+
+  const givenInput = document.getElementById('cust-form-given');
+  const instInput = document.getElementById('cust-form-instalments');
+  const amtInput = document.getElementById('cust-form-amount');
+  const lockNotice = document.getElementById('cust-form-lock-notice');
+  const presetsWrap = document.getElementById('cust-form-presets-wrap');
+
+  if (hasAnyPayment) {
+    if (givenInput) {
+      givenInput.readOnly = true;
+      givenInput.classList.add('locked-field');
+      givenInput.title = 'Principal amount is locked because payments have been recorded.';
+    }
+    if (instInput) {
+      instInput.readOnly = true;
+      instInput.classList.add('locked-field');
+      instInput.title = 'Total instalments is locked because payments have been recorded.';
+    }
+    if (amtInput) {
+      amtInput.readOnly = true;
+      amtInput.classList.add('locked-field');
+      amtInput.title = 'Instalment amount is locked because payments have been recorded.';
+    }
+    if (lockNotice) lockNotice.style.display = 'block';
+    if (presetsWrap) presetsWrap.style.display = 'none';
+  } else {
+    // 0 payments or all payments undone -> allow full edit
+    if (givenInput) {
+      givenInput.readOnly = false;
+      givenInput.classList.remove('locked-field');
+      givenInput.min = minPrincipal;
+      givenInput.title = '';
+    }
+    if (instInput) {
+      instInput.readOnly = false;
+      instInput.classList.remove('locked-field');
+      instInput.title = '';
+    }
+    if (amtInput) {
+      amtInput.readOnly = false;
+      amtInput.classList.remove('locked-field');
+      amtInput.title = '';
+    }
+    if (lockNotice) lockNotice.style.display = 'none';
+    if (presetsWrap) presetsWrap.style.display = 'flex';
+  }
 
   document.getElementById('modal-customer-title').textContent = `Edit Customer #${c.customerNumber} (Loan #${loanNum})`;
   document.getElementById('form-customer-id').value = c.id;
@@ -4344,8 +4594,11 @@ async function handleSaveCustomer(event) {
     alert('Please enter Customer Full Name');
     return;
   }
-  if (!rawGiven || isNaN(rawGiven) || Number(rawGiven) <= 0) {
-    alert('Please enter a valid Disbursal Amount greater than 0');
+  const minPrincipal = (state.settings && !isNaN(state.settings.minGivenAmount) && Number(state.settings.minGivenAmount) > 0)
+    ? Number(state.settings.minGivenAmount)
+    : 1000;
+  if (!rawGiven || isNaN(rawGiven) || Number(rawGiven) < minPrincipal) {
+    alert(`Given Principal Amount (₹) must be at least ₹${minPrincipal.toLocaleString('en-IN')}. (Configurable in Settings)`);
     return;
   }
   if (!rawInstCount || isNaN(rawInstCount) || Number(rawInstCount) <= 0) {
@@ -4408,6 +4661,19 @@ async function handleSaveCustomer(event) {
     const existing = state.customers.find((c) => c.id === id);
     if (existing) {
       const existingInsts = existing.instalments || [];
+      const hasAnyPayment = existingInsts.some(i => i && (i.status === 'Received' || i.status === 'Partial' || (Number(i.paidAmount) || 0) > 0));
+
+      if (hasAnyPayment) {
+        if (
+          givenAmount !== Number(existing.givenAmount) ||
+          totalInstalments !== Number(existing.totalInstalments) ||
+          instalmentAmount !== Number(existing.instalmentAmount)
+        ) {
+          alert('Cannot modify Principal Amount, Number of Instalments, or Instalment Amount while payments exist. To edit these terms, undo all received instalments first in the collection sheet.');
+          return;
+        }
+      }
+
       let highestPaidNumber = 0;
       existingInsts.forEach(i => {
         if (i && (i.status === 'Received' || i.status === 'Partial')) {
@@ -5172,6 +5438,10 @@ function renderSettings() {
   document.getElementById('setting-address').value = state.settings.address;
   document.getElementById('setting-currency').value = state.settings.currency;
   document.getElementById('setting-default-given').value = state.settings.defaultGivenAmount;
+  const minGivenInput = document.getElementById('setting-min-given');
+  if (minGivenInput) {
+    minGivenInput.value = state.settings.minGivenAmount ?? 1000;
+  }
   document.getElementById('setting-default-instalments').value = state.settings.defaultInstalments;
   document.getElementById('setting-default-inst-amount').value = state.settings.defaultInstalmentAmount;
   
@@ -5192,6 +5462,10 @@ function handleSaveSettings(event) {
   state.settings.address = document.getElementById('setting-address').value.trim();
   state.settings.currency = document.getElementById('setting-currency').value.trim() || '₹';
   state.settings.defaultGivenAmount = Number(document.getElementById('setting-default-given').value) || 10000;
+  const minGivenEl = document.getElementById('setting-min-given');
+  state.settings.minGivenAmount = (minGivenEl && !isNaN(minGivenEl.value) && Number(minGivenEl.value) > 0)
+    ? Number(minGivenEl.value)
+    : 1000;
   state.settings.defaultInstalments = Number(document.getElementById('setting-default-instalments').value) || 52;
   state.settings.defaultInstalmentAmount = Number(document.getElementById('setting-default-inst-amount').value) || 200;
 
@@ -6589,6 +6863,22 @@ function setupEventListeners() {
 
   const recentRoute = document.getElementById('recent-route-filter');
   if (recentRoute) recentRoute.addEventListener('change', renderRecentTransactions);
+
+  // Customer Master Search & Filter listeners
+  const custSearchInput = document.getElementById('cust-search-input');
+  if (custSearchInput) custSearchInput.addEventListener('input', handleCustomerFilterChange);
+
+  const custStatusFilter = document.getElementById('cust-filter-status');
+  if (custStatusFilter) custStatusFilter.addEventListener('change', handleCustomerFilterChange);
+
+  const custRouteFilter = document.getElementById('cust-filter-route');
+  if (custRouteFilter) custRouteFilter.addEventListener('change', handleCustomerFilterChange);
+
+  const custFreqFilter = document.getElementById('cust-filter-frequency');
+  if (custFreqFilter) custFreqFilter.addEventListener('change', handleCustomerFilterChange);
+
+  const custSortFilter = document.getElementById('cust-filter-sort');
+  if (custSortFilter) custSortFilter.addEventListener('change', handleCustomerFilterChange);
 
   // Left Menu Hover-to-Open & Click-to-Close behavior
   const sidebar = document.getElementById('app-sidebar');
