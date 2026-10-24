@@ -786,6 +786,14 @@ function verifyAndLoginGoogleUser(email, name) {
     }
     playCashChime();
     showToast(`✓ Whitelist Verified! Welcome, ${name || normalizedEmail}`);
+
+    // Immediately open instalment screen & refresh data
+    loadData();
+    updateHeaderStats();
+    switchTab('collections');
+    if (typeof initGoogleCloudDatabase === 'function' && (!firestoreDb || !isCloudSyncActive)) {
+      initGoogleCloudDatabase();
+    }
   }
 
   function showDenied() {
@@ -1040,6 +1048,14 @@ function handleLogin(event) {
         loginOverlay.style.opacity = '1';
       }, 250);
     }
+
+    // Immediately open instalment screen & refresh data
+    loadData();
+    updateHeaderStats();
+    switchTab('collections');
+    if (typeof initGoogleCloudDatabase === 'function' && (!firestoreDb || !isCloudSyncActive)) {
+      initGoogleCloudDatabase();
+    }
   } else {
     if (errorAlert) {
       errorAlert.textContent = '❌ Invalid Operator ID or PIN. Please enter your authorized credentials.';
@@ -1062,6 +1078,8 @@ function handleLogout() {
       const errorAlert = document.getElementById('login-error-alert');
       if (errorAlert) errorAlert.style.display = 'none';
     }
+    // Cleanly reset active screen to collections for next session
+    switchTab('collections');
     showToast('Signed out successfully.');
   }
 }
@@ -2325,18 +2343,24 @@ function updateHeaderStats() {
 
 // Navigation & Tab Switching
 function switchTab(tabName) {
+  // Safe default: enforce valid tab names, fallback to 'collections'
+  const validTabs = ['collections', 'summary', 'customers', 'analytics', 'settings'];
+  if (!tabName || !validTabs.includes(tabName)) {
+    tabName = 'collections';
+  }
+
   checkAndPromptUnsaved(null, () => {
     state.activeTab = tabName;
 
-    document.querySelectorAll('.nav-link').forEach((link) => {
+    document.querySelectorAll('.nav-link[data-tab]').forEach((link) => {
       link.classList.toggle('active', link.dataset.tab === tabName);
     });
 
-    document.querySelectorAll('.mobile-nav-item').forEach((item) => {
+    document.querySelectorAll('.mobile-nav-item[data-tab]').forEach((item) => {
       item.classList.toggle('active', item.dataset.tab === tabName);
     });
 
-    document.querySelectorAll('.mobile-header-btn').forEach((btn) => {
+    document.querySelectorAll('.mobile-header-btn[data-tab]').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.tab === tabName);
     });
 
@@ -6918,17 +6942,21 @@ function printCashHandoverSlip() {
 // Event Listeners Setup
 function setupEventListeners() {
   // Navigation tabs (Desktop & Mobile)
-  document.querySelectorAll('.nav-link').forEach((link) => {
+  document.querySelectorAll('.nav-link[data-tab]').forEach((link) => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
-      switchTab(link.dataset.tab);
+      if (link.dataset.tab) {
+        switchTab(link.dataset.tab);
+      }
     });
   });
 
-  document.querySelectorAll('.mobile-nav-item').forEach((item) => {
+  document.querySelectorAll('.mobile-nav-item[data-tab]').forEach((item) => {
     item.addEventListener('click', (e) => {
       e.preventDefault();
-      switchTab(item.dataset.tab);
+      if (item.dataset.tab) {
+        switchTab(item.dataset.tab);
+      }
     });
   });
 
