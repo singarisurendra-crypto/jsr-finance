@@ -140,7 +140,7 @@ function setupFirestoreRealtimeListeners() {
     saveDataLocallyOnly();
     updateHeaderStats();
     if (state.activeTab === 'summary') renderDashboard();
-    if (state.activeTab === 'collections') renderCollectionMatrix();
+    if (state.activeTab === 'collections' || !state.activeTab) renderCollectionMatrix();
     if (state.activeTab === 'customers') renderCustomersTable();
     if (state.activeTab === 'analytics' && typeof renderAnalytics === 'function') renderAnalytics();
     if (state.activeTab === 'settings' && typeof renderSettings === 'function') renderSettings();
