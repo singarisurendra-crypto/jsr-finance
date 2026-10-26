@@ -1398,9 +1398,16 @@ function handleInstalmentClick(customerId, instNumber, event) {
   }
 
   const custInst = customer.instalments[instNumber - 1];
-  const isAlreadyCommitted = custInst && (custInst.status === 'Received' || custInst.status === 'Partial');
 
-  // Case 1: The instalment is already committed/saved in customer.instalments -> Handle UNDO immediately
+  // If already Partial, open Partial Payment modal so operator can complete it, pay another partial amount, or undo
+  if (custInst && custInst.status === 'Partial') {
+    openPartialPayModal(customerId, instNumber);
+    return;
+  }
+
+  const isAlreadyCommitted = custInst && custInst.status === 'Received';
+
+  // Case 1: The instalment is already committed/saved as Received -> Handle UNDO with confirmation
   if (isAlreadyCommitted) {
     // 1. Strict Reverse Sequential Validation: only the highest paid instalment can be undone first
     let lastPaidNumber = 0;
@@ -2236,6 +2243,8 @@ function getCustomerStats(customer) {
   const realizedProfit = Math.round(totalPaid * profitMarginRate);
   const principalRecovered = Math.max(0, totalPaid - realizedProfit);
 
+  const isAtRisk = !isCompleted && (missedCount >= 4 || (isOverdue && missedCount >= 3));
+
   return {
     paidCount,
     partialCount,
@@ -2251,6 +2260,8 @@ function getCustomerStats(customer) {
     isCompleted,
     isOverdue,
     missedCount,
+    overdueCount: missedCount,
+    isAtRisk,
     dueToDate: typeof cappedExpected !== 'undefined' ? cappedExpected : paidCount,
   };
 }
@@ -2292,15 +2303,47 @@ function getPortfolioStats(loanFilter = 'all') {
       activeLoans++;
     }
 
-    // Check today's collections
-    if (cust.instalments) {
-      cust.instalments.forEach((inst) => {
-        if (inst && (inst.status === 'Received' || inst.status === 'Partial') && inst.paidDate === todayStr) {
-          todayCollected += (Number(inst.paidAmount) || cust.instalmentAmount);
-        }
-      });
-    }
   });
+
+  // Check today's collections: accurately credit partial vs full payments
+  // 1. Transaction audit ledger provides 100% exact split accounting across multi-day partial payments
+  let hasTodayTransactions = false;
+  let txnTodayCollected = 0;
+  if (state.transactions && Array.isArray(state.transactions) && state.transactions.length > 0) {
+    state.transactions.forEach(t => {
+      if (t && t.date === todayStr) {
+        if (targetLoan !== null && (Number(t.loanNumber) || 1) !== targetLoan) {
+          return;
+        }
+        hasTodayTransactions = true;
+        const amt = Number(t.amount) || 0;
+        if (t.type === 'undo') {
+          txnTodayCollected -= amt;
+        } else {
+          txnTodayCollected += amt;
+        }
+      }
+    });
+  }
+
+  if (hasTodayTransactions) {
+    todayCollected = Math.max(0, txnTodayCollected);
+  } else {
+    // 2. Direct instalment fallback for legacy data or sessions without transaction records
+    targetCustomers.forEach((cust) => {
+      if (cust.instalments) {
+        cust.instalments.forEach((inst) => {
+          if (inst && inst.paidDate === todayStr) {
+            if (inst.status === 'Partial') {
+              todayCollected += (Number(inst.paidAmount) || 0);
+            } else if (inst.status === 'Received') {
+              todayCollected += (Number(inst.paidAmount) || cust.instalmentAmount || 0);
+            }
+          }
+        });
+      }
+    });
+  }
 
   const recoveryPercent = totalPayable > 0 ? Math.round((totalCollected / totalPayable) * 100) : 0;
   const todayProfit = todayCollected > 0 && totalPayable > 0 ? Math.round(todayCollected * (totalExpectedProfit / totalPayable)) : 0;
@@ -2805,24 +2848,213 @@ function filterAnalyticsRoutes(route) {
 }
 
 function filterAnalyticsFollowups(filterType) {
-  state.analyticsFollowupFilter = filterType;
+  state.analyticsFollowupFilter = filterType || 'all';
+
+  const sel = document.getElementById('ana-followup-select');
+  if (sel && sel.value !== state.analyticsFollowupFilter) {
+    sel.value = state.analyticsFollowupFilter;
+  }
+
   const itemOverdue = document.getElementById('ana-fu-item-overdue');
   const itemAtrisk = document.getElementById('ana-fu-item-atrisk');
   const itemCompleted = document.getElementById('ana-fu-item-completed');
-  if (itemOverdue) itemOverdue.style.display = (filterType === 'all' || filterType === 'overdue') ? 'flex' : 'none';
-  if (itemAtrisk) itemAtrisk.style.display = (filterType === 'all' || filterType === 'atrisk') ? 'flex' : 'none';
-  if (itemCompleted) itemCompleted.style.display = (filterType === 'all' || filterType === 'completed') ? 'flex' : 'none';
+
+  if (itemOverdue) {
+    itemOverdue.classList.toggle('is-selected', state.analyticsFollowupFilter === 'overdue');
+    itemOverdue.style.display = (state.analyticsFollowupFilter === 'all' || state.analyticsFollowupFilter === 'overdue') ? 'flex' : 'none';
+  }
+  if (itemAtrisk) {
+    itemAtrisk.classList.toggle('is-selected', state.analyticsFollowupFilter === 'atrisk');
+    itemAtrisk.style.display = (state.analyticsFollowupFilter === 'all' || state.analyticsFollowupFilter === 'atrisk') ? 'flex' : 'none';
+  }
+  if (itemCompleted) {
+    itemCompleted.classList.toggle('is-selected', state.analyticsFollowupFilter === 'completed');
+    itemCompleted.style.display = (state.analyticsFollowupFilter === 'all' || state.analyticsFollowupFilter === 'completed') ? 'flex' : 'none';
+  }
+
+  renderAnalyticsFollowupCustomers();
 }
 
 function switchTabWithFollowupFilter(filterType) {
   switchTab('collections');
   if (filterType && filterType !== 'all') {
-    const searchInput = document.getElementById('collection-search');
-    if (searchInput) {
-      if (filterType === 'overdue') searchInput.value = 'overdue';
-      renderCollectionMatrix();
+    state.filterStatus = filterType === 'atrisk' ? 'overdue' : filterType;
+  } else {
+    state.filterStatus = 'all';
+  }
+  const filterSelect = document.getElementById('collection-filter-select');
+  if (filterSelect) {
+    filterSelect.value = state.filterStatus;
+  }
+  renderCollectionMatrix();
+}
+
+function scrollToFollowups(filterType) {
+  filterAnalyticsFollowups(filterType || 'overdue');
+  const el = document.getElementById('ana-module-risk');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function jumpToCustomerSchedule(customerId) {
+  if (!customerId) return;
+  switchTab('collections');
+
+  state.filterStatus = 'all';
+  const filterSelect = document.getElementById('collection-filter-select');
+  if (filterSelect) filterSelect.value = 'all';
+
+  state.collectionLoanFilter = 'all';
+  const loanFilterSelect = document.getElementById('collection-loan-filter');
+  if (loanFilterSelect) loanFilterSelect.value = 'all';
+
+  if (!state.expandedCustomerIds) state.expandedCustomerIds = new Set();
+  state.expandedCustomerIds.add(customerId);
+
+  renderCollectionMatrix();
+
+  setTimeout(() => {
+    const card = document.querySelector(`.cust-compact-card[data-customer-id="${customerId}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('highlight-glow');
+      setTimeout(() => card.classList.remove('highlight-glow'), 3000);
+    }
+  }, 150);
+}
+
+function renderAnalyticsFollowupCustomers() {
+  const container = document.getElementById('ana-followup-customers-list');
+  if (!container) return;
+
+  const filterType = state.analyticsFollowupFilter || 'all';
+  const customers = state.customers || [];
+
+  // Group count loans per customerNumber
+  const custGroupCounts = {};
+  customers.forEach(c => {
+    if (!c || !c.customerNumber) return;
+    const num = String(c.customerNumber);
+    custGroupCounts[num] = (custGroupCounts[num] || 0) + 1;
+  });
+
+  const enriched = customers.map(c => {
+    const stats = getCustomerStats(c);
+    const totalCustLoans = custGroupCounts[String(c.customerNumber)] || 1;
+    const isOverdue = stats.isOverdue || (stats.missedCount && stats.missedCount >= 2);
+    const isAtRisk = stats.isAtRisk || (stats.missedCount && stats.missedCount >= 4);
+    return {
+      customer: c,
+      stats,
+      totalCustLoans,
+      isOverdue,
+      isAtRisk,
+      isCompleted: stats.isCompleted
+    };
+  });
+
+  let filtered = [];
+  if (filterType === 'overdue') {
+    filtered = enriched.filter(e => e.isOverdue && !e.isCompleted);
+  } else if (filterType === 'atrisk') {
+    filtered = enriched.filter(e => e.isAtRisk && !e.isCompleted);
+  } else if (filterType === 'completed') {
+    filtered = enriched.filter(e => e.isCompleted);
+  } else {
+    // 'all': Show overdue and at-risk loans primarily, then completed if none
+    filtered = enriched.filter(e => (e.isOverdue || e.isAtRisk) && !e.isCompleted);
+    if (filtered.length === 0) {
+      filtered = enriched.filter(e => e.isCompleted);
     }
   }
+
+  // Sort: highest missedCount first, then customerNumber
+  filtered.sort((a, b) => {
+    const missedDiff = (b.stats.missedCount || 0) - (a.stats.missedCount || 0);
+    if (missedDiff !== 0) return missedDiff;
+    return (Number(a.customer.customerNumber) || 0) - (Number(b.customer.customerNumber) || 0);
+  });
+
+  const countBadge = document.getElementById('ana-fu-list-count');
+  if (countBadge) {
+    countBadge.textContent = `${filtered.length} loan${filtered.length !== 1 ? 's' : ''}`;
+  }
+
+  if (filtered.length === 0) {
+    const emptyMsg = filterType === 'overdue' 
+      ? '🎉 No overdue instalments! All active loans are on schedule.' 
+      : (filterType === 'atrisk' ? '🎉 No at-risk loans! All accounts healthy.' : 'No customer records match this filter.');
+    container.innerHTML = `<div class="ana-fu-empty-state">${emptyMsg}</div>`;
+    return;
+  }
+
+  let html = '';
+  filtered.forEach(item => {
+    const c = item.customer;
+    const stats = item.stats;
+    const loanNum = Number(c.loanNumber) || 1;
+    const totalLoans = item.totalCustLoans;
+    const initials = getCustomerInitials(c.fullName);
+    const avatarStyle = getCustomerAvatarStyle(c.fullName, c.customerNumber);
+    const unitLabel = (c.frequency === 'Daily' || (c.totalInstalments || 52) === 100) ? 'Day' : 'Week';
+
+    let statusBadge = '';
+    if (item.isAtRisk) {
+      statusBadge = `<span class="badge-status badge-status-atrisk" style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px;">⚠️ At Risk • Due ${stats.missedCount}</span>`;
+    } else if (item.isOverdue) {
+      statusBadge = `<span class="badge-overdue" style="font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px;">⚠️ Due ${stats.missedCount}</span>`;
+    } else if (item.isCompleted) {
+      statusBadge = `<span class="badge-status badge-status-completed" style="background:#dcfce7; color:#15803d; border:1px solid #86efac; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px;">✅ Completed</span>`;
+    }
+
+    const loanLabel = totalLoans > 1 ? `Loan #${loanNum} (of ${totalLoans} loans)` : `Loan #${loanNum}`;
+
+    html += `
+      <div class="ana-fu-cust-card" onclick="jumpToCustomerSchedule('${c.id}')" title="Click to open ${escapeHtml(c.fullName)} in Instalment Sheet">
+        <div class="ana-fu-cust-header">
+          <div class="ana-fu-cust-left">
+            <span class="ana-fu-cust-prefix">#${c.customerNumber}</span>
+            <div class="ana-fu-avatar" style="${avatarStyle}">${initials}</div>
+            <div class="ana-fu-name-block">
+              <div class="ana-fu-name-row">
+                <strong class="ana-fu-cust-name">${escapeHtml(c.fullName)}</strong>
+                <span class="cust-loan-badge">L${loanNum}</span>
+                <span class="ana-fu-loan-tag">${loanLabel}</span>
+                ${statusBadge}
+              </div>
+              <div class="ana-fu-sub-meta">
+                ${c.areaRoute ? `📍 ${escapeHtml(c.areaRoute)} • ` : ''}📞 ${escapeHtml(c.phone || 'No phone')}
+              </div>
+            </div>
+          </div>
+          <div class="ana-fu-cust-right">
+            <button type="button" class="ana-fu-open-btn" onclick="event.stopPropagation(); jumpToCustomerSchedule('${c.id}')">
+              Open Schedule →
+            </button>
+          </div>
+        </div>
+        <div class="ana-fu-financial-strip">
+          <div class="ana-fu-fin-col">
+            <span class="ana-fu-fin-label">Paid / Due</span>
+            <span class="ana-fu-fin-val">${stats.paidCount}/${c.totalInstalments || 52} ${unitLabel}s</span>
+          </div>
+          <div class="ana-fu-fin-col">
+            <span class="ana-fu-fin-label">Instalment</span>
+            <span class="ana-fu-fin-val">${formatMoney(c.instalmentAmount)}/${unitLabel.toLowerCase()}</span>
+          </div>
+          <div class="ana-fu-fin-col">
+            <span class="ana-fu-fin-label">Collected</span>
+            <span class="ana-fu-fin-val text-green">${formatMoney(stats.totalPaid)}</span>
+          </div>
+          <div class="ana-fu-fin-col">
+            <span class="ana-fu-fin-label">Pending Balance</span>
+            <span class="ana-fu-fin-val text-amber">${formatMoney(stats.balance)}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
 }
 
 function filterSummaryAccordions(tab, btn) {
@@ -3053,9 +3285,12 @@ function renderAnalytics() {
       nextWeekProjected += isDaily ? ((c.instalmentAmount || 0) * 7) : (c.instalmentAmount || 0);
     }
 
-    if (stats.overdueCount > 0) {
+    const isCustOverdue = !stats.isCompleted && (stats.isOverdue || (stats.missedCount && stats.missedCount >= 2));
+    const isCustAtRisk = !stats.isCompleted && (stats.isAtRisk || (stats.missedCount && stats.missedCount >= 4));
+
+    if (isCustOverdue) {
       overdueLoansCount++;
-      if (stats.overdueCount >= 3 || stats.isAtRisk) {
+      if (isCustAtRisk) {
         atRiskLoansCount++;
       }
     }
@@ -3324,6 +3559,8 @@ function renderAnalytics() {
   const elFuCompleted = document.getElementById('ana-fu-completed-count');
   if (elFuCompleted) elFuCompleted.textContent = completedLoansCount;
 
+  renderAnalyticsFollowupCustomers();
+
   // 7. Financial Overview Card (Screenshot 4)
   renderFinancialOverviewCard();
 
@@ -3544,8 +3781,9 @@ function renderCollectionMatrix() {
         } else if (isPartial) {
           btnClass = 'is-partial';
           const pAmt = Number(sqInst.paidAmount) || 0;
+          const pendingAmt = Math.max(0, (Number(cust.instalmentAmount) || 0) - pAmt);
           btnIcon = `<span class="sched-partial-amt"><span class="sched-partial-currency">₹</span>${pAmt}</span>`;
-          instTitle = `${unitLabel} #${sq}: Partial Paid ${formatMoney(pAmt)} of ${formatMoney(cust.instalmentAmount)})${tsSuffix}. Tap to complete or undo.`;
+          instTitle = `${unitLabel} #${sq}: Amount Received: ${formatMoney(pAmt)} | Pending Instalment Amount: ${formatMoney(pendingAmt)}${tsSuffix}. Tap to pay remaining, pay custom partial, or undo.`;
         } else {
           instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)}). Tap to receive.`;
         }
@@ -3569,6 +3807,23 @@ function renderCollectionMatrix() {
       }
     }
 
+    const activePartialInst = (cust.instalments || []).find(i => i && i.status === 'Partial');
+    const partialBadgeHtml = activePartialInst
+      ? `<span class="badge" style="background:#fef3c7; color:#b45309; border:1px solid #f59e0b; font-size:10px; padding:1px 6px; margin-left:4px; font-weight:700; border-radius:4px;" title="${unitLabel} #${activePartialInst.number}: Paid ${formatMoney(activePartialInst.paidAmount || 0)} • Pending ${formatMoney((cust.instalmentAmount || 0) - (activePartialInst.paidAmount || 0))}">½ Partial: ${formatMoney(activePartialInst.paidAmount || 0)} rec'd • Pending ${formatMoney((cust.instalmentAmount || 0) - (activePartialInst.paidAmount || 0))}</span>`
+      : '';
+
+    let nextDueSeq = 1;
+    for (let i = 1; i <= instCount; i++) {
+      const itm = (cust.instalments || [])[i - 1];
+      if (!itm || itm.status !== 'Received') {
+        nextDueSeq = i;
+        break;
+      }
+    }
+    const nextDueInst = (cust.instalments || [])[nextDueSeq - 1];
+    const isNextPartial = nextDueInst && nextDueInst.status === 'Partial';
+    const nextRemainingDue = isNextPartial ? Math.max(0, (cust.instalmentAmount || 0) - (Number(nextDueInst.paidAmount) || 0)) : (cust.instalmentAmount || 0);
+
     cardsHtml += `
       <div class="cust-compact-card ${isExpanded ? 'card-expanded' : ''}" data-customer-id="${cust.id}">
         <!-- Top Compact Card Header (Click to toggle expansion) -->
@@ -3580,6 +3835,7 @@ function renderCollectionMatrix() {
               <div class="cust-name-row">
                 <span class="cust-name">${cust.fullName}</span>
                 <span class="cust-loan-badge">L${cust.loanNumber || 1}</span>
+                ${partialBadgeHtml}
                 ${isLockedByOther ? `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-size:10px; padding:1px 6px; margin-left:4px; font-weight:700; border-radius:4px;">🔒 Editing by ${activeLock.lockedBy}</span>` : ''}
                 ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 5px; margin-left:4px;">⚠️ Due ${stats.missedCount}</span>` : ''}
               </div>
@@ -3626,6 +3882,25 @@ function renderCollectionMatrix() {
                 <div class="lock-spinner" title="Waiting for updates..."></div>
               </div>
             ` : ''}
+
+            <!-- Quick Action Toolbar: Pay Pending or Partial Pay -->
+            <div class="sched-quick-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12.5px;">
+              <div style="color: #334155; font-weight: 600;">
+                <span>${unitLabel} #${nextDueSeq}:</span>
+                ${isNextPartial 
+                  ? `<span style="color: #b45309; font-weight: 700; margin-left: 4px;">½ Partial (Rec'd: ${formatMoney(nextDueInst.paidAmount || 0)} • Pending: ${formatMoney(nextRemainingDue)})</span>`
+                  : `<span style="color: #1e40af; font-weight: 700; margin-left: 4px;">Due ${formatMoney(cust.instalmentAmount)}</span>`
+                }
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-sm" style="background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="openPartialPayModal('${cust.id}', ${nextDueSeq})">
+                  ½ Partial Pay
+                </button>
+                <button type="button" class="btn btn-sm" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="toggleInstalmentReceived('${cust.id}', ${nextDueSeq})">
+                  ✓ Pay ${isNextPartial ? 'Remaining ' : ''}${formatMoney(nextRemainingDue)}
+                </button>
+              </div>
+            </div>
 
             <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
               ${gridCellsHtml}
@@ -3779,7 +4054,15 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       }
     }
     playCashChime();
-    showToast(`✓ Received ${formatMoney(totalCollectedThisAction)} for #${customer.customerNumber}`);
+    const targetInst = customer.instalments[targetInstNum - 1];
+    const instPending = (targetInst && targetInst.status === 'Partial')
+      ? Math.max(0, scheduledAmount - (Number(targetInst.paidAmount) || 0))
+      : 0;
+    if (instPending > 0) {
+      showToast(`✓ Received ${formatMoney(totalCollectedThisAction)} for #${customer.customerNumber}. Pending Instalment Amount: ${formatMoney(instPending)}`);
+    } else {
+      showToast(`✓ Received ${formatMoney(totalCollectedThisAction)} for #${customer.customerNumber}`);
+    }
     if (remainingSurplus > 0) {
       showToast(`⚠️ All ${totalInst} instalments paid! Remaining surplus: ${formatMoney(remainingSurplus)}`, 4000);
     }
@@ -3863,6 +4146,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
   }
   renderCollectionMatrix();
   if (state.activeTab === 'summary') renderDashboard();
+  updateHeaderStats();
 }
 
 // Auto-populate default due amount or remaining partial balance as user types customer #
@@ -3871,9 +4155,11 @@ function handleQuickCustNumChange() {
   const amountInput = document.getElementById('quick-amount');
   if (!custNumInput || !amountInput) return;
 
+  const hintEl = document.getElementById('quick-receive-hint');
   const rawInput = custNumInput.value.trim();
   if (!rawInput) {
     amountInput.value = '';
+    if (hintEl) hintEl.innerHTML = '💡 Enter # (and amount if partial) & hit Enter';
     return;
   }
 
@@ -3886,7 +4172,10 @@ function handleQuickCustNumChange() {
   }
 
   const matches = state.customers.filter((c) => c.customerNumber.toString() === targetCustNum);
-  if (matches.length === 0) return;
+  if (matches.length === 0) {
+    if (hintEl) hintEl.innerHTML = `⚠️ Customer #${targetCustNum} not found`;
+    return;
+  }
 
   let customer = null;
   if (targetLoanNum !== null) {
@@ -3919,6 +4208,14 @@ function handleQuickCustNumChange() {
     const paidSoFar = Number(nextDueInst.paidAmount) || 0;
     const remaining = Math.max(1, scheduled - paidSoFar);
     amountInput.value = remaining;
+
+    if (hintEl) {
+      if (nextDueInst.status === 'Partial') {
+        hintEl.innerHTML = `⚠️ <strong style="color: #b45309;">#${customer.customerNumber} (${customer.fullName}):</strong> #${nextDueInst.number} is Partial (Paid: ₹${paidSoFar} | <strong>Pending: ₹${remaining}</strong>)`;
+      } else {
+        hintEl.innerHTML = `💡 <strong style="color: #1e40af;">#${customer.customerNumber} (${customer.fullName}):</strong> Due ₹${remaining} for #${nextDueInst.number}`;
+      }
+    }
   }
 }
 
@@ -5093,14 +5390,14 @@ function openCustomerPassbook(customerId) {
           ${isReceived
             ? `<span class="badge-status badge-status-success">✓ Received (${formatMoney(inst.paidAmount || c.instalmentAmount)})</span>`
             : (isPartial
-                ? `<span class="badge-status badge-status-partial">½ Partial (${formatMoney(inst.paidAmount)})</span>`
+                ? `<span class="badge-status badge-status-partial" title="Pending Instalment Amount: ${formatMoney(Math.max(0, (c.instalmentAmount || 0) - (Number(inst.paidAmount) || 0)))}">½ Partial (Paid: ${formatMoney(inst.paidAmount)} | Pending: ${formatMoney(Math.max(0, (c.instalmentAmount || 0) - (Number(inst.paidAmount) || 0)))})</span>`
                 : `<span style="color:#94a3b8;">Pending</span>`)}
         </td>
         <td>${formatPassbookDate(inst.paidDate) || '-'}</td>
         <td>${inst.receiptNumber || '-'}</td>
         <td>
           <button class="btn btn-outline btn-sm" onclick="toggleInstalmentReceived('${c.id}', ${w}); openCustomerPassbook('${c.id}');">
-            ${isReceived ? 'Undo' : (isPartial ? 'Pay Balance' : 'Mark Received')}
+            ${isReceived ? 'Undo' : (isPartial ? `Pay Pending ${formatMoney(Math.max(0, (c.instalmentAmount || 0) - (Number(inst.paidAmount) || 0)))}` : 'Mark Received')}
           </button>
         </td>
       </tr>
@@ -6550,7 +6847,11 @@ function renderRunSheet() {
     if (todayInsts.length > 0) {
       collectedTodayCount++;
       todayInsts.forEach((inst) => {
-        collectedTodayRupees += (Number(inst.paidAmount) || c.instalmentAmount);
+        if (inst.status === 'Partial') {
+          collectedTodayRupees += (Number(inst.paidAmount) || 0);
+        } else {
+          collectedTodayRupees += (Number(inst.paidAmount) || c.instalmentAmount || 0);
+        }
       });
     }
   });
@@ -6641,7 +6942,7 @@ function renderRunSheet() {
 
         <div class="runsheet-actions">
           ${isPaidToday
-            ? `<button class="btn btn-sm btn-outline" style="background: #ecfdf5; color: #15803d; border-color: #86efac; flex: 1;" onclick="sendWhatsAppPaymentReceipt('${c.id}', ${paidTodayInst.paidAmount || c.instalmentAmount}, ${paidTodayInst.number})">
+            ? `<button class="btn btn-sm btn-outline" style="background: #ecfdf5; color: #15803d; border-color: #86efac; flex: 1;" onclick="sendWhatsAppPaymentReceipt('${c.id}', ${paidTodayInst.paidAmount || (paidTodayInst.status === 'Partial' ? 0 : c.instalmentAmount)}, ${paidTodayInst.number})">
                 🧾 Send Receipt
                </button>`
             : `<button class="btn btn-sm btn-success" style="flex: 1;" onclick="toggleInstalmentReceived('${c.id}', ${nextDueNum}); renderRunSheet();">
@@ -6756,28 +7057,136 @@ function openPartialPayModal(customerId, instNumber) {
   const c = state.customers.find((cust) => cust.id === customerId);
   if (!c) return;
 
+  const totalInst = c.totalInstalments || 52;
+  const isDaily = c.frequency === 'Daily' || totalInst === 100;
+  const unitLabel = isDaily ? 'Day' : 'Week';
+
   document.getElementById('partial-cust-id').value = customerId;
   document.getElementById('partial-inst-num').value = instNumber;
   document.getElementById('partial-modal-cust-name').textContent = `#${c.customerNumber} - ${c.fullName}`;
+  
+  const badgeEl = document.getElementById('partial-modal-inst-badge');
+  if (badgeEl) badgeEl.textContent = `${unitLabel} #${instNumber}`;
 
   const inst = (c.instalments && c.instalments[instNumber - 1]);
   const scheduled = Number(c.instalmentAmount) || 200;
   const paidSoFar = Number(inst?.paidAmount) || 0;
-  const remaining = Math.max(1, scheduled - paidSoFar);
+  const remaining = Math.max(0, scheduled - paidSoFar);
 
-  document.getElementById('partial-modal-details').textContent = 
-    `Instalment #${instNumber} | Scheduled: ${formatMoney(scheduled)} | Already Paid: ${formatMoney(paidSoFar)} | Remaining: ${formatMoney(remaining)}`;
+  const schedEl = document.getElementById('partial-modal-scheduled');
+  if (schedEl) schedEl.textContent = formatMoney(scheduled);
+
+  const paidEl = document.getElementById('partial-modal-already-paid');
+  if (paidEl) paidEl.textContent = formatMoney(paidSoFar);
+
+  const priorDueEl = document.getElementById('partial-modal-prior-due');
+  if (priorDueEl) priorDueEl.textContent = formatMoney(remaining);
 
   const amountInput = document.getElementById('partial-pay-amount');
-  amountInput.value = remaining;
-  amountInput.max = remaining;
+  amountInput.value = remaining > 0 ? remaining : scheduled;
+  amountInput.max = remaining > 0 ? remaining : scheduled;
 
+  // Show undo button if previous payments were received on this instalment
+  const undoBtn = document.getElementById('partial-modal-undo-btn');
+  if (undoBtn) {
+    if (paidSoFar > 0) {
+      undoBtn.style.display = 'inline-block';
+      undoBtn.textContent = `↩️ Undo Received (${formatMoney(paidSoFar)})`;
+    } else {
+      undoBtn.style.display = 'none';
+    }
+  }
+
+  updatePartialPayCalc();
   openModal('modal-partial-pay');
   setTimeout(() => amountInput.focus(), 150);
 }
 
+function updatePartialPayCalc() {
+  const customerId = document.getElementById('partial-cust-id')?.value;
+  const instNumber = parseInt(document.getElementById('partial-inst-num')?.value, 10);
+  const c = state.customers.find((cust) => cust.id === customerId);
+  if (!c) return;
+
+  const inst = (c.instalments && c.instalments[instNumber - 1]);
+  const scheduled = Number(c.instalmentAmount) || 200;
+  const paidSoFar = Number(inst?.paidAmount) || 0;
+  
+  const rawInput = document.getElementById('partial-pay-amount')?.value;
+  const amountToPay = Math.max(0, Number(rawInput) || 0);
+
+  const totalPaidAfter = paidSoFar + amountToPay;
+  const pendingAfter = Math.max(0, scheduled - totalPaidAfter);
+
+  const todayCollectedEl = document.getElementById('partial-calc-today-collected');
+  if (todayCollectedEl) {
+    todayCollectedEl.textContent = `+ ${formatMoney(amountToPay)}`;
+  }
+
+  const pendingEl = document.getElementById('partial-calc-pending-amount');
+  if (pendingEl) {
+    pendingEl.textContent = formatMoney(pendingAfter);
+  }
+
+  const submitBtn = document.getElementById('partial-modal-submit-btn');
+  if (submitBtn) {
+    if (amountToPay > 0) {
+      submitBtn.textContent = `Save Payment (${formatMoney(amountToPay)})`;
+    } else {
+      submitBtn.textContent = 'Save Payment';
+    }
+  }
+}
+
+function handlePartialModalUndo() {
+  const customerId = document.getElementById('partial-cust-id')?.value;
+  const instNumber = parseInt(document.getElementById('partial-inst-num')?.value, 10);
+  const c = state.customers.find((cust) => cust.id === customerId);
+  if (!c) return;
+
+  const inst = (c.instalments && c.instalments[instNumber - 1]);
+  if (!inst) return;
+  const paidSoFar = Number(inst.paidAmount) || 0;
+
+  if (confirm(`Are you sure you want to undo the received payment of ${formatMoney(paidSoFar)} for Instalment #${instNumber}?`)) {
+    closeModal('modal-partial-pay');
+
+    // Record immutable audit ledger undo transaction
+    const prevReceipt = inst.receiptNumber || '';
+    recordTransaction({
+      receiptNumber: `UNDO-${prevReceipt || 'LEGACY'}-${Date.now()}`,
+      previousReceipt: prevReceipt,
+      customerId: c.id,
+      customerNumber: c.customerNumber,
+      loanNumber: c.loanNumber || 1,
+      customerName: c.fullName,
+      instalmentNumber: instNumber,
+      amount: paidSoFar,
+      type: 'undo',
+      date: getISTDateString(),
+      timestamp: getNowTimestamp()
+    });
+
+    // Reset instalment
+    inst.status = 'Pending';
+    inst.paidDate = null;
+    inst.paidTimestamp = null;
+    inst.paidAmount = 0;
+    inst.receiptNumber = null;
+
+    saveData();
+    if (typeof syncCustomerToFirestore === 'function') {
+      syncCustomerToFirestore(c);
+    }
+    renderCollectionMatrix();
+    if (state.activeTab === 'summary') renderDashboard();
+    updateHeaderStats();
+    showToast(`↩️ Payment undone for Instalment #${instNumber} for #${c.customerNumber}`);
+  }
+}
+
 function handlePartialPaySubmit(event) {
-  event.preventDefault();
+  if (event) event.preventDefault();
   const customerId = document.getElementById('partial-cust-id').value;
   const instNumber = parseInt(document.getElementById('partial-inst-num').value, 10);
   const amount = Number(document.getElementById('partial-pay-amount').value);

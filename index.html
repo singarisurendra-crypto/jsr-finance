@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JSR Instalment Receiving - Finance Management</title>
-  <link rel="stylesheet" href="styles.css?v=51">
+  <link rel="stylesheet" href="styles.css?v=54">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -419,7 +419,7 @@
             <button type="submit" class="btn btn-success" style="padding: 7px 16px; font-weight: 700; font-size: 13px;">
               Mark Received ↵
             </button>
-            <span style="font-size: 11.5px; color: #64748b; margin-left: 6px;">
+            <span id="quick-receive-hint" style="font-size: 11.5px; color: #64748b; margin-left: 6px;">
               💡 Enter # (and amount if partial) & hit Enter
             </span>
           </form>
@@ -746,7 +746,7 @@
                 </div>
 
                 <!-- Overdue loans -->
-                <div class="ana-status-bar-item">
+                <div class="ana-status-bar-item" style="cursor: pointer;" onclick="scrollToFollowups('overdue')" title="Click to view overdue loan details">
                   <div class="ana-sbar-header">
                     <span class="ana-sbar-title">Overdue loans</span>
                     <strong class="ana-sbar-count" id="ana-status-overdue-count">0</strong>
@@ -757,7 +757,7 @@
                 </div>
 
                 <!-- At risk loans -->
-                <div class="ana-status-bar-item">
+                <div class="ana-status-bar-item" style="cursor: pointer;" onclick="scrollToFollowups('atrisk')" title="Click to view at-risk loan details">
                   <div class="ana-sbar-header">
                     <span class="ana-sbar-title">At risk loans</span>
                     <strong class="ana-sbar-count" id="ana-status-atrisk-count">0</strong>
@@ -811,7 +811,7 @@
 
             <div class="ana-followup-list" id="ana-followup-list">
               <!-- Overdue item -->
-              <div class="ana-followup-item" id="ana-fu-item-overdue" onclick="switchTabWithFollowupFilter('overdue')">
+              <div class="ana-followup-item" id="ana-fu-item-overdue" onclick="filterAnalyticsFollowups('overdue')" title="Click to view overdue customers">
                 <div class="ana-fu-icon-box bg-soft-amber">🕒</div>
                 <div class="ana-fu-content">
                   <div class="ana-fu-title">Overdue instalments</div>
@@ -821,7 +821,7 @@
               </div>
 
               <!-- At-risk item -->
-              <div class="ana-followup-item" id="ana-fu-item-atrisk" onclick="switchTabWithFollowupFilter('atrisk')">
+              <div class="ana-followup-item" id="ana-fu-item-atrisk" onclick="filterAnalyticsFollowups('atrisk')" title="Click to view high-risk customers">
                 <div class="ana-fu-icon-box bg-soft-red">⚠️</div>
                 <div class="ana-fu-content">
                   <div class="ana-fu-title">At-risk loans</div>
@@ -831,7 +831,7 @@
               </div>
 
               <!-- Completed item -->
-              <div class="ana-followup-item" id="ana-fu-item-completed" onclick="switchTabWithFollowupFilter('completed')">
+              <div class="ana-followup-item" id="ana-fu-item-completed" onclick="filterAnalyticsFollowups('completed')" title="Click to view completed loans">
                 <div class="ana-fu-icon-box bg-soft-green">✅</div>
                 <div class="ana-fu-content">
                   <div class="ana-fu-title">Completed loans</div>
@@ -841,8 +841,19 @@
               </div>
             </div>
 
-            <button class="ana-pill-action-btn" onclick="switchTabWithFollowupFilter('all')">
-              Review follow-ups →
+            <!-- Follow-up Customer Details Section -->
+            <div class="ana-followup-customers-container" id="ana-followup-customers-container">
+              <div class="ana-fu-header-label">
+                <span>Customer Accounts</span>
+                <span class="badge" id="ana-fu-list-count" style="background:#f1f5f9; color:#475569; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px;">0 loans</span>
+              </div>
+              <div class="ana-followup-customers-list" id="ana-followup-customers-list">
+                <!-- Injected dynamically by renderAnalyticsFollowupCustomers() -->
+              </div>
+            </div>
+
+            <button class="ana-pill-action-btn" onclick="switchTabWithFollowupFilter(state.analyticsFollowupFilter || 'all')">
+              Review follow-ups in sheet →
             </button>
           </div>
 
@@ -1454,7 +1465,7 @@
 
   <!-- Modal: Custom / Partial Instalment Payment -->
   <div id="modal-partial-pay" class="modal-overlay">
-    <div class="modal-dialog" style="max-width: 440px;">
+    <div class="modal-dialog" style="max-width: 460px;">
       <div class="modal-header">
         <div class="modal-title">½ Receive Instalment / Partial Amount</div>
         <button class="modal-close" onclick="closeModal('modal-partial-pay')">&times;</button>
@@ -1462,22 +1473,67 @@
       <form id="form-partial-pay" onsubmit="handlePartialPaySubmit(event)">
         <input type="hidden" id="partial-cust-id">
         <input type="hidden" id="partial-inst-num">
-        <div class="modal-body">
-          <div style="background: #f8fafc; padding: 12px; border-radius: 8px; margin-bottom: 14px; border: 1px solid #e2e8f0;">
-            <div style="font-weight: 700; color: #1e293b;" id="partial-modal-cust-name">Customer Name</div>
-            <div style="font-size: 12px; color: #64748b; margin-top: 4px;" id="partial-modal-details">Instalment #1 | Scheduled: ₹ 200</div>
+        <div class="modal-body" style="padding: 16px 20px;">
+          <!-- Customer & Scheduled Terms Card -->
+          <div style="background: #f8fafc; padding: 12px 14px; border-radius: 10px; margin-bottom: 14px; border: 1px solid #e2e8f0;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <strong style="font-size: 14px; color: #1e293b;" id="partial-modal-cust-name">Customer Name</strong>
+              <span id="partial-modal-inst-badge" class="badge" style="background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; font-weight: 700;">Week #1</span>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0; text-align: center;">
+              <div>
+                <span style="font-size: 11px; color: #64748b; display: block;">Instalment</span>
+                <strong style="font-size: 13px; color: #1e293b;" id="partial-modal-scheduled">₹ 520</strong>
+              </div>
+              <div>
+                <span style="font-size: 11px; color: #64748b; display: block;">Already Paid</span>
+                <strong style="font-size: 13px; color: #16a34a;" id="partial-modal-already-paid">₹ 0</strong>
+              </div>
+              <div>
+                <span style="font-size: 11px; color: #64748b; display: block;">Pending Due</span>
+                <strong style="font-size: 13px; color: #b45309;" id="partial-modal-prior-due">₹ 520</strong>
+              </div>
+            </div>
           </div>
-          <div class="input-group">
-            <label for="partial-pay-amount">Amount Received (₹):</label>
-            <input type="number" id="partial-pay-amount" class="form-control" min="1" step="1" required autofocus>
-            <span style="font-size: 11px; color: #64748b; margin-top: 4px;">
-              💡 Enter ₹100 if user pays 100 instead of 200. It will be recorded as partial and remaining balance will stay due.
-            </span>
+
+          <!-- Payment Input -->
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="partial-pay-amount" style="font-weight: 700; color: #0f172a; font-size: 13px; display: block; margin-bottom: 5px;">
+              Amount Received (₹):
+            </label>
+            <div style="position: relative;">
+              <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-weight: 800; color: #16a34a; font-size: 16px;">₹</span>
+              <input type="number" id="partial-pay-amount" class="form-control" min="1" step="1" required autofocus style="padding-left: 30px; font-size: 16px; font-weight: 800; color: #0f172a; border-color: #22c55e;" oninput="updatePartialPayCalc()">
+            </div>
+          </div>
+
+          <!-- Dynamic Live Calculation Banner -->
+          <div id="partial-live-calc-box" style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+              <span style="color: #166534;">Today's Collection:</span>
+              <strong style="color: #15803d; font-size: 13px;" id="partial-calc-today-collected">+ ₹ 200</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px;">
+              <span style="color: #92400e; font-weight: 600;">Pending Instalment Amount:</span>
+              <strong style="color: #b45309; font-size: 13.5px;" id="partial-calc-pending-amount">₹ 320</strong>
+            </div>
+          </div>
+
+          <div style="font-size: 11px; color: #64748b; line-height: 1.4;">
+            💡 Entering ₹200 records a partial payment. Today's Collection will reflect ₹200, and remaining ₹320 will remain as the pending instalment amount.
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="submit" class="btn btn-success">Save Payment</button>
-          <button type="button" class="btn btn-outline" onclick="closeModal('modal-partial-pay')">Cancel</button>
+        <div class="modal-footer" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px;">
+          <button type="button" id="partial-modal-undo-btn" class="btn btn-outline" style="display: none; color: #dc2626; border-color: #fca5a5; font-size: 12px;" onclick="handlePartialModalUndo()">
+            ↩️ Undo Payment
+          </button>
+          <div style="display: flex; gap: 8px; margin-left: auto;">
+            <button type="button" class="btn btn-outline" onclick="closeModal('modal-partial-pay')">Cancel</button>
+            <button type="submit" id="partial-modal-submit-btn" class="btn btn-success" style="font-weight: 700;">
+              Save Payment
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -1702,8 +1758,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=51"></script>
-  <script src="firebase-sync.js?v=51"></script>
-  <script src="app.js?v=51"></script>
+  <script src="firebase-config.js?v=54"></script>
+  <script src="firebase-sync.js?v=54"></script>
+  <script src="app.js?v=54"></script>
 </body>
 </html>

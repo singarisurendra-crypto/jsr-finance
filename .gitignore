@@ -1,0 +1,23 @@
+# Node & Environment
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Local runtime & OS files
+.DS_Store
+Thumbs.db
+*.log
+*.zip
+
+# Firebase cache
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+
+# Test and temporary directories
+tmp_*
+.chrome_*
+*.db
+*.sqlite
+

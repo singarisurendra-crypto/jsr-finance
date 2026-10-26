@@ -5107,6 +5107,207 @@ select:focus-visible {
   font-weight: 800;
 }
 
+.ana-followup-item.is-selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.15);
+}
+
+/* Follow-up Customers List */
+.ana-followup-customers-container {
+  margin-top: 14px;
+  margin-bottom: 14px;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 14px;
+}
+
+.ana-fu-header-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ana-followup-customers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.ana-fu-cust-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.ana-fu-cust-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.ana-fu-cust-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ana-fu-cust-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ana-fu-cust-prefix {
+  font-size: 11px;
+  font-weight: 800;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.ana-fu-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ana-fu-name-block {
+  min-width: 0;
+  flex: 1;
+}
+
+.ana-fu-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ana-fu-cust-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ana-fu-loan-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.ana-fu-sub-meta {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.ana-fu-cust-right {
+  flex-shrink: 0;
+}
+
+.ana-fu-open-btn {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ana-fu-open-btn:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.ana-fu-financial-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 11.5px;
+}
+
+.ana-fu-fin-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.ana-fu-fin-label {
+  font-size: 10.5px;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.ana-fu-fin-val {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-top: 1px;
+}
+
+.ana-fu-empty-state {
+  text-align: center;
+  padding: 20px 14px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+}
+
+@keyframes highlightGlowAnim {
+  0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+  50% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+}
+
+.highlight-glow {
+  animation: highlightGlowAnim 1.5s ease-in-out infinite;
+  border-color: #2563eb !important;
+}
+
+@media (max-width: 640px) {
+  .ana-fu-financial-strip {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+}
+
 /* Financial Overview */
 .ana-hero-box {
   background: linear-gradient(180deg, #f0f7ff 0%, #ffffff 100%);
@@ -5333,4 +5534,29 @@ input.form-control:read-only.locked-field {
   border-color: #cbd5e1 !important;
   cursor: not-allowed !important;
 }
+
+/* Quick Action Toolbar in Expanded Customer Card */
+.sched-quick-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .sched-quick-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .sched-quick-toolbar > div:last-child {
+    display: flex;
+    justify-content: stretch;
+  }
+  .sched-quick-toolbar > div:last-child button {
+    flex: 1;
+  }
+}
+
 
