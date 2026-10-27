@@ -5559,4 +5559,340 @@ input.form-control:read-only.locked-field {
   }
 }
 
+/* ========================================================
+   ENTERPRISE MICROFINANCE PRO SUITE STYLES
+   ======================================================== */
+
+/* 1. Borrower Credit Health Star Badges */
+.credit-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.credit-badge-prime {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.credit-badge-good {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.credit-badge-fair {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.credit-badge-risk {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+/* 2. Borrower Photo & KYC Badges */
+.cust-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.kyc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.kyc-badge:hover {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+
+.kyc-badge-unverified {
+  background: #f8fafc;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+/* 3. Guarantor Pill */
+.guar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0369a1;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.guar-pill:hover {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+}
+
+/* 4. Thermal Printer ESC/POS Receipt View (58mm Roll) */
+.thermal-receipt-paper {
+  background: #ffffff;
+  color: #000000;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  line-height: 1.35;
+  width: 300px;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 18px 16px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  border-top: 3px dashed #cbd5e1;
+  border-bottom: 3px dashed #cbd5e1;
+  user-select: text;
+}
+
+.thermal-receipt-paper h4 {
+  font-size: 15px;
+  font-weight: 900;
+  text-align: center;
+  margin: 0 0 2px 0;
+  letter-spacing: 0.5px;
+}
+
+.thermal-receipt-paper .thermal-sub {
+  font-size: 11px;
+  text-align: center;
+  color: #334155;
+  margin-bottom: 8px;
+}
+
+.thermal-receipt-paper .thermal-divider {
+  border-bottom: 1px dashed #000000;
+  margin: 8px 0;
+}
+
+.thermal-receipt-paper .thermal-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+
+.thermal-receipt-paper .thermal-row-bold {
+  display: flex;
+  justify-content: space-between;
+  margin: 5px 0;
+  font-weight: 900;
+  font-size: 13px;
+}
+
+.thermal-receipt-paper .thermal-barcode {
+  text-align: center;
+  font-size: 20px;
+  letter-spacing: 4px;
+  margin-top: 8px;
+}
+
+/* 5. Official No Objection Certificate (NOC) Sheet */
+.noc-certificate-sheet {
+  background: #fffdfa;
+  border: 6px double #b45309;
+  border-radius: 8px;
+  padding: 36px 32px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+  color: #1e293b;
+  position: relative;
+  font-family: 'Georgia', 'Times New Roman', serif;
+}
+
+.noc-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 58px;
+  font-weight: 900;
+  color: rgba(180, 83, 9, 0.06);
+  pointer-events: none;
+  white-space: nowrap;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  z-index: 0;
+}
+
+.noc-header {
+  text-align: center;
+  position: relative;
+  z-index: 1;
+  border-bottom: 2px solid #d97706;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+}
+
+.noc-title {
+  font-size: 22px;
+  font-weight: 900;
+  color: #78350f;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.noc-subtitle {
+  font-size: 13px;
+  color: #92400e;
+  font-style: italic;
+}
+
+.noc-cert-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #475569;
+  font-family: sans-serif;
+  margin-bottom: 20px;
+  padding: 8px 12px;
+  background: #fef3c7;
+  border-radius: 6px;
+}
+
+.noc-body-text {
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: #334155;
+  text-align: justify;
+  margin-bottom: 24px;
+  position: relative;
+  z-index: 1;
+}
+
+.noc-terms-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 28px;
+  font-family: sans-serif;
+  font-size: 13px;
+  position: relative;
+  z-index: 1;
+}
+
+.noc-signatures {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 36px;
+  padding-top: 14px;
+  position: relative;
+  z-index: 1;
+}
+
+.noc-sign-box {
+  text-align: center;
+  width: 180px;
+  font-family: sans-serif;
+}
+
+.noc-sign-line {
+  border-top: 1.5px solid #0f172a;
+  margin-bottom: 6px;
+}
+
+.noc-seal-emblem {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 3px dashed #b45309;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  color: #b45309;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.2;
+  margin: 0 auto;
+}
+
+.badge-settled {
+  background: #f5f3ff;
+  color: #6b21a8;
+  border: 1px solid #d8b4fe;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Print Overrides for Thermal Slip and NOC */
+@media print {
+  body.printing-thermal * {
+    visibility: hidden;
+  }
+  body.printing-thermal #thermal-slip-preview,
+  body.printing-thermal #thermal-slip-preview * {
+    visibility: visible;
+  }
+  body.printing-thermal #thermal-slip-preview {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 58mm !important;
+    margin: 0 !important;
+    padding: 3mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body.printing-noc * {
+    visibility: hidden;
+  }
+  body.printing-noc #noc-certificate-container,
+  body.printing-noc #noc-certificate-container * {
+    visibility: visible;
+  }
+  body.printing-noc #noc-certificate-container {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+}
+
+
 
