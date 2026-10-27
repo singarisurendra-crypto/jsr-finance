@@ -488,6 +488,8 @@
                 <option value="all">⚡ All Statuses</option>
                 <option value="active">Active Loans</option>
                 <option value="overdue">⚠️ Overdue Only</option>
+                <option value="prime">⭐ Prime (4.5★+)</option>
+                <option value="settled">🤝 Settled / Foreclosed</option>
                 <option value="completed">✓ Completed (Paid)</option>
                 <option value="multi-loan">💳 Multiple Loans</option>
               </select>
@@ -1256,6 +1258,28 @@
                   <!-- Injected by app.js -->
                 </select>
                 <div class="form-help" id="existing-cust-loan-count-help" style="color: #2563eb;">Customer already has 1 active loan. This will create Loan #2.</div>
+                
+                <!-- Smart Credit Health Rating & Limit Recommendation Banner -->
+                <div id="cust-form-credit-rec-wrap" style="display: none; margin-top: 10px; background: #eff6ff; border: 1.5px solid #93c5fd; border-radius: 8px; padding: 10px 14px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                      <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #1e40af;">Borrower Credit Rating & Repayment Score:</div>
+                      <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                        <span id="cust-form-rec-stars" style="font-size: 16px; font-weight: 800; color: #1d4ed8;">⭐ 5.0 Prime</span>
+                        <span id="cust-form-rec-loans-summary" style="font-size: 12px; color: #475569;">(0 missed • 100% on time)</span>
+                      </div>
+                    </div>
+                    <div style="text-align: right;">
+                      <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #166534;">Recommended Next Limit:</div>
+                      <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                        <strong id="cust-form-rec-limit" style="font-size: 16px; color: #15803d;">₹ 20,000</strong>
+                        <button type="button" class="btn btn-sm" style="background: #16a34a; color: #fff; font-size: 11px; padding: 3px 8px; border-radius: 4px; border: none; cursor: pointer; font-weight: 700;" onclick="applyRecommendedCreditLimit()">
+                          Apply Limit ↵
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1283,6 +1307,83 @@
             <div class="form-full">
               <label class="form-label">Full Address / Landmark:</label>
               <input type="text" id="cust-form-address" class="form-control" placeholder="Address..." style="width: 100%;">
+            </div>
+
+            <!-- PRO FEATURE 1: Borrower KYC Document Vault & Camera Photo Capture -->
+            <div class="form-full" style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 14px; margin-top: 2px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                <div style="font-weight: 700; font-size: 13px; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                  <span>🪪</span> Borrower KYC Vault & Camera Photo
+                </div>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #166534; cursor: pointer;">
+                  <input type="checkbox" id="cust-form-kyc-verified">
+                  <span>✓ Mark KYC Verified</span>
+                </label>
+              </div>
+
+              <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
+                <!-- Photo Avatar Preview & Capture -->
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div id="cust-form-photo-preview-box" class="form-photo-preview" style="width: 58px; height: 58px; border-radius: 50%; background: #e2e8f0; border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 22px; color: #64748b;">
+                    👤
+                  </div>
+                  <div>
+                    <input type="file" id="cust-form-photo-input" accept="image/*" capture="user" style="display: none;" onchange="handleCustomerPhotoUpload(event)">
+                    <input type="hidden" id="cust-form-photo-data">
+                    <div style="display: flex; gap: 6px;">
+                      <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('cust-form-photo-input').click()" style="font-size: 11.5px; padding: 4px 10px;">
+                        📸 Take Photo
+                      </button>
+                      <button type="button" id="cust-form-photo-clear-btn" class="btn btn-outline btn-sm" onclick="clearCustomerPhoto()" style="display: none; font-size: 11.5px; padding: 4px 8px; color: #dc2626; border-color: #fca5a5;">
+                        ✕
+                      </button>
+                    </div>
+                    <div style="font-size: 10.5px; color: #64748b; margin-top: 3px;">Camera or upload profile photo</div>
+                  </div>
+                </div>
+
+                <div style="width: 1px; height: 48px; background: #e2e8f0; display: none;" class="desktop-divider"></div>
+
+                <!-- KYC Document Proof (Aadhaar / PAN) -->
+                <div style="flex: 1; min-width: 200px;">
+                  <label class="form-label" style="font-size: 12px; margin-bottom: 3px;">Aadhaar / PAN / ID Proof Document:</label>
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <input type="file" id="cust-form-kyc-doc-input" accept="image/*,.pdf" style="display: none;" onchange="handleKycDocUpload(event)">
+                    <input type="hidden" id="cust-form-kyc-doc-data">
+                    <input type="hidden" id="cust-form-kyc-doc-name">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('cust-form-kyc-doc-input').click()" style="font-size: 11.5px; padding: 4px 10px;">
+                      📎 Attach ID Proof
+                    </button>
+                    <span id="cust-form-kyc-doc-label" style="font-size: 11.5px; color: #64748b; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 180px;">No document attached</span>
+                    <button type="button" id="cust-form-kyc-doc-clear-btn" class="btn btn-outline btn-sm" onclick="clearKycDoc()" style="display: none; font-size: 11px; padding: 2px 6px; color: #dc2626; border-color: #fca5a5;">✕</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- PRO FEATURE 2: Guarantor / Surety (Jameendar) Tracking -->
+            <div class="form-full" style="background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 10px; padding: 14px; margin-top: 2px;">
+              <div style="font-weight: 700; font-size: 13px; color: #166534; display: flex; align-items: center; gap: 6px; margin-bottom: 10px;">
+                <span>👥</span> Guarantor / Surety (Jameendar) Information
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                <div>
+                  <label class="form-label" style="font-size: 12px; margin-bottom: 2px;">Guarantor Full Name:</label>
+                  <input type="text" id="cust-form-guar-name" class="form-control" placeholder="e.g. Suresh Patel" style="width: 100%; font-size: 13px;">
+                </div>
+                <div>
+                  <label class="form-label" style="font-size: 12px; margin-bottom: 2px;">Guarantor Mobile Phone:</label>
+                  <input type="tel" id="cust-form-guar-phone" class="form-control" placeholder="10-digit mobile" style="width: 100%; font-size: 13px;">
+                </div>
+                <div>
+                  <label class="form-label" style="font-size: 12px; margin-bottom: 2px;">Relationship to Borrower:</label>
+                  <input type="text" id="cust-form-guar-rel" class="form-control" placeholder="e.g. Brother, Father, Friend" style="width: 100%; font-size: 13px;">
+                </div>
+                <div>
+                  <label class="form-label" style="font-size: 12px; margin-bottom: 2px;">Guarantor Address / Landmark:</label>
+                  <input type="text" id="cust-form-guar-address" class="form-control" placeholder="Guarantor address..." style="width: 100%; font-size: 13px;">
+                </div>
+              </div>
             </div>
 
             <!-- Notice shown when financial terms are locked due to recorded payments -->
@@ -1688,6 +1789,180 @@
         <button type="button" id="btn-confirm-excel-import" class="btn btn-success" onclick="executeExcelImport()" disabled>
           Confirm & Import Customers ↵
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODAL: EARLY FORECLOSURE & SETTLEMENT          -->
+  <!-- ============================================== -->
+  <div id="modal-loan-settlement" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 540px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>🤝</span> Early Loan Foreclosure & Settlement
+        </h3>
+        <button class="modal-close" onclick="closeModal('modal-loan-settlement')">&times;</button>
+      </div>
+      <form onsubmit="handleSettlementSubmit(event)">
+        <input type="hidden" id="settle-cust-id">
+        <div class="modal-body" style="padding: 18px 22px;">
+          <div id="settle-customer-card" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-bottom: 14px;">
+            <!-- Injected by app.js -->
+          </div>
+
+          <!-- Summary Grid -->
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px;">
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 11px; color: #1e40af; font-weight: 700; text-transform: uppercase;">Total Disbursed</div>
+              <div id="settle-disp-given" style="font-size: 16px; font-weight: 800; color: #1e3a8a;">₹ 0</div>
+            </div>
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 11px; color: #166534; font-weight: 700; text-transform: uppercase;">Total Paid to Date</div>
+              <div id="settle-disp-paid" style="font-size: 16px; font-weight: 800; color: #15803d;">₹ 0</div>
+            </div>
+            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 11px; color: #92400e; font-weight: 700; text-transform: uppercase;">Current Balance Due</div>
+              <div id="settle-disp-balance" style="font-size: 17px; font-weight: 800; color: #b45309;">₹ 0</div>
+            </div>
+            <div style="background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 11px; color: #6b21a8; font-weight: 700; text-transform: uppercase;">Settlement Discount</div>
+              <div id="settle-disp-discount" style="font-size: 17px; font-weight: 800; color: #7c3aed;">₹ 0 (0%)</div>
+            </div>
+          </div>
+
+          <!-- Settlement Inputs -->
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label class="form-label" style="font-weight: 700;">Final Agreed Settlement Amount (₹):</label>
+            <div style="position: relative;">
+              <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-weight: 800; color: #16a34a; font-size: 16px;">₹</span>
+              <input type="number" id="settle-input-amount" class="form-control" min="0" step="1" required style="padding-left: 30px; font-size: 16px; font-weight: 800; color: #0f172a;" oninput="updateSettlementCalc()">
+            </div>
+            <div class="form-help">Enter lump sum amount paid by borrower to close and settle this loan.</div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+            <div>
+              <label class="form-label" style="font-size: 12px;">Settlement Date:</label>
+              <input type="date" id="settle-input-date" class="form-control" required style="width: 100%;">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 12px;">Payment Mode:</label>
+              <select id="settle-input-mode" class="form-control" style="width: 100%;">
+                <option value="Cash">Cash Handover</option>
+                <option value="UPI">UPI / GPay / PhonePe</option>
+                <option value="Bank Transfer">Bank Transfer / NEFT</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 4px;">
+            <label class="form-label" style="font-size: 12px;">Settlement Notes / Approval Remarks:</label>
+            <input type="text" id="settle-input-remarks" class="form-control" placeholder="e.g. One-time closure agreed with proprietor" style="width: 100%;">
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-loan-settlement')">Cancel</button>
+          <button type="submit" class="btn btn-success" style="font-weight: 700;">
+            🤝 Settle & Issue Official NOC ↵
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODAL: OFFICIAL NO OBJECTION CERTIFICATE (NOC) -->
+  <!-- ============================================== -->
+  <div id="modal-noc" class="modal-overlay">
+    <div class="modal-dialog large" style="max-width: 820px;">
+      <div class="modal-header" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff;">
+        <h3 class="modal-title" style="color: #fff; display: flex; align-items: center; gap: 8px;">
+          <span>📜</span> No Objection Certificate (NOC) / Loan Clearance
+        </h3>
+        <button class="modal-close" style="color: #fff;" onclick="closeModal('modal-noc')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 24px; background: #fdfbf7;">
+        <div id="noc-certificate-container" class="noc-certificate-sheet">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-noc')">Close</button>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" id="noc-whatsapp-btn" class="btn btn-success" style="font-weight: 700;">
+            💬 Share NOC on WhatsApp
+          </button>
+          <button type="button" class="btn btn-primary" onclick="printNOCCertificate()" style="font-weight: 700;">
+            🖨️ Print Certificate (PDF)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODAL: BLUETOOTH THERMAL PRINTER RECEIPT (ESC/POS) -->
+  <!-- ============================================== -->
+  <div id="modal-thermal-slip" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 460px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>🖨️</span> Pocket Bluetooth Thermal Printer (ESC/POS)
+        </h3>
+        <button class="modal-close" onclick="closeModal('modal-thermal-slip')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 16px 20px; background: #f1f5f9;">
+        <!-- Bluetooth Pair / Status Card -->
+        <div class="bluetooth-status-card" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #64748b;">Wireless Bluetooth Status:</div>
+            <div id="bt-status-label" style="font-size: 13px; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 6px;">
+              <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #94a3b8;"></span> Ready to Pair
+            </div>
+          </div>
+          <button type="button" id="bt-connect-btn" class="btn btn-sm" style="background: #2563eb; color: #fff; font-weight: 700; font-size: 11.5px; padding: 5px 12px; border-radius: 6px;" onclick="connectBluetoothPrinter()">
+            🔵 Pair Bluetooth Printer
+          </button>
+        </div>
+
+        <!-- Thermal Receipt Paper Preview (58mm Authentic Roll) -->
+        <div id="thermal-slip-preview" class="thermal-receipt-paper">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-thermal-slip')">Close</button>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn btn-primary" onclick="printThermalViaBluetooth()" id="bt-direct-print-btn" style="background: #2563eb; font-weight: 700;">
+            🔵 Bluetooth Print
+          </button>
+          <button type="button" class="btn btn-success" onclick="printThermalSlipBrowser()" style="font-weight: 700;">
+            🖨️ Browser Print (58mm)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODAL: BORROWER PHOTO & KYC DOCUMENT VIEWER    -->
+  <!-- ============================================== -->
+  <div id="modal-kyc-viewer" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="kyc-viewer-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>🪪</span> Borrower KYC Documents & Identity Proof
+        </h3>
+        <button class="modal-close" onclick="closeModal('modal-kyc-viewer')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <div id="kyc-viewer-content">
+          <!-- Rendered dynamically by app.js -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-kyc-viewer')">Close</button>
       </div>
     </div>
   </div>
