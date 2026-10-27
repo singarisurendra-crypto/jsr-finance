@@ -2188,6 +2188,113 @@ function formatMoney(amount) {
   return `${state.settings.currency} ${num.toLocaleString('en-IN')}`;
 }
 
+// PRO FEATURE 6: Borrower Credit Health Rating & Next Loan Eligibility Engine
+function calculateCreditRating(customer) {
+  if (!customer) {
+    return {
+      score: 5.0,
+      stars: '5.0',
+      tier: 'Prime',
+      badgeClass: 'credit-badge-prime',
+      recommendedLimit: 25000,
+      reason: 'New Customer',
+    };
+  }
+
+  const totalInst = customer.totalInstalments || 52;
+  const instalments = customer.instalments || [];
+  let paidCount = 0;
+  for (let i = 0; i < totalInst; i++) {
+    const inst = instalments[i];
+    if (inst && (inst.status === 'Received' || inst.status === 'Partial')) {
+      paidCount++;
+    }
+  }
+
+  let missed = 0;
+  if (customer.startDate) {
+    try {
+      const startMs = new Date(customer.startDate).getTime();
+      const nowMs = new Date().getTime();
+      const diffDays = Math.floor((nowMs - startMs) / (1000 * 60 * 60 * 24));
+      const isDaily = customer.frequency === 'Daily' || totalInst === 100;
+      const expectedInst = isDaily ? Math.max(0, diffDays) : Math.max(0, Math.floor(diffDays / 7));
+      const cappedExpected = Math.min(totalInst, expectedInst);
+      if (cappedExpected > paidCount) {
+        missed = cappedExpected - paidCount;
+      }
+    } catch (e) {}
+  }
+
+  const allLoans = (state.customers || []).filter(c => c.customerNumber.toString() === customer.customerNumber.toString());
+  const completedCount = allLoans.filter(c => {
+    const b = (c.totalPayable || (c.instalmentAmount * (c.totalInstalments || 52))) - ((c.instalments || []).reduce((sum, i) => sum + (Number(i && i.paidAmount) || 0), 0));
+    return b <= 0 && !c.isSettled;
+  }).length;
+
+  const isSettled = customer.isSettled || Boolean(customer.settlement && customer.settlement.settledDate);
+
+  let score = 5.0;
+  if (missed === 0) {
+    score = 5.0;
+  } else if (missed <= 2) {
+    score = 4.4;
+  } else if (missed <= 4) {
+    score = 3.6;
+  } else if (missed <= 8) {
+    score = 2.8;
+  } else {
+    score = 1.8;
+  }
+
+  if (completedCount >= 1 && score >= 3.0) {
+    score = Math.min(5.0, score + 0.3 * completedCount);
+  }
+
+  if (isSettled) {
+    score = Math.min(score, 3.5);
+  }
+
+  score = Math.round(score * 10) / 10;
+
+  let tier = 'Prime';
+  let badgeClass = 'credit-badge-prime';
+  let limitMultiplier = 1.8;
+
+  if (score >= 4.5) {
+    tier = 'Prime';
+    badgeClass = 'credit-badge-prime';
+    limitMultiplier = 2.0;
+  } else if (score >= 3.8) {
+    tier = 'Good';
+    badgeClass = 'credit-badge-good';
+    limitMultiplier = 1.4;
+  } else if (score >= 3.0) {
+    tier = 'Fair';
+    badgeClass = 'credit-badge-fair';
+    limitMultiplier = 1.0;
+  } else {
+    tier = 'High Risk';
+    badgeClass = 'credit-badge-risk';
+    limitMultiplier = 0.7;
+  }
+
+  const baseGiven = Number(customer.givenAmount) || 10000;
+  let recommendedLimit = Math.round((baseGiven * limitMultiplier) / 1000) * 1000;
+  recommendedLimit = Math.max(5000, Math.min(100000, recommendedLimit));
+
+  return {
+    score,
+    stars: score.toFixed(1),
+    tier,
+    badgeClass,
+    recommendedLimit,
+    completedCount,
+    missedCount: missed,
+    isSettled,
+  };
+}
+
 // Helper: Calculate Customer Stats
 function getCustomerStats(customer) {
   const totalInst = customer.totalInstalments || 52;
@@ -2212,7 +2319,7 @@ function getCustomerStats(customer) {
   const pendingCount = Math.max(0, totalInst - paidCount);
   const totalPayable = customer.totalPayable || (customer.instalmentAmount * totalInst);
   const balance = Math.max(0, totalPayable - totalPaid);
-  const isCompleted = balance <= 0 || paidCount >= totalInst;
+  const isCompleted = balance <= 0 || paidCount >= totalInst || customer.isSettled;
   const progressPercent = Math.min(100, Math.round((totalPaid / (totalPayable || 1)) * 100));
 
   // Overdue calculation (Behind schedule by 2 or more instalments)
@@ -2263,6 +2370,7 @@ function getCustomerStats(customer) {
     overdueCount: missedCount,
     isAtRisk,
     dueToDate: typeof cappedExpected !== 'undefined' ? cappedExpected : paidCount,
+    creditRating: calculateCreditRating(customer),
   };
 }
 
@@ -3026,7 +3134,12 @@ function renderAnalyticsFollowupCustomers() {
               </div>
             </div>
           </div>
-          <div class="ana-fu-cust-right">
+          <div class="ana-fu-cust-right" style="display: flex; align-items: center; gap: 6px;">
+            ${(c.guarantor && c.guarantor.phone) ? `
+              <button type="button" class="btn btn-sm" style="font-size:11px; padding:4px 8px; background:#f0fdf4; color:#166534; border:1px solid #86efac; font-weight:700; border-radius:6px; cursor:pointer;" onclick="event.stopPropagation(); contactGuarantor('${c.id}', 'whatsapp')" title="Send recovery alert to Guarantor ${c.guarantor.name}">
+                👥 WA Guarantor
+              </button>
+            ` : ''}
             <button type="button" class="ana-fu-open-btn" onclick="event.stopPropagation(); jumpToCustomerSchedule('${c.id}')">
               Open Schedule →
             </button>
@@ -3824,17 +3937,32 @@ function renderCollectionMatrix() {
     const isNextPartial = nextDueInst && nextDueInst.status === 'Partial';
     const nextRemainingDue = isNextPartial ? Math.max(0, (cust.instalmentAmount || 0) - (Number(nextDueInst.paidAmount) || 0)) : (cust.instalmentAmount || 0);
 
+    const avatarContent = cust.photoUrl 
+      ? `<img src="${cust.photoUrl}" alt="Photo" class="cust-avatar-img">` 
+      : initials;
+    const rating = stats.creditRating || calculateCreditRating(cust);
+    const kycBadgeHtml = cust.kycVerified 
+      ? `<span class="kyc-badge" onclick="event.stopPropagation(); openKycViewerModal('${cust.id}')" title="KYC Verified - Click to view">✓ KYC</span>` 
+      : '';
+    const creditBadgeHtml = `<span class="credit-badge ${rating.badgeClass}" title="Repayment Score: ${rating.stars}★ (${rating.tier})">⭐ ${rating.stars}</span>`;
+    const settledBadgeHtml = cust.isSettled 
+      ? `<span class="badge-settled" onclick="event.stopPropagation(); openNOCModal('${cust.id}')" title="Loan Settled. Click to view NOC">🤝 Settled</span>` 
+      : '';
+
     cardsHtml += `
       <div class="cust-compact-card ${isExpanded ? 'card-expanded' : ''}" data-customer-id="${cust.id}">
         <!-- Top Compact Card Header (Click to toggle expansion) -->
         <div class="cust-card-header" onclick="toggleCustomerSchedule('${cust.id}', event)" title="${cust.fullName} (#${cust.customerNumber}) - ${cust.phone || 'No Phone'}">
           <div class="cust-card-left">
             <span class="cust-id-prefix">#${cust.customerNumber}</span>
-            <div class="cust-avatar" style="${avatarStyle}">${initials}</div>
+            <div class="cust-avatar" style="${avatarStyle}">${avatarContent}</div>
             <div class="cust-info-left">
               <div class="cust-name-row">
                 <span class="cust-name">${cust.fullName}</span>
                 <span class="cust-loan-badge">L${cust.loanNumber || 1}</span>
+                ${creditBadgeHtml}
+                ${kycBadgeHtml}
+                ${settledBadgeHtml}
                 ${partialBadgeHtml}
                 ${isLockedByOther ? `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-size:10px; padding:1px 6px; margin-left:4px; font-weight:700; border-radius:4px;">🔒 Editing by ${activeLock.lockedBy}</span>` : ''}
                 ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 5px; margin-left:4px;">⚠️ Due ${stats.missedCount}</span>` : ''}
@@ -3884,7 +4012,7 @@ function renderCollectionMatrix() {
             ` : ''}
 
             <!-- Quick Action Toolbar: Pay Pending or Partial Pay -->
-            <div class="sched-quick-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12.5px;">
+            <div class="sched-quick-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12.5px;">
               <div style="color: #334155; font-weight: 600;">
                 <span>${unitLabel} #${nextDueSeq}:</span>
                 ${isNextPartial 
@@ -3900,6 +4028,35 @@ function renderCollectionMatrix() {
                   ✓ Pay ${isNextPartial ? 'Remaining ' : ''}${formatMoney(nextRemainingDue)}
                 </button>
               </div>
+            </div>
+
+            <!-- Pro Suite Toolbar: Passbook, Thermal Slip, Settlement, Guarantor -->
+            <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-sm btn-outline" style="font-size: 11.5px; padding: 4px 9px;" onclick="openCustomerPassbook('${cust.id}')">
+                🧾 Passbook
+              </button>
+              <button type="button" class="btn btn-sm btn-outline" style="font-size: 11.5px; padding: 4px 9px;" onclick="openThermalReceiptModal('${cust.id}', ${nextDueSeq > 1 ? nextDueSeq - 1 : 1})" title="Pocket Thermal Receipt">
+                🖨️ Thermal Slip
+              </button>
+              ${cust.photoUrl || cust.kycDocUrl ? `
+                <button type="button" class="btn btn-sm btn-outline" style="font-size: 11.5px; padding: 4px 9px;" onclick="openKycViewerModal('${cust.id}')">
+                  🪪 KYC Docs
+                </button>
+              ` : ''}
+              ${!cust.isSettled && stats.balance > 0 ? `
+                <button type="button" class="btn btn-sm" style="font-size: 11.5px; padding: 4px 9px; background: #faf5ff; color: #7c3aed; border: 1px solid #d8b4fe; font-weight: 700;" onclick="openSettlementModal('${cust.id}')">
+                  🤝 Settle Loan & NOC
+                </button>
+              ` : (cust.isSettled ? `
+                <button type="button" class="btn btn-sm" style="font-size: 11.5px; padding: 4px 9px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-weight: 700;" onclick="openNOCModal('${cust.id}')">
+                  📜 Official NOC
+                </button>
+              ` : '')}
+              ${cust.guarantor && cust.guarantor.phone ? `
+                <button type="button" class="guar-pill" onclick="contactGuarantor('${cust.id}', 'whatsapp')" title="WhatsApp Guarantor ${cust.guarantor.name}">
+                  👥 Surety: ${cust.guarantor.name} 💬
+                </button>
+              ` : ''}
             </div>
 
             <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
@@ -4433,6 +4590,8 @@ function renderCustomersTable() {
     if (statusFilter === 'overdue' && !stats.isOverdue) return false;
     if (statusFilter === 'completed' && stats.balance > 0) return false;
     if (statusFilter === 'multi-loan' && !hasMultipleLoans) return false;
+    if (statusFilter === 'prime' && (stats.creditRating?.score || 5.0) < 4.5) return false;
+    if (statusFilter === 'settled' && !c.isSettled) return false;
 
     // Route filter
     if (routeFilter !== 'all') {
@@ -4514,6 +4673,24 @@ function renderCustomersTable() {
     const totalCustPayable = allLoans.reduce((sum, x) => sum + (Number(x.totalPayable) || 0), 0);
     const totalCustBal = allLoans.reduce((sum, x) => sum + getCustomerStats(x).balance, 0);
 
+    const rating = stats.creditRating || calculateCreditRating(c);
+    const avatarHtml = c.photoUrl
+      ? `<img src="${c.photoUrl}" alt="Photo" class="cust-avatar-img" style="width:34px; height:34px; border-radius:50%; object-fit:cover; border:1px solid #cbd5e1; flex-shrink:0;">`
+      : `<div style="width:34px; height:34px; border-radius:50%; background:#e2e8f0; color:#334155; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; flex-shrink:0;">${(c.fullName || 'C').charAt(0).toUpperCase()}</div>`;
+    const creditBadgeHtml = `<span class="credit-badge ${rating.badgeClass}" title="Credit Health: ${rating.stars} (${rating.tier})">⭐ ${rating.score.toFixed(1)}</span>`;
+    const kycBadgeHtml = c.kycVerified
+      ? `<span class="kyc-badge" onclick="openKycViewerModal('${c.id}')" title="KYC Verified - Click to View">✓ KYC</span>`
+      : (c.photoUrl || c.kycDocUrl ? `<span class="kyc-badge kyc-badge-unverified" onclick="openKycViewerModal('${c.id}')" title="KYC Submitted - Click to View">🪪 Docs</span>` : '');
+    const settledBadgeHtml = c.isSettled
+      ? `<span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-size:10px; padding:1px 6px; font-weight:700; border-radius:4px; cursor:pointer;" onclick="openNOCModal('${c.id}')" title="Foreclosed & Settled. Click to view NOC">🤝 Settled</span>`
+      : '';
+    const guarantorHtml = c.guarantorName
+      ? `<div style="font-size:10.5px; color:#64748b; margin-top:2px; display:flex; align-items:center; gap:4px;">
+           <span>👥 Surety: <strong>${c.guarantorName}</strong></span>
+           ${c.guarantorPhone ? `<a href="javascript:void(0)" onclick="contactGuarantor('${c.id}', 'wa')" title="WhatsApp Guarantor / Surety" style="color:#16a34a; text-decoration:none; font-weight:700;">📲 WA</a>` : ''}
+         </div>`
+      : '';
+
     return `
       <tr>
         <td>
@@ -4521,8 +4698,19 @@ function renderCustomersTable() {
           ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="${stats.missedCount} instalments behind schedule">⚠️ Due ${stats.missedCount}</span>` : ''}
         </td>
         <td>
-          <div style="font-weight:600;">${c.fullName}</div>
-          <div style="font-size:12px; color:#64748b;">${c.address || 'No Address'}</div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            ${avatarHtml}
+            <div>
+              <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                <span style="font-weight:600; color:#0f172a;">${c.fullName}</span>
+                ${creditBadgeHtml}
+                ${kycBadgeHtml}
+                ${settledBadgeHtml}
+              </div>
+              <div style="font-size:12px; color:#64748b;">${c.address || 'No Address'}</div>
+              ${guarantorHtml}
+            </div>
+          </div>
         </td>
         <td>${c.phone || '-'}</td>
         <td><span style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:4px; font-size:11px;">${c.areaRoute || 'General'}</span></td>
@@ -4563,7 +4751,12 @@ function renderCustomersTable() {
         </td>
         <td>
           <div class="btn-group">
-            <button class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
+            <button class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${c.id}')" title="Passbook & Statement">Passbook</button>
+            <button class="btn btn-outline btn-sm" onclick="openThermalReceiptModal('${c.id}')" title="Print Pocket Bluetooth Thermal Slip" style="color:#475569;">🖨️ Slip</button>
+            ${c.isSettled 
+              ? `<button class="btn btn-outline btn-sm" onclick="openNOCModal('${c.id}')" title="View No Objection Certificate" style="color:#059669; border-color:#a7f3d0; font-weight:600;">📜 NOC</button>`
+              : (stats.balance > 0 ? `<button class="btn btn-outline btn-sm" onclick="openSettlementModal('${c.id}')" title="Early Loan Foreclosure & Settlement" style="color:#d97706; border-color:#fde68a;">🤝 Settle</button>` : '')
+            }
             <button class="btn btn-outline btn-sm" onclick="openAddLoanForCustomer('${c.customerNumber}')" title="Issue additional loan to customer" style="color: #2563eb; font-weight: 600;">+ Loan</button>
             <button class="btn btn-outline btn-sm" style="color: #16a34a; border-color: #86efac;" onclick="sendWhatsAppDueReminder('${c.id}')" title="Send WhatsApp Due Reminder">💬 WA</button>
             <button class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${c.id}')">Edit</button>
@@ -4587,15 +4780,40 @@ function renderCustomersTable() {
       const totalCustPayable = allLoans.reduce((sum, x) => sum + (Number(x.totalPayable) || 0), 0);
       const totalCustBal = allLoans.reduce((sum, x) => sum + getCustomerStats(x).balance, 0);
 
+      const rating = stats.creditRating || calculateCreditRating(c);
+      const avatarHtml = c.photoUrl
+        ? `<img src="${c.photoUrl}" alt="Photo" class="cust-avatar-img" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid #cbd5e1; flex-shrink:0;">`
+        : `<div style="width:36px; height:36px; border-radius:50%; background:#e2e8f0; color:#334155; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; flex-shrink:0;">${(c.fullName || 'C').charAt(0).toUpperCase()}</div>`;
+      const creditBadgeHtml = `<span class="credit-badge ${rating.badgeClass}" title="Credit Health: ${rating.stars} (${rating.tier})">⭐ ${rating.score.toFixed(1)}</span>`;
+      const kycBadgeHtml = c.kycVerified
+        ? `<span class="kyc-badge" onclick="openKycViewerModal('${c.id}')" title="KYC Verified - Click to View">✓ KYC</span>`
+        : (c.photoUrl || c.kycDocUrl ? `<span class="kyc-badge kyc-badge-unverified" onclick="openKycViewerModal('${c.id}')" title="KYC Submitted - Click to View">🪪 Docs</span>` : '');
+      const settledBadgeHtml = c.isSettled
+        ? `<span class="badge" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0; font-size:10px; padding:1px 6px; font-weight:700; border-radius:4px; cursor:pointer;" onclick="openNOCModal('${c.id}')" title="Foreclosed & Settled. Click to view NOC">🤝 Settled</span>`
+        : '';
+      const guarantorHtml = c.guarantorName
+        ? `<div style="font-size:10.5px; color:#64748b; margin-top:2px; display:flex; align-items:center; gap:4px;">
+             <span>👥 Surety: <strong>${c.guarantorName}</strong></span>
+             ${c.guarantorPhone ? `<a href="javascript:void(0)" onclick="contactGuarantor('${c.id}', 'wa')" title="WhatsApp Guarantor / Surety" style="color:#16a34a; text-decoration:none; font-weight:700;">📲 WA</a>` : ''}
+           </div>`
+        : '';
+
       return `
         <div class="customer-card">
           <div class="customer-card-header">
             <div class="customer-card-title">
               <span class="customer-card-num">#${c.customerNumber}</span>
               ${loanBadgeHtml}
+              ${avatarHtml}
               <div>
-                <div class="customer-card-name">${c.fullName}</div>
+                <div class="customer-card-name" style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                  <span>${c.fullName}</span>
+                  ${creditBadgeHtml}
+                  ${kycBadgeHtml}
+                  ${settledBadgeHtml}
+                </div>
                 <div class="customer-card-meta">${c.phone || 'No Phone'} • <span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-size:11px;">${c.areaRoute || 'General'}</span></div>
+                ${guarantorHtml}
               </div>
             </div>
             <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
@@ -4657,6 +4875,11 @@ function renderCustomersTable() {
 
           <div class="customer-card-actions">
             <button class="btn btn-outline" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
+            <button class="btn btn-outline" onclick="openThermalReceiptModal('${c.id}')" title="Print Pocket Bluetooth Thermal Slip">🖨️ Slip</button>
+            ${c.isSettled 
+              ? `<button class="btn btn-outline" onclick="openNOCModal('${c.id}')" style="color:#059669; border-color:#a7f3d0; font-weight:600;">📜 NOC</button>`
+              : (stats.balance > 0 ? `<button class="btn btn-outline" onclick="openSettlementModal('${c.id}')" style="color:#d97706; border-color:#fde68a;">🤝 Settle</button>` : '')
+            }
             <button class="btn btn-outline" onclick="openAddLoanForCustomer('${c.customerNumber}')" style="color: #2563eb; font-weight: 600;">+ Loan</button>
             <button class="btn btn-outline" style="color: #16a34a; border-color: #86efac;" onclick="sendWhatsAppDueReminder('${c.id}')">💬 WA</button>
             <button class="btn btn-outline" onclick="openEditCustomerModal('${c.id}')">Edit</button>
@@ -4833,6 +5056,54 @@ function handleSelectExistingCustomer(custNum) {
   if (areaInput) { areaInput.value = base.areaRoute || ''; }
   if (loanNumInput) { loanNumInput.value = nextLoan; }
 
+  // PRO FEATURE 6: Display Credit Health Rating & Recommended Next Limit
+  const rating = calculateCreditRating(base);
+  const recWrap = document.getElementById('cust-form-credit-rec-wrap');
+  if (recWrap) {
+    recWrap.style.display = 'block';
+    const starsEl = document.getElementById('cust-form-rec-stars');
+    if (starsEl) starsEl.textContent = `⭐ ${rating.stars} ${rating.tier}`;
+    const sumEl = document.getElementById('cust-form-rec-loans-summary');
+    if (sumEl) sumEl.textContent = `(${rating.missedCount} missed • ${rating.completedCount} completed)`;
+    const limEl = document.getElementById('cust-form-rec-limit');
+    if (limEl) limEl.textContent = formatMoney(rating.recommendedLimit);
+  }
+
+  // Pre-fill Photo, KYC, and Guarantor from base loan
+  if (base.photoUrl) {
+    document.getElementById('cust-form-photo-data').value = base.photoUrl;
+    const previewBox = document.getElementById('cust-form-photo-preview-box');
+    if (previewBox) previewBox.innerHTML = `<img src="${base.photoUrl}" alt="Borrower" class="cust-avatar-img">`;
+    const clearBtn = document.getElementById('cust-form-photo-clear-btn');
+    if (clearBtn) clearBtn.style.display = 'inline-block';
+  } else {
+    clearCustomerPhoto();
+  }
+
+  const kycChk = document.getElementById('cust-form-kyc-verified');
+  if (kycChk) kycChk.checked = Boolean(base.kycVerified);
+
+  if (base.kycDocUrl) {
+    document.getElementById('cust-form-kyc-doc-data').value = base.kycDocUrl;
+    document.getElementById('cust-form-kyc-doc-name').value = base.kycDocName || '';
+    const label = document.getElementById('cust-form-kyc-doc-label');
+    if (label) label.textContent = base.kycDocName || 'KYC Document attached';
+    const clearDocBtn = document.getElementById('cust-form-kyc-doc-clear-btn');
+    if (clearDocBtn) clearDocBtn.style.display = 'inline-block';
+  } else {
+    clearKycDoc();
+  }
+
+  const guar = base.guarantor || {};
+  const guarName = document.getElementById('cust-form-guar-name');
+  if (guarName) guarName.value = guar.name || '';
+  const guarPhone = document.getElementById('cust-form-guar-phone');
+  if (guarPhone) guarPhone.value = guar.phone || '';
+  const guarRel = document.getElementById('cust-form-guar-rel');
+  if (guarRel) guarRel.value = guar.rel || '';
+  const guarAddr = document.getElementById('cust-form-guar-address');
+  if (guarAddr) guarAddr.value = guar.address || '';
+
   const titleEl = document.getElementById('modal-customer-title');
   if (titleEl) titleEl.textContent = `Issue Loan #${nextLoan} to #${base.customerNumber} (${base.fullName})`;
 
@@ -4840,6 +5111,103 @@ function handleSelectExistingCustomer(custNum) {
   if (helpEl) {
     helpEl.textContent = `Customer already has ${matching.length} loan(s). This creates separate ledger Loan #${nextLoan}.`;
   }
+}
+
+function applyRecommendedCreditLimit() {
+  const custNum = document.getElementById('cust-form-number')?.value;
+  if (!custNum) return;
+  const base = state.customers.find(c => c.customerNumber.toString() === custNum.toString());
+  if (!base) return;
+  const rating = calculateCreditRating(base);
+  const givenInput = document.getElementById('cust-form-given');
+  if (givenInput) {
+    givenInput.value = rating.recommendedLimit;
+    calculateFromMargin();
+    showToast(`✓ Applied recommended limit: ${formatMoney(rating.recommendedLimit)}`);
+  }
+}
+
+// PRO FEATURE 1: Borrower Camera Photo Capture & Compressed Upload
+function handleCustomerPhotoUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const img = new Image();
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      const maxDim = 240;
+      let width = img.width;
+      let height = img.height;
+      if (width > height) {
+        if (width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        }
+      } else {
+        if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+      document.getElementById('cust-form-photo-data').value = compressedDataUrl;
+      const previewBox = document.getElementById('cust-form-photo-preview-box');
+      if (previewBox) {
+        previewBox.innerHTML = `<img src="${compressedDataUrl}" alt="Borrower" class="cust-avatar-img">`;
+      }
+      const clearBtn = document.getElementById('cust-form-photo-clear-btn');
+      if (clearBtn) clearBtn.style.display = 'inline-block';
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearCustomerPhoto() {
+  const input = document.getElementById('cust-form-photo-input');
+  if (input) input.value = '';
+  const dataInput = document.getElementById('cust-form-photo-data');
+  if (dataInput) dataInput.value = '';
+  const previewBox = document.getElementById('cust-form-photo-preview-box');
+  if (previewBox) previewBox.innerHTML = '👤';
+  const clearBtn = document.getElementById('cust-form-photo-clear-btn');
+  if (clearBtn) clearBtn.style.display = 'none';
+}
+
+function handleKycDocUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const filename = file.name || 'KYC_Document.pdf';
+  document.getElementById('cust-form-kyc-doc-name').value = filename;
+  const label = document.getElementById('cust-form-kyc-doc-label');
+  if (label) label.textContent = filename;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    document.getElementById('cust-form-kyc-doc-data').value = e.target.result;
+    const clearBtn = document.getElementById('cust-form-kyc-doc-clear-btn');
+    if (clearBtn) clearBtn.style.display = 'inline-block';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearKycDoc() {
+  const input = document.getElementById('cust-form-kyc-doc-input');
+  if (input) input.value = '';
+  document.getElementById('cust-form-kyc-doc-name').value = '';
+  document.getElementById('cust-form-kyc-doc-data').value = '';
+  const label = document.getElementById('cust-form-kyc-doc-label');
+  if (label) label.textContent = 'No document attached';
+  const clearBtn = document.getElementById('cust-form-kyc-doc-clear-btn');
+  if (clearBtn) clearBtn.style.display = 'none';
 }
 
 function openAddLoanForCustomer(customerNumber) {
@@ -4905,6 +5273,22 @@ function openAddCustomerModal() {
   document.getElementById('cust-form-instalments').value = state.settings.defaultInstalments || 52;
   document.getElementById('cust-form-amount').value = state.settings.defaultInstalmentAmount || 200;
   document.getElementById('cust-form-date').value = getISTDateString();
+
+  // Reset Photo, KYC, and Guarantor
+  clearCustomerPhoto();
+  clearKycDoc();
+  const kycChk = document.getElementById('cust-form-kyc-verified');
+  if (kycChk) kycChk.checked = false;
+  const guarName = document.getElementById('cust-form-guar-name');
+  if (guarName) guarName.value = '';
+  const guarPhone = document.getElementById('cust-form-guar-phone');
+  if (guarPhone) guarPhone.value = '';
+  const guarRel = document.getElementById('cust-form-guar-rel');
+  if (guarRel) guarRel.value = '';
+  const guarAddr = document.getElementById('cust-form-guar-address');
+  if (guarAddr) guarAddr.value = '';
+  const recWrap = document.getElementById('cust-form-credit-rec-wrap');
+  if (recWrap) recWrap.style.display = 'none';
 
   const freqInput = document.getElementById('cust-form-frequency');
   const amountLabel = document.getElementById('cust-form-amount-label');
@@ -5001,8 +5385,48 @@ function openEditCustomerModal(customerId) {
   if (amountLabel) amountLabel.textContent = isDaily ? 'Instalment Amount (₹ / day):' : 'Instalment Amount (₹ / week):';
   if (freqHelp) freqHelp.textContent = isDaily ? 'Daily collection schedule (100 Days)' : `Weekly collection schedule (${c.totalInstalments || 52} Weeks)`;
 
+  // Load Borrower Photo
+  if (c.photoUrl) {
+    document.getElementById('cust-form-photo-data').value = c.photoUrl;
+    const previewBox = document.getElementById('cust-form-photo-preview-box');
+    if (previewBox) previewBox.innerHTML = `<img src="${c.photoUrl}" alt="Borrower" class="cust-avatar-img">`;
+    const clearBtn = document.getElementById('cust-form-photo-clear-btn');
+    if (clearBtn) clearBtn.style.display = 'inline-block';
+  } else {
+    clearCustomerPhoto();
+  }
+
+  // Load KYC Document Proof
+  if (c.kycDocUrl) {
+    document.getElementById('cust-form-kyc-doc-data').value = c.kycDocUrl;
+    document.getElementById('cust-form-kyc-doc-name').value = c.kycDocName || '';
+    const label = document.getElementById('cust-form-kyc-doc-label');
+    if (label) label.textContent = c.kycDocName || 'KYC Document attached';
+    const clearDocBtn = document.getElementById('cust-form-kyc-doc-clear-btn');
+    if (clearDocBtn) clearDocBtn.style.display = 'inline-block';
+  } else {
+    clearKycDoc();
+  }
+
+  // Load KYC Verified Status
+  const kycChk = document.getElementById('cust-form-kyc-verified');
+  if (kycChk) kycChk.checked = Boolean(c.kycVerified);
+
+  // Load Guarantor / Surety Details
+  const guar = c.guarantor || {};
+  const guarName = document.getElementById('cust-form-guar-name');
+  if (guarName) guarName.value = guar.name || '';
+  const guarPhone = document.getElementById('cust-form-guar-phone');
+  if (guarPhone) guarPhone.value = guar.phone || '';
+  const guarRel = document.getElementById('cust-form-guar-rel');
+  if (guarRel) guarRel.value = guar.rel || '';
+  const guarAddr = document.getElementById('cust-form-guar-address');
+  if (guarAddr) guarAddr.value = guar.address || '';
+
   const wrap = document.getElementById('existing-customer-selector-wrap');
   if (wrap) wrap.style.display = 'none';
+  const recWrap = document.getElementById('cust-form-credit-rec-wrap');
+  if (recWrap) recWrap.style.display = 'none';
 
   calculateFromAmount();
   openModal('modal-customer');
@@ -5023,6 +5447,23 @@ async function handleSaveCustomer(event) {
   const address = document.getElementById('cust-form-address')?.value.trim() || '';
   const areaRoute = document.getElementById('cust-form-area')?.value.trim() || 'Main Area';
   const startDate = document.getElementById('cust-form-date')?.value || getISTDateString();
+
+  // PRO FEATURES 1 & 2: Borrower Photo, KYC Vault & Guarantor
+  const photoUrl = document.getElementById('cust-form-photo-data')?.value || '';
+  const kycVerified = Boolean(document.getElementById('cust-form-kyc-verified')?.checked);
+  const kycDocUrl = document.getElementById('cust-form-kyc-doc-data')?.value || '';
+  const kycDocName = document.getElementById('cust-form-kyc-doc-name')?.value || '';
+  const guarantorName = document.getElementById('cust-form-guar-name')?.value.trim() || '';
+  const guarantorPhone = document.getElementById('cust-form-guar-phone')?.value.trim() || '';
+  const guarantorRel = document.getElementById('cust-form-guar-rel')?.value.trim() || '';
+  const guarantorAddress = document.getElementById('cust-form-guar-address')?.value.trim() || '';
+
+  const guarantor = {
+    name: guarantorName,
+    phone: guarantorPhone,
+    rel: guarantorRel,
+    address: guarantorAddress,
+  };
 
   // Strict Form Validation (Zero Silent Defaults)
   if (!rawCustNum || isNaN(rawCustNum) || Number(rawCustNum) <= 0) {
@@ -5138,6 +5579,11 @@ async function handleSaveCustomer(event) {
       existing.totalPayable = totalInstalments * instalmentAmount;
       existing.startDate = startDate;
       existing.frequency = frequency;
+      existing.photoUrl = photoUrl;
+      existing.kycVerified = kycVerified;
+      existing.kycDocUrl = kycDocUrl;
+      existing.kycDocName = kycDocName;
+      existing.guarantor = guarantor;
 
       // Reschedule instalments: adjust count while preserving all paid history
       if (totalInstalments < existingInsts.length) {
@@ -5165,13 +5611,18 @@ async function handleSaveCustomer(event) {
         }
       });
 
-      // Synchronize shared contact details across all loans of this customer
+      // Synchronize shared contact, photo, KYC, and guarantor details across all loans of this customer
       state.customers.forEach(other => {
         if (other.customerNumber.toString() === customerNumber.toString() && other.id !== existing.id) {
           other.fullName = fullName;
           other.phone = phone;
           other.address = address;
           other.areaRoute = areaRoute;
+          other.photoUrl = photoUrl;
+          other.kycVerified = kycVerified;
+          other.kycDocUrl = kycDocUrl;
+          other.kycDocName = kycDocName;
+          other.guarantor = guarantor;
           if (typeof syncCustomerToFirestore === 'function') {
             syncCustomerToFirestore(other);
           }
@@ -5206,6 +5657,11 @@ async function handleSaveCustomer(event) {
       startDate,
       status: 'Active',
       frequency,
+      photoUrl,
+      kycVerified,
+      kycDocUrl,
+      kycDocName,
+      guarantor,
       instalments,
       createdAt: new Date().toISOString(),
     });
@@ -5221,6 +5677,11 @@ async function handleSaveCustomer(event) {
         other.phone = phone;
         other.address = address;
         other.areaRoute = areaRoute;
+        other.photoUrl = photoUrl;
+        other.kycVerified = kycVerified;
+        other.kycDocUrl = kycDocUrl;
+        other.kycDocName = kycDocName;
+        other.guarantor = guarantor;
         if (typeof syncCustomerToFirestore === 'function') {
           syncCustomerToFirestore(other);
         }
@@ -5263,6 +5724,590 @@ function deleteCustomer(customerId) {
     renderDashboard();
     showToast(`Customer #${c.customerNumber}${loanLabel} deleted.`);
   }
+}
+
+// ========================================================
+// PRO FEATURE 1: BORROWER KYC DOCUMENT VAULT VIEWER
+// ========================================================
+function openKycViewerModal(customerId) {
+  const c = state.customers.find(x => x.id === customerId);
+  if (!c) return;
+
+  const titleEl = document.getElementById('kyc-viewer-title');
+  if (titleEl) {
+    titleEl.innerHTML = `<span>🪪</span> Borrower KYC Vault: #${c.customerNumber} ${c.fullName}`;
+  }
+
+  const rating = calculateCreditRating(c);
+  const avatarHtml = c.photoUrl
+    ? `<img src="${c.photoUrl}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #2563eb;">`
+    : `<div style="width: 80px; height: 80px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 32px;">👤</div>`;
+
+  const kycStatusHtml = c.kycVerified
+    ? `<span style="background: #ecfdf5; color: #047857; font-weight: 700; border: 1px solid #86efac; padding: 3px 10px; border-radius: 6px; font-size: 12px;">✓ Verified Customer</span>`
+    : `<span style="background: #f8fafc; color: #64748b; font-weight: 700; border: 1px solid #cbd5e1; padding: 3px 10px; border-radius: 6px; font-size: 12px;">Pending Document Verification</span>`;
+
+  let docProofHtml = '<div style="color: #64748b; font-size: 13px; font-style: italic;">No KYC ID proof document uploaded yet.</div>';
+  if (c.kycDocUrl) {
+    if (c.kycDocUrl.startsWith('data:image/')) {
+      docProofHtml = `
+        <div style="margin-top: 10px; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; max-height: 320px; text-align: center; background: #000;">
+          <img src="${c.kycDocUrl}" alt="ID Document Proof" style="max-width: 100%; max-height: 320px; object-fit: contain;">
+        </div>
+      `;
+    } else {
+      docProofHtml = `
+        <div style="margin-top: 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px; display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-weight: 600; color: #1e40af; font-size: 13px;">📎 ${c.kycDocName || 'KYC Document'}</span>
+          <a href="${c.kycDocUrl}" download="${c.kycDocName || 'kyc-doc.pdf'}" class="btn btn-sm btn-primary">Download File</a>
+        </div>
+      `;
+    }
+  }
+
+  const guar = c.guarantor || {};
+  const guarantorHtml = guar.name ? `
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin-top: 14px;">
+      <div style="font-weight: 700; font-size: 12px; text-transform: uppercase; color: #166534; margin-bottom: 4px;">Registered Guarantor / Surety:</div>
+      <div style="font-size: 14px; font-weight: 700; color: #1e293b;">${guar.name} (${guar.rel || 'Guarantor'})</div>
+      <div style="font-size: 12.5px; color: #475569; margin-top: 2px;">Phone: ${guar.phone || 'N/A'} • Address: ${guar.address || 'N/A'}</div>
+      ${guar.phone ? `
+        <div style="margin-top: 8px; display: flex; gap: 8px;">
+          <button type="button" class="btn btn-sm btn-success" onclick="contactGuarantor('${c.id}', 'whatsapp')">💬 WhatsApp Guarantor</button>
+          <a href="tel:${guar.phone}" class="btn btn-sm btn-outline">📞 Call Guarantor</a>
+        </div>
+      ` : ''}
+    </div>
+  ` : '<div style="font-size: 12.5px; color: #64748b; margin-top: 10px; font-style: italic;">No guarantor recorded for this customer.</div>';
+
+  const container = document.getElementById('kyc-viewer-content');
+  if (container) {
+    container.innerHTML = `
+      <div style="display: flex; gap: 16px; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 16px;">
+        ${avatarHtml}
+        <div>
+          <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${c.fullName}</div>
+          <div style="font-size: 12.5px; color: #64748b; margin: 2px 0 6px 0;">Customer #${c.customerNumber} • Phone: ${c.phone || 'N/A'} • Route: ${c.areaRoute || 'General'}</div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            ${kycStatusHtml}
+            <span class="credit-badge ${rating.badgeClass}">⭐ ${rating.stars} ${rating.tier}</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: 6px;">KYC Identity Proof Document:</div>
+        ${docProofHtml}
+      </div>
+
+      <div>
+        ${guarantorHtml}
+      </div>
+    `;
+  }
+
+  openModal('modal-kyc-viewer');
+}
+
+// ========================================================
+// PRO FEATURE 2: GUARANTOR 1-TAP WHATSAPP & CALL RECOVERY
+// ========================================================
+function contactGuarantor(customerId, mode = 'whatsapp') {
+  const c = state.customers.find(x => x.id === customerId);
+  if (!c || !c.guarantor || !c.guarantor.phone) {
+    showToast('No guarantor phone registered for this customer.');
+    return;
+  }
+
+  const guar = c.guarantor;
+  const stats = getCustomerStats(c);
+  const bizName = (state.settings && state.settings.businessName) || 'JSR Finance';
+  const cleanPhone = formatWhatsAppPhone(guar.phone);
+
+  if (mode === 'call') {
+    window.location.href = `tel:${cleanPhone}`;
+    return;
+  }
+
+  const message = encodeURIComponent(
+    `*${bizName} - Important Guarantor Notification*\n\n` +
+    `Namaste ${guar.name} ji,\n` +
+    `You are registered as the Guarantor / Surety for:\n` +
+    `Borrower: *${c.fullName}* (Customer #${c.customerNumber}, Loan #${c.loanNumber || 1})\n\n` +
+    `*Account Status:* ${stats.missedCount > 0 ? stats.missedCount + ' instalments overdue' : 'Active loan'}\n` +
+    `*Outstanding Balance Due:* ${formatMoney(stats.balance)}\n\n` +
+    `As the registered surety, please assist in ensuring immediate clearance of the account to maintain clean credit standing.\n\n` +
+    `Thank you,\n${bizName}`
+  );
+
+  window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
+}
+
+// ========================================================
+// PRO FEATURE 4: BLUETOOTH THERMAL PRINTER (ESC/POS)
+// ========================================================
+let bluetoothPrinterDevice = null;
+let bluetoothPrinterCharacteristic = null;
+
+async function connectBluetoothPrinter() {
+  if (!navigator.bluetooth) {
+    alert('Web Bluetooth is supported in Google Chrome and Microsoft Edge on Android, Windows, and macOS. You can also print via the Browser Print (58mm) option!');
+    return;
+  }
+
+  try {
+    const statusLabel = document.getElementById('bt-status-label');
+    if (statusLabel) statusLabel.innerHTML = 'Connecting...';
+
+    const device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [
+        '000018f0-0000-1000-8000-00805f9b34fb',
+        'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+        '0000ffe0-0000-1000-8000-00805f9b34fb',
+        '0000af30-0000-1000-8000-00805f9b34fb'
+      ]
+    });
+
+    device.addEventListener('gattserverdisconnected', onBluetoothDisconnected);
+    const server = await device.gatt.connect();
+
+    const services = await server.getPrimaryServices();
+    let writeChar = null;
+    for (const service of services) {
+      const chars = await service.getCharacteristics();
+      for (const ch of chars) {
+        if (ch.properties.write || ch.properties.writeWithoutResponse) {
+          writeChar = ch;
+          break;
+        }
+      }
+      if (writeChar) break;
+    }
+
+    if (!writeChar) {
+      throw new Error('Could not find ESC/POS writable characteristic on selected Bluetooth printer.');
+    }
+
+    bluetoothPrinterDevice = device;
+    bluetoothPrinterCharacteristic = writeChar;
+
+    if (statusLabel) {
+      statusLabel.innerHTML = `<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#16a34a;"></span> Connected: ${device.name || 'Thermal Printer'}`;
+    }
+    const connectBtn = document.getElementById('bt-connect-btn');
+    if (connectBtn) {
+      connectBtn.textContent = '✓ Connected';
+      connectBtn.style.background = '#16a34a';
+    }
+    showToast(`✓ Connected to ${device.name || 'Bluetooth Printer'}`);
+  } catch (err) {
+    console.warn('Bluetooth connection cancelled or failed', err);
+    const statusLabel = document.getElementById('bt-status-label');
+    if (statusLabel) statusLabel.innerHTML = '<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#dc2626;"></span> Pairing Failed / Cancelled';
+    if (err.name !== 'NotFoundError') {
+      alert(`Bluetooth pairing notice: ${err.message || err}. You can still use the 1-click Browser Print (58mm) slip!`);
+    }
+  }
+}
+
+function onBluetoothDisconnected() {
+  bluetoothPrinterCharacteristic = null;
+  const statusLabel = document.getElementById('bt-status-label');
+  if (statusLabel) statusLabel.innerHTML = '<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#94a3b8;"></span> Disconnected';
+  const connectBtn = document.getElementById('bt-connect-btn');
+  if (connectBtn) {
+    connectBtn.textContent = '🔵 Pair Bluetooth Printer';
+    connectBtn.style.background = '#2563eb';
+  }
+}
+
+function generateEscPosBytes(customer, instNumber) {
+  const bizName = (state.settings && state.settings.businessName) || 'JSR FINANCE';
+  const phone = (state.settings && state.settings.operatorPhone) || '';
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+  const stats = getCustomerStats(customer);
+  const inst = (customer.instalments || [])[instNumber - 1] || {};
+  const isPart = inst.status === 'Partial';
+  const paidAmt = isPart ? (inst.paidAmount || 0) : (customer.instalmentAmount || 0);
+  const receiptNo = inst.receiptNumber || ('REC-' + now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '-' + instNumber);
+
+  const encoder = new TextEncoder();
+  const parts = [];
+
+  // ESC @: Initialize printer
+  parts.push(new Uint8Array([0x1B, 0x40]));
+  // ESC a 1: Center alignment
+  parts.push(new Uint8Array([0x1B, 0x61, 0x01]));
+  // GS ! 0x11: Double width & double height for header
+  parts.push(new Uint8Array([0x1D, 0x21, 0x11]));
+  parts.push(encoder.encode(`${bizName}\n`));
+  // GS ! 0x00: Normal text
+  parts.push(new Uint8Array([0x1D, 0x21, 0x00]));
+  parts.push(encoder.encode(`Microfinance Collection Slip\n`));
+  if (phone) parts.push(encoder.encode(`Helpline: ${phone}\n`));
+  parts.push(encoder.encode(`--------------------------------\n`));
+
+  // ESC a 0: Left alignment
+  parts.push(new Uint8Array([0x1B, 0x61, 0x00]));
+  parts.push(encoder.encode(`Rcpt #: ${receiptNo}\n`));
+  parts.push(encoder.encode(`Date  : ${dateStr} ${timeStr}\n`));
+  parts.push(encoder.encode(`Cust  : #${customer.customerNumber} - ${customer.fullName}\n`));
+  parts.push(encoder.encode(`Loan  : Loan #${customer.loanNumber || 1} (${customer.frequency || 'Weekly'})\n`));
+  parts.push(encoder.encode(`--------------------------------\n`));
+
+  // ESC a 1: Center
+  parts.push(new Uint8Array([0x1B, 0x61, 0x01]));
+  parts.push(new Uint8Array([0x1D, 0x21, 0x01]));
+  parts.push(encoder.encode(`RECEIVED: Rs. ${paidAmt}\n`));
+  parts.push(new Uint8Array([0x1D, 0x21, 0x00]));
+
+  // ESC a 0: Left
+  parts.push(new Uint8Array([0x1B, 0x61, 0x00]));
+  parts.push(encoder.encode(`Instalment   : #${instNumber} of ${customer.totalInstalments || 52}\n`));
+  parts.push(encoder.encode(`Balance Due  : Rs. ${stats.balance}\n`));
+  parts.push(encoder.encode(`Total Paid   : Rs. ${stats.totalPaid}\n`));
+  parts.push(encoder.encode(`--------------------------------\n`));
+
+  // ESC a 1: Center
+  parts.push(new Uint8Array([0x1B, 0x61, 0x01]));
+  parts.push(encoder.encode(`Thank You For Your Payment!\n`));
+  parts.push(encoder.encode(`Keep this slip for your record\n\n\n\n`));
+  parts.push(new Uint8Array([0x1D, 0x56, 0x00]));
+
+  const totalLen = parts.reduce((acc, p) => acc + p.length, 0);
+  const fullBytes = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const p of parts) {
+    fullBytes.set(p, offset);
+    offset += p.length;
+  }
+  return fullBytes;
+}
+
+async function printThermalViaBluetooth() {
+  if (!bluetoothPrinterCharacteristic) {
+    await connectBluetoothPrinter();
+    if (!bluetoothPrinterCharacteristic) return;
+  }
+
+  const customerId = state.activeThermalCustomerId;
+  const instNumber = state.activeThermalInstNumber || 1;
+  const c = state.customers.find(x => x.id === customerId);
+  if (!c) {
+    showToast('Customer record not found');
+    return;
+  }
+
+  try {
+    const bytes = generateEscPosBytes(c, instNumber);
+    const chunkSize = 100;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const slice = bytes.slice(i, i + chunkSize);
+      await bluetoothPrinterCharacteristic.writeValue(slice);
+    }
+    showToast('✓ Thermal receipt sent to Bluetooth printer!');
+  } catch (err) {
+    console.error('Failed to send bytes to Bluetooth printer', err);
+    alert('Bluetooth print error: ' + (err.message || err));
+  }
+}
+
+function printThermalSlipBrowser() {
+  document.body.classList.add('printing-thermal');
+  window.print();
+  setTimeout(() => {
+    document.body.classList.remove('printing-thermal');
+  }, 1200);
+}
+
+function openThermalReceiptModal(customerId, instNumber) {
+  const c = state.customers.find(x => x.id === customerId);
+  if (!c) return;
+
+  state.activeThermalCustomerId = customerId;
+  state.activeThermalInstNumber = instNumber;
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const bizName = (state.settings && state.settings.businessName) || 'JSR FINANCE';
+  const bizPhone = (state.settings && state.settings.operatorPhone) || '9876543210';
+
+  const stats = getCustomerStats(c);
+  const inst = (c.instalments || [])[instNumber - 1] || {};
+  const isPart = inst.status === 'Partial';
+  const paidAmt = isPart ? (inst.paidAmount || 0) : (c.instalmentAmount || 0);
+  const receiptNo = inst.receiptNumber || ('REC-' + now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '-' + instNumber);
+
+  const preview = document.getElementById('thermal-slip-preview');
+  if (preview) {
+    preview.innerHTML = `
+      <h4>${bizName}</h4>
+      <div class="thermal-sub">Microfinance Collection Receipt<br>Phone: ${bizPhone}</div>
+      <div class="thermal-divider"></div>
+      <div class="thermal-row"><span>Rcpt #:</span><span><strong>${receiptNo}</strong></span></div>
+      <div class="thermal-row"><span>Date & Time:</span><span>${dateStr} ${timeStr}</span></div>
+      <div class="thermal-row"><span>Customer:</span><span><strong>#${c.customerNumber} ${c.fullName}</strong></span></div>
+      <div class="thermal-row"><span>Loan Acc:</span><span>Loan #${c.loanNumber || 1} (${c.frequency || 'Weekly'})</span></div>
+      <div class="thermal-divider"></div>
+      <div class="thermal-row-bold">
+        <span>COLLECTED:</span>
+        <span style="font-size: 15px;">₹ ${Number(paidAmt).toLocaleString('en-IN')}</span>
+      </div>
+      <div class="thermal-row"><span>Instalment #:</span><span>${instNumber} of ${c.totalInstalments || 52}</span></div>
+      <div class="thermal-row"><span>Balance Remaining:</span><span>₹ ${stats.balance.toLocaleString('en-IN')}</span></div>
+      <div class="thermal-row"><span>Total Paid:</span><span>₹ ${stats.totalPaid.toLocaleString('en-IN')}</span></div>
+      <div class="thermal-divider"></div>
+      <div style="text-align: center; font-size: 11px; margin-top: 6px;">
+        ★ Thank You For Prompt Payment! ★<br>
+        Authorized Field Agent Collection Slip
+      </div>
+      <div class="thermal-barcode">|||| | ||||| |||| || |||</div>
+    `;
+  }
+
+  openModal('modal-thermal-slip');
+}
+
+// ========================================================
+// PRO FEATURE 5: EARLY FORECLOSURE & SETTLEMENT WITH NOC
+// ========================================================
+function openSettlementModal(customerId) {
+  const c = state.customers.find(x => x.id === customerId);
+  if (!c) return;
+
+  const stats = getCustomerStats(c);
+  state.activeSettlementCustomerId = customerId;
+
+  document.getElementById('settle-cust-id').value = customerId;
+  document.getElementById('settle-disp-given').textContent = formatMoney(c.givenAmount);
+  document.getElementById('settle-disp-paid').textContent = formatMoney(stats.totalPaid);
+  document.getElementById('settle-disp-balance').textContent = formatMoney(stats.balance);
+  document.getElementById('settle-input-amount').value = stats.balance;
+  document.getElementById('settle-input-amount').max = stats.balance;
+  document.getElementById('settle-input-date').value = getISTDateString();
+  document.getElementById('settle-input-remarks').value = 'Full & Final lump-sum settlement agreed with proprietor';
+
+  const card = document.getElementById('settle-customer-card');
+  if (card) {
+    card.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <strong style="font-size: 15px; color: #1e293b;">#${c.customerNumber} - ${c.fullName}</strong>
+          <span class="loan-badge">L${c.loanNumber || 1}</span>
+          <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Phone: ${c.phone || 'N/A'} • Route: ${c.areaRoute || 'General'}</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase;">Disbursal Date</div>
+          <strong style="font-size: 12.5px; color: #334155;">${c.startDate || 'N/A'}</strong>
+        </div>
+      </div>
+    `;
+  }
+
+  updateSettlementCalc();
+  openModal('modal-loan-settlement');
+}
+
+function updateSettlementCalc() {
+  const customerId = state.activeSettlementCustomerId;
+  const c = state.customers.find(x => x.id === customerId);
+  if (!c) return;
+
+  const stats = getCustomerStats(c);
+  const settleAmt = Number(document.getElementById('settle-input-amount')?.value) || 0;
+  const discount = Math.max(0, stats.balance - settleAmt);
+  const discountPct = stats.balance > 0 ? Math.round((discount / stats.balance) * 100) : 0;
+
+  const disp = document.getElementById('settle-disp-discount');
+  if (disp) {
+    disp.textContent = `₹ ${discount.toLocaleString('en-IN')} (${discountPct}%)`;
+  }
+}
+
+async function handleSettlementSubmit(event) {
+  event.preventDefault();
+  const customerId = document.getElementById('settle-cust-id').value;
+  const c = state.customers.find(x => x.id === customerId);
+  if (!c) return;
+
+  const stats = getCustomerStats(c);
+  const settleAmt = Number(document.getElementById('settle-input-amount').value);
+  const settleDate = document.getElementById('settle-input-date').value || getISTDateString();
+  const paymentMode = document.getElementById('settle-input-mode').value || 'Cash';
+  const remarks = document.getElementById('settle-input-remarks').value || 'Early Foreclosure Settlement';
+
+  if (isNaN(settleAmt) || settleAmt < 0) {
+    alert('Please enter a valid settlement amount.');
+    return;
+  }
+
+  const discountWaived = Math.max(0, stats.balance - settleAmt);
+  const nocNumber = `NOC-${new Date().getFullYear()}-${String(c.customerNumber).padStart(3, '0')}-L${c.loanNumber || 1}`;
+
+  // Record audit transaction
+  const receiptNo = generateUniqueReceiptNumber();
+  if (settleAmt > 0) {
+    recordTransaction({
+      customerId: c.id,
+      amount: settleAmt,
+      instalmentNumber: stats.paidCount + 1,
+      type: 'Foreclosure_Settlement',
+      receiptNumber: receiptNo,
+      notes: `Early settlement received (₹${discountWaived} waived as foreclosure discount). Payment mode: ${paymentMode}`
+    });
+  }
+
+  // Update customer record
+  c.isSettled = true;
+  c.settlement = {
+    settlementAmount: settleAmt,
+    discountWaived,
+    settledDate: settleDate,
+    settledBy: (typeof getCurrentUser === 'function' ? getCurrentUser().name : 'Operator') || 'Owner',
+    paymentMode,
+    remarks,
+    nocNumber,
+    finalReceiptNumber: receiptNo
+  };
+
+  // Close remaining instalments
+  (c.instalments || []).forEach(inst => {
+    if (inst && inst.status !== 'Received') {
+      inst.status = 'Received';
+      inst.paidAmount = inst.paidAmount || 0;
+      inst.isSettledWaived = true;
+      inst.paidDate = settleDate;
+      inst.receiptNumber = receiptNo;
+    }
+  });
+
+  saveData();
+  if (typeof syncCustomerToFirestore === 'function') {
+    syncCustomerToFirestore(c);
+  }
+
+  closeModal('modal-loan-settlement');
+  renderCustomersTable();
+  renderCollectionMatrix();
+  renderDashboard();
+  renderAnalytics();
+
+  showToast(`✓ Loan #${c.loanNumber || 1} settled! Official NOC ${nocNumber} generated.`);
+  openNOCModal(c.id);
+}
+
+function openNOCModal(customerId) {
+  const c = state.customers.find(x => x.id === customerId);
+  if (!c || !c.settlement) return;
+
+  state.activeNocCustomerId = customerId;
+
+  const s = c.settlement;
+  const bizName = (state.settings && state.settings.businessName) || 'JSR FINANCE';
+  const dateFormatted = new Date(s.settledDate || getISTDateString()).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  const guarName = (c.guarantor && c.guarantor.name) ? c.guarantor.name : 'N/A';
+  const container = document.getElementById('noc-certificate-container');
+  if (container) {
+    container.innerHTML = `
+      <div class="noc-watermark">NO OBJECTION CERTIFICATE</div>
+      <div class="noc-header">
+        <div class="noc-title">${bizName}</div>
+        <div class="noc-subtitle">Microfinance & Rural Enterprise Credit Division</div>
+      </div>
+
+      <div class="noc-cert-meta">
+        <div><strong>Certificate No:</strong> ${s.nocNumber}</div>
+        <div><strong>Date of Clearance:</strong> ${dateFormatted}</div>
+      </div>
+
+      <div class="noc-body-text">
+        This is to formally certify that <strong>${c.fullName}</strong>, bearing Customer Account <strong>#${c.customerNumber}</strong>, 
+        residing at <em>${c.address || 'Registered Address'}</em>, has fully and satisfactorily paid, cleared, and settled all dues, 
+        principal, interest margin, and obligations towards <strong>Loan Account #${c.customerNumber}-L${c.loanNumber || 1}</strong> 
+        originally disbursed on <strong>${c.startDate || 'N/A'}</strong>.
+        <br><br>
+        As of <strong>${dateFormatted}</strong>, there is <strong>ABSOLUTELY ZERO (₹ 0) OUTSTANDING BALANCE</strong>, claim, or encumbrance 
+        remaining against the aforementioned borrower. Any surety, guarantee, or obligation undertaken by the registered Guarantor 
+        (<strong>${guarName}</strong>) also stands fully and irrevocably released, discharged, and nullified.
+      </div>
+
+      <div class="noc-terms-grid">
+        <div><span style="color:#64748b; font-size:11px;">Original Disbursal:</span><br><strong>${formatMoney(c.givenAmount)}</strong></div>
+        <div><span style="color:#64748b; font-size:11px;">Settlement Amount Paid:</span><br><strong style="color:#15803d;">${formatMoney(s.settlementAmount)}</strong></div>
+        <div><span style="color:#64748b; font-size:11px;">Rebate / Discount Waived:</span><br><strong style="color:#7c3aed;">${formatMoney(s.discountWaived)}</strong></div>
+        <div><span style="color:#64748b; font-size:11px;">Closure Status:</span><br><strong style="color:#166534;">✓ FULL & FINAL SETTLED</strong></div>
+      </div>
+
+      <div class="noc-signatures">
+        <div class="noc-sign-box">
+          <div class="noc-sign-line"></div>
+          <div style="font-size: 12px; font-weight: 700; color: #0f172a;">Borrower Signature</div>
+          <div style="font-size: 11px; color: #64748b;">${c.fullName}</div>
+        </div>
+
+        <div class="noc-seal-emblem">
+          <div>★ JSR ★</div>
+          <div>ACCOUNT</div>
+          <div>CLEARED</div>
+          <div style="font-size: 8px;">NOC GRANTED</div>
+        </div>
+
+        <div class="noc-sign-box">
+          <div class="noc-sign-line"></div>
+          <div style="font-size: 12px; font-weight: 700; color: #0f172a;">Authorized Signatory</div>
+          <div style="font-size: 11px; color: #64748b;">${bizName}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  const waBtn = document.getElementById('noc-whatsapp-btn');
+  if (waBtn) {
+    waBtn.onclick = () => shareNOCWhatsApp(customerId);
+  }
+
+  openModal('modal-noc');
+}
+
+function printNOCCertificate() {
+  document.body.classList.add('printing-noc');
+  window.print();
+  setTimeout(() => {
+    document.body.classList.remove('printing-noc');
+  }, 1200);
+}
+
+function shareNOCWhatsApp(customerId) {
+  const c = state.customers.find(x => x.id === customerId);
+  if (!c || !c.settlement) return;
+
+  const bizName = (state.settings && state.settings.businessName) || 'JSR Finance';
+  const cleanPhone = formatWhatsAppPhone(c.phone);
+  const s = c.settlement;
+
+  const msg = encodeURIComponent(
+    `*${bizName} - NO OBJECTION CERTIFICATE (NOC)*\n\n` +
+    `Dear ${c.fullName},\n` +
+    `Congratulations! Your Loan Account *#${c.customerNumber}-L${c.loanNumber || 1}* has been *FULLY SETTLED & CLOSED*.\n\n` +
+    `*NOC Certificate Number:* ${s.nocNumber}\n` +
+    `*Cleared Date:* ${s.settledDate}\n` +
+    `*Settlement Amount Paid:* ${formatMoney(s.settlementAmount)}\n` +
+    `*Remaining Balance:* ₹ 0 (NIL)\n\n` +
+    `Thank you for being a valued customer with ${bizName}!`
+  );
+
+  window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
 }
 
 // Helper: Sanitize corrupted years (e.g. +046316-02-18 or 46315 -> 2025/2026)
@@ -5357,19 +6402,62 @@ function openCustomerPassbook(customerId) {
     `;
   }
 
+  const rating = calculateCreditRating(c);
+  const guar = c.guarantor || {};
+  const photoHtml = c.photoUrl
+    ? `<img src="${c.photoUrl}" style="width: 48px; height: 48px; border-radius: 50%; object-fit: cover; border: 2px solid #2563eb; flex-shrink: 0;">`
+    : `<div style="width: 48px; height: 48px; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;">👤</div>`;
+
+  const kycHtml = c.kycVerified
+    ? `<span class="kyc-badge" onclick="openKycViewerModal('${c.id}')" title="KYC Verified - Click to view">✓ KYC Verified</span>`
+    : `<span class="kyc-badge kyc-badge-unverified" onclick="openKycViewerModal('${c.id}')" title="Pending KYC - Click to view">KYC Pending</span>`;
+
   document.getElementById('passbook-modal-title').textContent = `Customer Passbook - #${c.customerNumber}${loanSuffix}: ${c.fullName}`;
   document.getElementById('passbook-header-info').innerHTML = `
     ${loanSwitcherHtml}
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:10px 14px; margin-bottom:12px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        ${photoHtml}
+        <div>
+          <div style="font-size:15px; font-weight:800; color:#1e293b;">
+            #${c.customerNumber}${loanBadgeHtml} - ${c.fullName}
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; margin-top:2px; flex-wrap:wrap;">
+            <span class="credit-badge ${rating.badgeClass}">⭐ ${rating.stars} ${rating.tier}</span>
+            ${kycHtml}
+            ${c.isSettled ? `<span class="badge-settled" onclick="openNOCModal('${c.id}')">🤝 Settled (NOC #${c.settlement?.nocNumber || 'Issued'})</span>` : ''}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="openThermalReceiptModal('${c.id}', ${stats.paidCount > 0 ? stats.paidCount : 1})" title="Print 58mm Pocket Thermal Slip">
+          🖨️ Pocket Thermal Slip
+        </button>
+        ${!c.isSettled && stats.balance > 0 ? `
+          <button type="button" class="btn btn-sm" style="background:#7c3aed; color:#fff; font-weight:700;" onclick="openSettlementModal('${c.id}')">
+            🤝 Early Settle & NOC
+          </button>
+        ` : (c.isSettled ? `
+          <button type="button" class="btn btn-sm" style="background:#d97706; color:#fff; font-weight:700;" onclick="openNOCModal('${c.id}')">
+            📜 View Official NOC
+          </button>
+        ` : '')}
+      </div>
+    </div>
+
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; background:#f1f5f9; padding:14px; border-radius:8px; margin-bottom:16px;">
-      <div><span style="color:#64748b; font-size:12px;">Customer:</span><br><strong>#${c.customerNumber}${loanBadgeHtml} - ${c.fullName}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Phone:</span><br><strong>${c.phone || 'N/A'}</strong></div>
-      <div><span style="color:#64748b; font-size:12px;">Given Amount:</span><br><strong style="color:#1e3a8a;">${formatMoney(c.givenAmount)}</strong></div>
+      <div><span style="color:#64748b; font-size:12px;">Given Principal:</span><br><strong style="color:#1e3a8a;">${formatMoney(c.givenAmount)}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Instalment:</span><br><strong>${formatMoney(c.instalmentAmount)} ${unitRate}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Total Repayable:</span><br><strong style="color:#1e293b;">${formatMoney(stats.totalPayable)}</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Total Paid:</span><br><strong style="color:#16a34a;">${formatMoney(stats.totalPaid)} (${stats.paidCount}/${totalInst})</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Balance Due:</span><br><strong style="color:#b45309;">${formatMoney(stats.balance)}</strong></div>
-      <div><span style="color:#64748b; font-size:12px;">Expected Net Profit:</span><br><strong style="color:#7c3aed;">+ ${formatMoney(stats.expectedProfit)} (${stats.profitReturnPercent}%)</strong></div>
       <div><span style="color:#64748b; font-size:12px;">Plan Frequency:</span><br>${planBadge}</div>
+      <div>
+        <span style="color:#64748b; font-size:12px;">Guarantor / Surety:</span><br>
+        <strong>${guar.name ? `${guar.name} (${guar.rel || 'Guarantor'})` : 'None'}</strong>
+        ${guar.phone ? `<button type="button" class="btn btn-sm btn-outline" style="padding:1px 5px; font-size:10px; margin-left:4px; color:#16a34a;" onclick="contactGuarantor('${c.id}', 'whatsapp')">💬 WA</button>` : ''}
+      </div>
       <div><span style="color:#64748b; font-size:12px;">Status:</span><br><span class="badge-status ${stats.isCompleted ? 'badge-status-completed' : 'badge-status-active'}">${stats.isCompleted ? 'Completed' : 'Active'}</span></div>
     </div>
   `;
@@ -5747,22 +6835,34 @@ function printCustomerPassbook(customerId) {
         </div>
 
         <!-- Customer & Loan Account Info -->
-        <div class="summary-card">
-          <div class="info-cell">
-            <span class="info-label">Customer ID & Name:</span>
-            <span class="info-val">#${c.customerNumber}${loanSuffix} - ${c.fullName}</span>
+        <div class="summary-card" style="grid-template-columns: 2fr 1fr 1fr 1fr;">
+          <div class="info-cell" style="display:flex; align-items:center; gap:8px;">
+            ${c.photoUrl ? `<img src="${c.photoUrl}" style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid #0f172a; flex-shrink:0;" alt="Borrower">` : ''}
+            <div>
+              <span class="info-label">Customer ID & Name:</span>
+              <span class="info-val">#${c.customerNumber}${loanSuffix} - ${c.fullName}</span>
+              <div style="font-size:10px; color:#475569; margin-top:2px;">
+                ⭐ Credit: <strong>${stats.creditRating?.stars || '⭐⭐⭐⭐⭐'} (${stats.creditRating?.score?.toFixed(1) || '5.0'})</strong>
+                ${c.kycVerified ? ' • <span style="color:#15803d; font-weight:700;">✓ KYC Verified</span>' : ''}
+              </div>
+            </div>
           </div>
           <div class="info-cell">
-            <span class="info-label">Phone / Mobile:</span>
+            <span class="info-label">Phone & Surety:</span>
             <span class="info-val">${c.phone || 'N/A'}</span>
+            ${c.guarantorName ? `<div style="font-size:10px; color:#475569; margin-top:2px;">Surety: <strong>${c.guarantorName}</strong> (${c.guarantorPhone || 'N/A'})</div>` : ''}
           </div>
           <div class="info-cell">
             <span class="info-label">Loan Plan:</span>
             <span class="info-val">${planName}</span>
+            <div style="font-size:10px; color:#475569; margin-top:2px;">Route: ${c.areaRoute || 'General'}</div>
           </div>
           <div class="info-cell">
             <span class="info-label">Loan Status:</span>
-            <span class="badge-status ${stats.isCompleted ? 'status-completed' : 'status-active'}">${stats.isCompleted ? 'COMPLETED' : 'ACTIVE'}</span>
+            ${c.isSettled 
+              ? `<span class="badge-status" style="background:#ecfdf5; color:#059669; border:1px solid #a7f3d0;">🤝 SETTLED (NOC ISSUED)</span>` 
+              : `<span class="badge-status ${stats.isCompleted ? 'status-completed' : 'status-active'}">${stats.isCompleted ? 'COMPLETED' : 'ACTIVE'}</span>`
+            }
           </div>
           <div class="info-cell">
             <span class="info-label">Principal Given:</span>
