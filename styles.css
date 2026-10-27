@@ -4170,9 +4170,23 @@ select:focus-visible {
   text-overflow: ellipsis;
 }
 .cust-financial-terms {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   color: #1e293b;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 6px;
+}
+.cust-bal-payable {
+  font-weight: 700;
+  background: #fffbeb;
+  color: #b45309;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid #fde68a;
+  display: inline-flex;
+  align-items: center;
   white-space: nowrap;
 }
 .cust-card-right {
@@ -4332,15 +4346,17 @@ select:focus-visible {
   background: #ffffff;
   color: transparent;
 }
-.sched-box-btn.is-paid {
-  background: #16a34a;
-  border-color: #15803d;
-  color: #ffffff;
+.sched-box-btn.is-paid,
+.sched-box-btn.sched-box-paid {
+  background: #16a34a !important;
+  border-color: #15803d !important;
+  color: #ffffff !important;
 }
-.sched-box-btn.is-partial {
-  background: #ea580c;
-  border-color: #c2410c;
-  color: #ffffff;
+.sched-box-btn.is-partial,
+.sched-box-btn.sched-box-partial {
+  background: #ea580c !important;
+  border-color: #c2410c !important;
+  color: #ffffff !important;
   padding: 0 1px;
 }
 .sched-partial-amt {
@@ -4360,14 +4376,41 @@ select:focus-visible {
   margin-right: 0.5px;
   opacity: 0.92;
 }
-.sched-box-btn.is-pending {
+.sched-box-btn.is-pending,
+.sched-box-btn.sched-box-pending {
   background: #ffffff;
   border-color: #cbd5e1;
   color: transparent;
 }
-.sched-box-btn.is-pending:hover {
+.sched-box-btn.is-pending:hover,
+.sched-box-btn.sched-box-pending:hover {
   background: #eff6ff;
   border-color: #2563eb;
+}
+
+#app-toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f172a;
+  color: #ffffff;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 700;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+  z-index: 100005 !important;
+  max-width: 90vw;
+  text-align: center;
+  border: 1.5px solid #38bdf8;
+  pointer-events: none;
+  animation: toastFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes toastFadeIn {
+  from { opacity: 0; transform: translate(-50%, -10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
 }
 
 .sched-box-btn:disabled, .sched-box-btn.is-locked {
