@@ -22,6 +22,11 @@ const DEFAULT_SETTINGS = {
   defaultInstalmentAmount: 250,
   autoCustNumbering: true,
   nextCustNumber: 1,
+  adminEmail: 'singarisurendra@gmail.com',
+  collectors: [
+    { id: 'col_1', name: 'Raju Sharma', email: 'raju.collector@jsrfinance.com', phone: '+91 9876543211', route: 'Market Ward A', active: true },
+    { id: 'col_2', name: 'Vikas Kumar', email: 'vikas.collector@jsrfinance.com', phone: '+91 9876543212', route: 'North Village Route', active: true }
+  ],
 };
 
 const DEFAULT_SCHEMES = [
@@ -79,6 +84,8 @@ let state = {
   pendingModifications: {},
   unsavedPromptCallback: null,
   activeLocks: {},
+  offlineSyncQueue: JSON.parse(localStorage.getItem('jsr_finance_offline_queue') || '[]'),
+  activeDetailCustomerId: null,
 };
 
 // Unique Session ID for Multi-User & Multi-Tab Concurrency Control
@@ -903,11 +910,13 @@ function verifyAndLoginGoogleUser(email, name) {
   const errorAlert = document.getElementById('login-error-alert');
   const normalizedEmail = (email || '').trim().toLowerCase();
 
-  function grantAccess() {
+  function grantAccess(role, assignedName, collectorId, route) {
     const sessionData = {
-      user: name || normalizedEmail,
+      user: assignedName || normalizedEmail,
       email: normalizedEmail,
-      role: 'Admin',
+      role: role || 'Admin',
+      collectorId: collectorId || null,
+      route: route || '',
       provider: 'Google SSO',
       loginTime: new Date().toISOString()
     };
@@ -923,7 +932,7 @@ function verifyAndLoginGoogleUser(email, name) {
       }, 250);
     }
     playCashChime();
-    showToast(`✓ Whitelist Verified! Welcome, ${name || normalizedEmail}`);
+    showToast(`✓ Google Verified! Welcome, ${assignedName || normalizedEmail} (${role})`);
 
     // Immediately open instalment screen & refresh data
     loadData();
@@ -932,6 +941,7 @@ function verifyAndLoginGoogleUser(email, name) {
     if (typeof initGoogleCloudDatabase === 'function' && (!firestoreDb || !isCloudSyncActive)) {
       initGoogleCloudDatabase();
     }
+    applyRoleBasedPermissions();
   }
 
   function showDenied() {
@@ -939,37 +949,78 @@ function verifyAndLoginGoogleUser(email, name) {
       errorAlert.innerHTML = `
         <div style="text-align: left; line-height: 1.5;">
           <strong>🚫 Access Denied (HTTP 403 Forbidden)</strong><br>
-          <span style="font-size: 12px;">Account <code>${normalizedEmail}</code> is not authorized on the operator whitelist. Contact your administrator to grant access in Settings.</span>
+          <span style="font-size: 12px;">Account <code>${normalizedEmail}</code> is not registered on the operator roster. Contact your administrator (${state.settings.adminEmail || 'admin@jsrfinance.com'}) to grant access.</span>
         </div>
       `;
       errorAlert.style.display = 'flex';
     }
   }
 
-  // 1. Check local in-memory whitelist
+  // 1. Check Admin Account
+  const configuredAdmin = (state && state.settings && state.settings.adminEmail) 
+    ? state.settings.adminEmail.trim().toLowerCase() 
+    : 'singarisurendra@gmail.com';
+  
+  if (normalizedEmail === configuredAdmin || normalizedEmail === 'singarisurendra@gmail.com' || normalizedEmail === 'admin@jsrfinance.com') {
+    grantAccess('Admin', name || 'Surendra Singari (Admin)', null, 'HQ');
+    return;
+  }
+
+  // 2. Check Registered Field Collectors Roster
+  const collectorsList = (state && state.settings && Array.isArray(state.settings.collectors))
+    ? state.settings.collectors
+    : [];
+  
+  const matchedCollector = collectorsList.find(c => 
+    c && c.email && c.email.trim().toLowerCase() === normalizedEmail && c.active !== false
+  );
+
+  if (matchedCollector) {
+    grantAccess('Collector', matchedCollector.name, matchedCollector.id, matchedCollector.route);
+    return;
+  }
+
+  // 3. Check local in-memory additional whitelist
   const dynamicEmails = (state && state.settings && state.settings.operatorWhitelist)
     ? state.settings.operatorWhitelist.split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
     : [];
   const fullWhitelist = [...AUTHORIZED_OPERATOR_WHITELIST.map(e => e.toLowerCase()), ...dynamicEmails];
 
   if (fullWhitelist.some(allowed => normalizedEmail === allowed || normalizedEmail.endsWith('@jsrfinance.com'))) {
-    grantAccess();
+    grantAccess('Admin', name || normalizedEmail, null, 'HQ');
     return;
   }
 
-  // 2. Multi-device Fallback: Query Firestore config/settings directly for fresh devices
+  // 4. Multi-device Fallback: Query Firestore config/settings directly for fresh devices
   if (typeof firestoreDb !== 'undefined' && firestoreDb) {
     firestoreDb.collection('config').doc('settings').get()
       .then(doc => {
         if (doc && doc.exists) {
           const cloudSettings = doc.data();
+          const cloudAdmin = (cloudSettings && cloudSettings.adminEmail) ? cloudSettings.adminEmail.trim().toLowerCase() : '';
+          if (cloudAdmin === normalizedEmail) {
+            state.settings = { ...state.settings, ...cloudSettings };
+            if (typeof saveDataLocallyOnly === 'function') saveDataLocallyOnly();
+            grantAccess('Admin', name || 'Admin', null, 'HQ');
+            return;
+          }
+
+          const cloudCollectors = (cloudSettings && Array.isArray(cloudSettings.collectors)) ? cloudSettings.collectors : [];
+          const cloudMatched = cloudCollectors.find(c => c && c.email && c.email.trim().toLowerCase() === normalizedEmail && c.active !== false);
+          if (cloudMatched) {
+            state.settings = { ...state.settings, ...cloudSettings };
+            if (typeof saveDataLocallyOnly === 'function') saveDataLocallyOnly();
+            grantAccess('Collector', cloudMatched.name, cloudMatched.id, cloudMatched.route);
+            return;
+          }
+
           const cloudEmails = (cloudSettings && cloudSettings.operatorWhitelist)
             ? cloudSettings.operatorWhitelist.split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
             : [];
           if (cloudEmails.includes(normalizedEmail)) {
             state.settings = { ...state.settings, ...cloudSettings };
             if (typeof saveDataLocallyOnly === 'function') saveDataLocallyOnly();
-            grantAccess();
+            grantAccess('Admin', name || normalizedEmail, null, 'HQ');
             return;
           }
         }
@@ -1668,12 +1719,18 @@ function recordTransaction(txnData) {
   if (!state.transactions) state.transactions = [];
   const id = `TXN-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
   const currentUser = getCurrentUser();
+  const isOnline = navigator.onLine && (typeof isCloudSyncActive !== 'undefined' ? isCloudSyncActive : true);
+
+  const receiptNum = txnData.receiptNumber || generateUniqueReceiptNumber(txnData.customerNumber, txnData.loanNumber, txnData.instalmentNumber);
+
   const txn = {
     id,
     ...txnData,
+    receiptNumber: (!isOnline && !receiptNum.startsWith('PROV-') && txnData.type !== 'undo') ? `PROV-${receiptNum}` : receiptNum,
     date: txnData.date || getISTDateString(),
     timestamp: txnData.timestamp || getNowTimestamp(),
     collector: txnData.collector || (currentUser ? currentUser.user : 'Admin'),
+    collectorRole: (currentUser && currentUser.role) ? currentUser.role : 'Admin',
     createdAt: new Date().toISOString()
   };
   state.transactions.unshift(txn);
@@ -1685,9 +1742,21 @@ function recordTransaction(txnData) {
   } catch (e) {
     console.warn('Error saving transaction to localStorage', e);
   }
-  if (typeof syncTransactionToFirestore === 'function') {
+
+  // Local-First Offline Collection Queue
+  if (!isOnline && txn.type !== 'undo') {
+    txn.offlineTxnId = 'OFF-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+    txn.isPendingSync = true;
+    if (!state.offlineSyncQueue) state.offlineSyncQueue = [];
+    state.offlineSyncQueue.push(txn);
+    try {
+      localStorage.setItem('jsr_finance_offline_queue', JSON.stringify(state.offlineSyncQueue));
+    } catch (e) {}
+    if (typeof updateOfflineSyncBadge === 'function') updateOfflineSyncBadge();
+  } else if (typeof syncTransactionToFirestore === 'function') {
     syncTransactionToFirestore(txn);
   }
+
   return txn;
 }
 
@@ -1974,6 +2043,9 @@ function initApp() {
   setupEventListeners();
   updateHeaderStats();
   updateSoundToggleButton();
+  updateOfflineSyncBadge();
+  setupOfflineSyncListeners();
+  applyRoleBasedPermissions();
   switchTab('collections');
   if (typeof initGoogleCloudDatabase === 'function') {
     initGoogleCloudDatabase();
@@ -2764,6 +2836,9 @@ function renderDashboard() {
   if (dist3) dist3.textContent = `${w26to40} Cust`;
   if (dist4) dist4.textContent = `${w41to52} Cust`;
 
+  // Render Admin-Only Today's Operator Collections Breakdown
+  renderCollectorBreakdownWidget();
+
   // Render filtered recent transactions feed
   renderRecentTransactions();
 }
@@ -2818,6 +2893,26 @@ function renderRecentTransactions() {
       routeSelect.value = currentVal;
     } else {
       routeSelect.value = 'all';
+    }
+  }
+
+  // Dynamically refresh collector dropdown while preserving active selection
+  const collectorSelect = document.getElementById('recent-collector-filter');
+  if (collectorSelect) {
+    const currentCollectorVal = collectorSelect.value || 'all';
+    const allCollectors = [
+      { id: 'Admin', label: '👑 Admin (Personal Collections)' },
+      ...(Array.isArray(state.settings.collectors) ? state.settings.collectors.map(c => ({ id: c.name, label: `🛵 ${c.name}` })) : [])
+    ];
+    let opts = '<option value="all">👤 All Operators</option>';
+    allCollectors.forEach(col => {
+      opts += `<option value="${col.id}">${col.label}</option>`;
+    });
+    collectorSelect.innerHTML = opts;
+    if (['all', ...allCollectors.map(c => c.id)].includes(currentCollectorVal)) {
+      collectorSelect.value = currentCollectorVal;
+    } else {
+      collectorSelect.value = 'all';
     }
   }
 
@@ -2924,6 +3019,17 @@ function renderRecentTransactions() {
     // Route filter
     if (routeFilter !== 'all' && item.areaRoute !== routeFilter) return false;
 
+    // Collector filter
+    const collectorFilter = document.getElementById('recent-collector-filter')?.value || 'all';
+    if (collectorFilter !== 'all') {
+      if (collectorFilter === 'Admin') {
+        const isAdm = !item.collector || item.collector === 'Admin' || item.collector.toLowerCase().includes('admin');
+        if (!isAdm) return false;
+      } else {
+        if (item.collector !== collectorFilter) return false;
+      }
+    }
+
     return true;
   });
 
@@ -2991,7 +3097,10 @@ function renderRecentTransactions() {
               return '';
             })(item.timestamp)}
           </td>
-          <td><span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px;">${item.areaRoute}</span></td>
+          <td>
+            <span style="background:#f1f5f9; color:#475569; padding:2px 8px; border-radius:4px; font-size:11px;">${item.areaRoute}</span>
+            <div style="font-size:11px; color:#2563eb; font-weight:600; margin-top:2px;">👤 ${item.collector || 'Admin'}</div>
+          </td>
           <td>${statusHtml}</td>
         </tr>
       `;
@@ -4089,11 +4198,11 @@ function renderCollectionMatrix() {
 
     cardsHtml += `
       <div class="cust-compact-card ${isExpanded ? 'card-expanded' : ''}" data-customer-id="${cust.id}">
-        <!-- Top Compact Card Header (Click to toggle expansion) -->
-        <div class="cust-card-header" onclick="toggleCustomerSchedule('${cust.id}', event)" title="${cust.fullName} (#${cust.customerNumber}) - ${cust.phone || 'No Phone'}">
+        <!-- Top Compact Card Header (Click to open Customer Detail Pop-up / Bottom Sheet) -->
+        <div class="cust-card-header" onclick="openCustomerDetailModal('${cust.id}', event)" title="Click to open Customer Loan Details pop-up (Desktop Modal / Mobile Bottom Sheet)">
           <div class="cust-card-left">
             <span class="cust-id-prefix">#${cust.customerNumber}</span>
-            <div class="cust-avatar" style="${avatarStyle}">${avatarContent}</div>
+            <div class="cust-avatar" style="${avatarStyle}; cursor: pointer;" onclick="openCustomerPhotoLightbox('${cust.id}', event)" title="Click to view borrower profile photo">${avatarContent}</div>
             <div class="cust-info-left">
               <div class="cust-name-row">
                 <span class="cust-name" title="${cust.fullName}">${cust.fullName}</span>
@@ -4120,7 +4229,7 @@ function renderCollectionMatrix() {
               </div>
               <span class="cust-pct-label">${completionPct}%</span>
             </div>
-            <div class="cust-chevron-icon ${isExpanded ? 'rotated' : ''}">
+            <div class="cust-chevron-icon ${isExpanded ? 'rotated' : ''}" onclick="event.stopPropagation(); toggleCustomerSchedule('${cust.id}', event)" title="Toggle inline expansion">
               ⌵
             </div>
           </div>
@@ -5365,6 +5474,7 @@ function openAddCustomerModal() {
   const givenInput = document.getElementById('cust-form-given');
   const instInput = document.getElementById('cust-form-instalments');
   const amtInput = document.getElementById('cust-form-amount');
+  const dateInput = document.getElementById('cust-form-date');
   const lockNotice = document.getElementById('cust-form-lock-notice');
   const presetsWrap = document.getElementById('cust-form-presets-wrap');
 
@@ -5383,6 +5493,12 @@ function openAddCustomerModal() {
     amtInput.readOnly = false;
     amtInput.classList.remove('locked-field');
     amtInput.title = '';
+  }
+  if (dateInput) {
+    dateInput.readOnly = false;
+    dateInput.disabled = false;
+    dateInput.classList.remove('locked-field');
+    dateInput.title = '';
   }
   if (lockNotice) lockNotice.style.display = 'none';
   if (presetsWrap) presetsWrap.style.display = 'flex';
@@ -5443,6 +5559,7 @@ function openEditCustomerModal(customerId) {
   const givenInput = document.getElementById('cust-form-given');
   const instInput = document.getElementById('cust-form-instalments');
   const amtInput = document.getElementById('cust-form-amount');
+  const dateInput = document.getElementById('cust-form-date');
   const lockNotice = document.getElementById('cust-form-lock-notice');
   const presetsWrap = document.getElementById('cust-form-presets-wrap');
 
@@ -5461,6 +5578,12 @@ function openEditCustomerModal(customerId) {
       amtInput.readOnly = true;
       amtInput.classList.add('locked-field');
       amtInput.title = 'Instalment amount is locked because payments have been recorded.';
+    }
+    if (dateInput) {
+      dateInput.readOnly = true;
+      dateInput.disabled = true;
+      dateInput.classList.add('locked-field');
+      dateInput.title = 'Loan start date is locked because payments have been recorded.';
     }
     if (lockNotice) lockNotice.style.display = 'block';
     if (presetsWrap) presetsWrap.style.display = 'none';
@@ -5481,6 +5604,12 @@ function openEditCustomerModal(customerId) {
       amtInput.readOnly = false;
       amtInput.classList.remove('locked-field');
       amtInput.title = '';
+    }
+    if (dateInput) {
+      dateInput.readOnly = false;
+      dateInput.disabled = false;
+      dateInput.classList.remove('locked-field');
+      dateInput.title = '';
     }
     if (lockNotice) lockNotice.style.display = 'none';
     if (presetsWrap) presetsWrap.style.display = 'flex';
@@ -5700,7 +5829,7 @@ async function handleSaveCustomer(event) {
       existing.totalInstalments = totalInstalments;
       existing.instalmentAmount = instalmentAmount;
       existing.totalPayable = totalInstalments * instalmentAmount;
-      existing.startDate = startDate;
+      existing.startDate = hasAnyPayment ? (existing.startDate || startDate) : startDate;
       existing.frequency = frequency;
       existing.photoUrl = photoUrl;
       existing.kycVerified = kycVerified;
@@ -7107,11 +7236,17 @@ function renderSettings() {
   document.getElementById('setting-default-instalments').value = state.settings.defaultInstalments;
   document.getElementById('setting-default-inst-amount').value = state.settings.defaultInstalmentAmount;
   
+  const adminEmailInput = document.getElementById('setting-admin-email');
+  if (adminEmailInput) {
+    adminEmailInput.value = state.settings.adminEmail || 'singarisurendra@gmail.com';
+  }
+
   const whitelistInput = document.getElementById('setting-operator-whitelist');
   if (whitelistInput) {
     whitelistInput.value = state.settings.operatorWhitelist || '';
   }
 
+  renderCollectorsRoster();
   applyScreenZoom();
   updateSoundToggleButton();
 }
@@ -7130,6 +7265,11 @@ function handleSaveSettings(event) {
     : 1000;
   state.settings.defaultInstalments = Number(document.getElementById('setting-default-instalments').value) || 52;
   state.settings.defaultInstalmentAmount = Number(document.getElementById('setting-default-inst-amount').value) || 200;
+
+  const adminEmailInput = document.getElementById('setting-admin-email');
+  if (adminEmailInput) {
+    state.settings.adminEmail = adminEmailInput.value.trim().toLowerCase() || 'singarisurendra@gmail.com';
+  }
 
   const whitelistInput = document.getElementById('setting-operator-whitelist');
   if (whitelistInput) {
@@ -8642,6 +8782,9 @@ function setupEventListeners() {
   const recentRoute = document.getElementById('recent-route-filter');
   if (recentRoute) recentRoute.addEventListener('change', renderRecentTransactions);
 
+  const recentCollector = document.getElementById('recent-collector-filter');
+  if (recentCollector) recentCollector.addEventListener('change', renderRecentTransactions);
+
   // Customer Master Search & Filter listeners
   const custSearchInput = document.getElementById('cust-search-input');
   if (custSearchInput) custSearchInput.addEventListener('input', handleCustomerFilterChange);
@@ -8665,6 +8808,954 @@ function setupEventListeners() {
       sidebar.classList.remove('force-collapsed');
     });
   }
+}
+
+// ========================================================
+// 1. CUSTOMER PROFILE PHOTO LIGHTBOX
+// ========================================================
+function openCustomerPhotoLightbox(customerId, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  const customer = state.customers.find(c => c.id === customerId);
+  if (!customer) return;
+
+  const modal = document.getElementById('photo-lightbox-backdrop');
+  if (!modal) return;
+
+  const imgEl = document.getElementById('photo-lightbox-img');
+  const nameEl = document.getElementById('photo-lightbox-name');
+  const loanEl = document.getElementById('photo-lightbox-loan');
+  const phoneEl = document.getElementById('photo-lightbox-phone');
+  const kycEl = document.getElementById('photo-lightbox-kyc');
+
+  if (nameEl) nameEl.textContent = `${customer.fullName} (#${customer.customerNumber})`;
+  if (imgEl) {
+    if (customer.photoUrl) {
+      imgEl.src = customer.photoUrl;
+      imgEl.style.display = 'block';
+    } else {
+      imgEl.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%23e2e8f0"/><text x="50%" y="54%" font-size="64" font-weight="bold" fill="%2364748b" text-anchor="middle" dominant-baseline="middle">${(customer.fullName || 'C').slice(0, 2).toUpperCase()}</text></svg>`;
+      imgEl.style.display = 'block';
+    }
+  }
+
+  if (loanEl) loanEl.textContent = `Loan #${customer.loanNumber || 1} • Route: ${customer.areaRoute || 'General'} • Principal: ₹${Number(customer.givenAmount || 0).toLocaleString('en-IN')}`;
+  if (phoneEl) phoneEl.textContent = `📞 Phone: ${customer.phone || 'No phone'} • Address: ${customer.address || 'No address'}`;
+  if (kycEl) {
+    kycEl.innerHTML = customer.kycVerified 
+      ? `<span class="badge" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-size:11.5px; padding:3px 8px; border-radius:4px; font-weight:700;">✓ KYC Document Verified</span>` 
+      : `<span class="badge" style="background:#f8fafc; color:#64748b; border:1px solid #cbd5e1; font-size:11.5px; padding:3px 8px; border-radius:4px;">KYC Pending</span>`;
+  }
+
+  modal.style.display = 'flex';
+  document.body.classList.add('modal-open');
+}
+
+function closeCustomerPhotoLightbox() {
+  const modal = document.getElementById('photo-lightbox-backdrop');
+  if (modal) modal.style.display = 'none';
+  if (!document.querySelector('.cust-detail-modal:not([style*="display: none"]), .modal-overlay.active')) {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+// ========================================================
+// 2. CUSTOMER DETAIL MODAL & MOBILE BOTTOM SHEET
+// ========================================================
+function openCustomerDetailModal(customerId, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  const customer = state.customers.find(c => c.id === customerId);
+  if (!customer) return;
+
+  state.activeDetailCustomerId = customerId;
+
+  const modal = document.getElementById('modal-customer-detail');
+  const backdrop = document.getElementById('customer-detail-backdrop');
+  if (!modal || !backdrop) return;
+
+  renderCustomerDetailModalContent(customerId);
+
+  backdrop.style.display = 'block';
+  modal.style.display = 'flex';
+  document.body.classList.add('modal-open');
+}
+
+function switchCustomerDetailLoan(targetLoanId) {
+  const currentId = state.activeDetailCustomerId;
+  if (currentId && currentId !== targetLoanId && hasActualPendingChanges(currentId)) {
+    const pending = state.pendingModifications[currentId];
+    const amountStr = pending && pending.sessionAmount ? formatMoney(pending.sessionAmount) : '';
+    const shouldSave = confirm(`You have unsaved collections (${amountStr}) for this loan.\n\nClick OK to SAVE before switching loans.\nClick Cancel to DISCARD and switch.`);
+    if (shouldSave) {
+      saveCustomerModifications(currentId);
+    } else {
+      discardCustomerModifications(currentId);
+    }
+  }
+
+  state.activeDetailCustomerId = targetLoanId;
+  renderCustomerDetailModalContent(targetLoanId);
+}
+
+function renderCustomerDetailModalContent(loanId) {
+  const cust = state.customers.find(c => c.id === loanId);
+  if (!cust) return;
+
+  // Header info
+  const nameEl = document.getElementById('cust-detail-name');
+  const numBadge = document.getElementById('cust-detail-num-badge');
+  const subEl = document.getElementById('cust-detail-sub');
+  const avatarBox = document.getElementById('cust-detail-avatar-box');
+  const footerStatus = document.getElementById('cust-detail-footer-status');
+
+  if (nameEl) nameEl.textContent = cust.fullName;
+  if (numBadge) numBadge.textContent = `#${cust.customerNumber}`;
+  if (subEl) subEl.textContent = `${cust.phone || 'No phone'} • 📍 ${cust.areaRoute || 'General'} • Started: ${cust.startDate || '-'}`;
+  if (avatarBox) {
+    avatarBox.innerHTML = `
+      <div class="cust-avatar" style="width: 36px; height: 36px; border-radius: 50%; overflow: hidden; background: #e0e7ff; color: #3730a3; font-weight: 700; display: flex; align-items: center; justify-content: center; cursor: pointer;" onclick="openCustomerPhotoLightbox('${cust.id}', event)">
+        ${cust.photoUrl ? `<img src="${cust.photoUrl}" style="width: 100%; height: 100%; object-fit: cover;">` : (cust.fullName || 'C').slice(0, 2).toUpperCase()}
+      </div>
+    `;
+  }
+
+  // Multi-Loan Tabs
+  const allLoans = state.customers
+    .filter(c => c.customerNumber.toString() === cust.customerNumber.toString())
+    .sort((a, b) => (Number(a.loanNumber) || 1) - (Number(b.loanNumber) || 1));
+
+  const tabsContainer = document.getElementById('cust-detail-loan-tabs');
+  if (tabsContainer) {
+    tabsContainer.innerHTML = allLoans.map(l => {
+      const isCurrent = l.id === loanId;
+      const lNum = l.loanNumber || 1;
+      const lStats = getCustomerEffectiveStats(l);
+      let statusTag = l.isSettled ? '🤝 Settled' : (lStats.isOverdue ? '⚠️ Due' : 'Active');
+      return `
+        <button type="button" class="cust-loan-tab-btn ${isCurrent ? 'active' : ''}" onclick="switchCustomerDetailLoan('${l.id}')">
+          <span>Loan #${lNum}</span>
+          <span style="font-size: 11px; opacity: 0.85;">(${statusTag})</span>
+        </button>
+      `;
+    }).join('');
+  }
+
+  // Loan Financials & Effective Stats
+  const instCount = cust.totalInstalments || 52;
+  const isDaily = cust.frequency === 'Daily' || instCount === 100;
+  const unitLabel = isDaily ? 'Day' : 'Week';
+  const effectiveStats = getCustomerEffectiveStats(cust);
+  const totalPayable = instCount * (cust.instalmentAmount || 200);
+  const totalPaid = effectiveStats.totalPaidAmount;
+  const remainingBal = Math.max(0, totalPayable - totalPaid);
+  const completionPct = totalPayable > 0 ? Math.min(100, Math.round((totalPaid / totalPayable) * 100)) : 0;
+
+  // Next Due Instalment
+  let nextDueSeq = 1;
+  const insts = effectiveStats.insts;
+  for (let i = 1; i <= instCount; i++) {
+    const itm = insts[i - 1];
+    if (!itm || itm.status !== 'Received') {
+      nextDueSeq = i;
+      break;
+    }
+  }
+  const nextDueInst = insts[nextDueSeq - 1];
+  const isNextPartial = nextDueInst && nextDueInst.status === 'Partial';
+  const nextRemainingDue = isNextPartial ? Math.max(0, (cust.instalmentAmount || 0) - (Number(nextDueInst.paidAmount) || 0)) : (cust.instalmentAmount || 0);
+
+  // Checkbox Grid
+  let gridCellsHtml = '';
+  for (let sq = 1; sq <= instCount; sq++) {
+    const inst = insts[sq - 1];
+    let btnClass = 'sched-box-pending';
+    let btnIcon = '';
+    let instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)})`;
+
+    if (inst && inst.status === 'Received') {
+      btnClass = 'sched-box-paid';
+      btnIcon = '✓';
+      instTitle = `${unitLabel} #${sq}: Paid (${formatMoney(inst.paidAmount || cust.instalmentAmount)}) on ${inst.paidDate || '-'}`;
+    } else if (inst && inst.status === 'Partial') {
+      btnClass = 'sched-box-partial';
+      btnIcon = '½';
+      instTitle = `${unitLabel} #${sq}: Partial (Rec'd: ${formatMoney(inst.paidAmount || 0)})`;
+    }
+
+    gridCellsHtml += `
+      <div class="sched-cell">
+        <span class="sched-num-label">${sq}</span>
+        <button type="button" 
+                class="sched-box-btn ${btnClass}" 
+                onclick="handleDetailInstalmentClick('${cust.id}', ${sq}, event)" 
+                title="${instTitle}">
+          ${btnIcon}
+        </button>
+      </div>
+    `;
+  }
+
+  // Pending Modifications
+  const pendingMod = state.pendingModifications && state.pendingModifications[cust.id];
+  const hasPendingMod = hasActualPendingChanges(cust.id);
+
+  if (footerStatus) {
+    footerStatus.innerHTML = hasPendingMod && pendingMod.sessionAmount > 0
+      ? `<strong style="color: #15803d;">Unsaved collection: + ${formatMoney(pendingMod.sessionAmount)}</strong>`
+      : `<span>Loan #${cust.loanNumber || 1} • ${effectiveStats.paidCount}/${instCount} Paid (${completionPct}%)</span>`;
+  }
+
+  const container = document.getElementById('cust-detail-loan-content');
+  if (!container) return;
+
+  container.innerHTML = `
+    <!-- Financial Balances Banner -->
+    <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 8px;">
+        <div>
+          <span style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700;">Principal</span>
+          <div style="font-size: 16px; font-weight: 800; color: #0f172a;">${formatMoney(cust.givenAmount)}</div>
+        </div>
+        <div>
+          <span style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700;">Collected</span>
+          <div style="font-size: 16px; font-weight: 800; color: #15803d;">${formatMoney(totalPaid)}</div>
+        </div>
+        <div>
+          <span style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700;">Remaining Balance</span>
+          <div style="font-size: 16px; font-weight: 800; color: #b45309;">${formatMoney(remainingBal)}</div>
+        </div>
+        <div>
+          <span style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700;">Progress</span>
+          <div style="font-size: 16px; font-weight: 800; color: #2563eb;">${completionPct}% (${effectiveStats.paidCount}/${instCount})</div>
+        </div>
+      </div>
+      <div class="progress-bar-bg" style="height: 8px;">
+        <div class="progress-bar-fill" style="width: ${completionPct}%;"></div>
+      </div>
+    </div>
+
+    <!-- Quick Action Toolbar: Pay Pending or Partial Pay -->
+    <div class="sched-quick-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 10px 14px; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 10px; font-size: 13px; flex-wrap: wrap; gap: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+      <div style="color: #334155; font-weight: 600;">
+        <span>${unitLabel} #${nextDueSeq}:</span>
+        ${isNextPartial 
+          ? `<span style="color: #b45309; font-weight: 700; margin-left: 4px;">½ Partial (Rec'd: ${formatMoney(nextDueInst.paidAmount || 0)} • Pending: ${formatMoney(nextRemainingDue)})</span>`
+          : `<span style="color: #1e40af; font-weight: 700; margin-left: 4px;">Due ${formatMoney(cust.instalmentAmount)}</span>`
+        }
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button type="button" class="btn btn-sm" style="background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; font-weight: 700; padding: 5px 12px; border-radius: 6px; cursor: pointer;" onclick="openPartialPayModal('${cust.id}', ${nextDueSeq})">
+          ½ Partial Pay
+        </button>
+        <button type="button" class="btn btn-sm" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-weight: 700; padding: 5px 12px; border-radius: 6px; cursor: pointer;" onclick="handleDetailInstalmentClick('${cust.id}', ${nextDueSeq}, event)">
+          ✓ Pay ${isNextPartial ? 'Remaining ' : ''}${formatMoney(nextRemainingDue)}
+        </button>
+      </div>
+    </div>
+
+    <!-- 4-Row Instalment Matrix -->
+    <div style="margin-bottom: 12px;">
+      <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; display: flex; justify-content: space-between;">
+        <span>Schedule Matrix (${unitLabel}s 1 to ${instCount})</span>
+        <span style="font-size: 11px; color: #64748b;">Tap any cell to toggle receipt</span>
+      </div>
+      <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
+        ${gridCellsHtml}
+      </div>
+    </div>
+
+    <!-- Unsaved Modifications Banner -->
+    ${hasPendingMod && pendingMod.sessionAmount > 0 ? `
+      <div class="sched-modified-bar" style="margin-bottom: 14px; padding: 12px 16px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <strong style="color: #166534; font-size: 14px;">Unsaved Collection:</strong>
+          <span style="color: #15803d; font-size: 17px; font-weight: 800; margin-left: 6px;">+ ${formatMoney(pendingMod.sessionAmount)}</span>
+        </div>
+        <button type="button" class="btn-drawer-save" onclick="saveCustomerModificationsDetail('${cust.id}')">
+          💾 Save Collection (${formatMoney(pendingMod.sessionAmount)})
+        </button>
+      </div>
+    ` : ''}
+
+    <!-- Pro Suite Direct Tools -->
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 12px; border-top: 1px solid #f1f5f9;">
+      <button type="button" class="btn btn-outline btn-sm" onclick="openPassbookModal('${cust.id}')">
+        📖 Passbook
+      </button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="openThermalSlipModal('${cust.id}', ${nextDueSeq})">
+        🧾 Thermal Slip
+      </button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="openKycViewerModal('${cust.id}')">
+        🪪 KYC Docs
+      </button>
+      ${cust.isSettled ? `
+        <button type="button" class="btn btn-outline btn-sm" onclick="openNOCModal('${cust.id}')" style="color: #047857; border-color: #a7f3d0; background: #ecfdf5;">
+          🤝 NOC Certificate
+        </button>
+      ` : ''}
+      <button type="button" class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${cust.id}')">
+        ✏️ Edit Terms
+      </button>
+    </div>
+  `;
+}
+
+function handleDetailInstalmentClick(loanId, sq, event) {
+  if (event) event.stopPropagation();
+  handleInstalmentClick(loanId, sq, event);
+  renderCustomerDetailModalContent(loanId);
+}
+
+function saveCustomerModificationsDetail(loanId) {
+  saveCustomerModifications(loanId);
+  renderCustomerDetailModalContent(loanId);
+}
+
+function requestCloseCustomerDetailModal() {
+  const activeId = state.activeDetailCustomerId;
+  if (activeId && hasActualPendingChanges(activeId)) {
+    const pending = state.pendingModifications[activeId];
+    const amountStr = pending && pending.sessionAmount ? formatMoney(pending.sessionAmount) : '';
+    const shouldSave = confirm(`You have unsaved collections (${amountStr}) for this customer.\n\nClick OK to SAVE before closing.\nClick Cancel to DISCARD unsaved changes and close.`);
+    if (shouldSave) {
+      saveCustomerModifications(activeId);
+    } else {
+      discardCustomerModifications(activeId);
+    }
+  }
+  closeCustomerDetailModal();
+}
+
+function closeCustomerDetailModal() {
+  const modal = document.getElementById('modal-customer-detail');
+  const backdrop = document.getElementById('customer-detail-backdrop');
+  if (modal) modal.style.display = 'none';
+  if (backdrop) backdrop.style.display = 'none';
+  state.activeDetailCustomerId = null;
+  if (!document.querySelector('.photo-lightbox-backdrop:not([style*="display: none"]), .modal-overlay.active')) {
+    document.body.classList.remove('modal-open');
+  }
+}
+
+// ========================================================
+// 3. ROLE-BASED ACCESS CONTROL & DASHBOARD BREAKDOWN
+// ========================================================
+function applyRoleBasedPermissions() {
+  const currentUser = getCurrentUser();
+  const isAdmin = currentUser && currentUser.role === 'Admin';
+
+  const breakdownCard = document.getElementById('dashboard-collector-breakdown');
+  if (breakdownCard) {
+    breakdownCard.style.display = isAdmin ? 'block' : 'none';
+  }
+}
+
+function renderCollectorBreakdownWidget() {
+  const breakdownCard = document.getElementById('dashboard-collector-breakdown');
+  const cardsContainer = document.getElementById('collector-breakdown-cards');
+  if (!breakdownCard || !cardsContainer) return;
+
+  const currentUser = getCurrentUser();
+  const isAdmin = currentUser && currentUser.role === 'Admin';
+
+  if (!isAdmin) {
+    breakdownCard.style.display = 'none';
+    return;
+  }
+  breakdownCard.style.display = 'block';
+
+  const todayStr = getISTDateString();
+  const todayTxns = (state.transactions || []).filter(t => (t.date === todayStr || t.date === 'Today') && t.type !== 'undo');
+
+  // 1. Admin Personal Collections
+  const adminTxns = todayTxns.filter(t => 
+    !t.collector || t.collector === 'Admin' || t.collector.toLowerCase().includes('admin') || t.collector === currentUser.user
+  );
+  const adminTotal = adminTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const adminCount = adminTxns.length;
+
+  let html = `
+    <div class="collector-card admin-collector">
+      <div class="collector-card-title">
+        <span style="display: flex; align-items: center; gap: 6px;">
+          <span>👑</span> Admin (Personal Collections)
+        </span>
+        <span class="badge" style="background: #f3e8ff; color: #7c3aed; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Owner</span>
+      </div>
+      <div class="collector-card-amount">₹ ${adminTotal.toLocaleString('en-IN')}</div>
+      <div class="collector-card-meta">
+        <span>🧾 ${adminCount} receipts issued today</span>
+      </div>
+      <div class="collector-card-actions">
+        <button type="button" class="btn btn-outline btn-sm" onclick="openCollectorHandoverModal('Admin')" style="width: 100%; font-size: 11.5px; padding: 4px 10px; background: #ffffff; color: #7c3aed; border-color: #d8b4fe; font-weight: 700;">
+          📄 Personal Audit Slip
+        </button>
+      </div>
+    </div>
+  `;
+
+  // 2. Field Collectors from Roster
+  const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
+  roster.forEach(col => {
+    const colTxns = todayTxns.filter(t => 
+      t.collector === col.name || t.collector === col.email || (t.collectorId && t.collectorId === col.id)
+    );
+    const colTotal = colTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const colCount = colTxns.length;
+    const isActive = col.active !== false;
+
+    html += `
+      <div class="collector-card field-collector">
+        <div class="collector-card-title">
+          <span style="display: flex; align-items: center; gap: 6px;">
+            <span>🛵</span> ${col.name}
+          </span>
+          <span class="badge" style="background: ${isActive ? '#ecfdf5' : '#fef2f2'}; color: ${isActive ? '#047857' : '#b91c1c'}; border: 1px solid ${isActive ? '#a7f3d0' : '#fca5a5'}; font-size: 10.5px; padding: 2px 6px; border-radius: 4px;">
+            ${isActive ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+        <div class="collector-card-amount">₹ ${colTotal.toLocaleString('en-IN')}</div>
+        <div class="collector-card-meta">
+          <span>📍 ${col.route || 'Field Route'} • 🧾 ${colCount} receipts today</span>
+        </div>
+        <div class="collector-card-actions">
+          <button type="button" class="btn btn-outline btn-sm" onclick="openCollectorHandoverModal('${col.name}')" style="width: 100%; font-size: 11.5px; padding: 4px 10px; background: #ffffff; color: #2563eb; border-color: #bfdbfe; font-weight: 700;">
+            📄 Handover Slip / Cash Tally
+          </button>
+        </div>
+      </div>
+    `;
+  });
+
+  cardsContainer.innerHTML = html;
+}
+
+function openCollectorHandoverModal(operatorName) {
+  const modal = document.getElementById('modal-collector-handover');
+  const content = document.getElementById('collector-handover-slip-content');
+  const title = document.getElementById('collector-handover-title');
+  if (!modal || !content) return;
+
+  const todayStr = getISTDateString();
+  const isAdm = operatorName === 'Admin';
+  if (title) {
+    title.innerHTML = isAdm 
+      ? `<span>👑</span> Admin Personal Collections Audit Slip` 
+      : `<span>🛵</span> Field Collector Handover Slip: ${operatorName}`;
+  }
+
+  const txns = (state.transactions || []).filter(t => {
+    if (t.date !== todayStr && t.date !== 'Today') return false;
+    if (t.type === 'undo') return false;
+    if (isAdm) {
+      return !t.collector || t.collector === 'Admin' || t.collector.toLowerCase().includes('admin');
+    }
+    return t.collector === operatorName;
+  });
+
+  const totalAmount = txns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+  let rowsHtml = '';
+  txns.forEach((t, idx) => {
+    rowsHtml += `
+      <tr>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9;">${idx + 1}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9; font-weight: 700;">#${t.customerNumber} - ${t.customerName}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9;">L${t.loanNumber || 1} • W#${t.instalmentNumber}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9; font-family: monospace; font-size: 11px;">${t.receiptNumber || '-'}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700; color: #16a34a;">₹ ${Number(t.amount || 0).toLocaleString('en-IN')}</td>
+      </tr>
+    `;
+  });
+
+  content.innerHTML = `
+    <div style="font-family: inherit; color: #0f172a;">
+      <div style="text-align: center; margin-bottom: 12px; border-bottom: 2px solid #0f172a; padding-bottom: 8px;">
+        <h3 style="margin: 0; font-size: 16px; font-weight: 800;">${state.settings.businessName || 'JSR FINANCE'}</h3>
+        <div style="font-size: 12px; color: #475569; font-weight: 700; margin-top: 2px;">
+          ${isAdm ? 'ADMIN PERSONAL COLLECTIONS AUDIT SLIP' : 'FIELD COLLECTOR CASH HANDOVER & VERIFICATION SLIP'}
+        </div>
+        <div style="font-size: 11px; color: #64748b;">Operator: <strong>${operatorName}</strong> • Date: ${todayStr}</div>
+      </div>
+
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span style="font-size: 11.5px; color: #64748b; font-weight: 600;">RECEIPTS COUNT</span>
+          <div style="font-size: 18px; font-weight: 800; color: #0f172a;">${txns.length} Receipts</div>
+        </div>
+        <div style="text-align: right;">
+          <span style="font-size: 11.5px; color: #64748b; font-weight: 600;">TOTAL CASH COLLECTED</span>
+          <div style="font-size: 20px; font-weight: 800; color: #15803d;">₹ ${totalAmount.toLocaleString('en-IN')}</div>
+        </div>
+      </div>
+
+      <div style="max-height: 240px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 14px;">
+        <table class="data-table" style="font-size: 11.5px; margin: 0;">
+          <thead>
+            <tr style="background: #f1f5f9;">
+              <th style="padding: 6px 8px;">#</th>
+              <th style="padding: 6px 8px;">Borrower</th>
+              <th style="padding: 6px 8px;">Instalment</th>
+              <th style="padding: 6px 8px;">Receipt #</th>
+              <th style="padding: 6px 8px; text-align: right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || '<tr><td colspan="5" style="text-align: center; padding: 16px; color: #94a3b8;">No collections recorded today for this operator.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; padding-top: 14px; border-top: 1px dashed #cbd5e1; text-align: center;">
+        <div>
+          <div style="height: 40px; border-bottom: 1px solid #94a3b8;"></div>
+          <div style="font-size: 11px; font-weight: 700; color: #475569; margin-top: 4px;">
+            ${isAdm ? 'Collector / Admin Signature' : 'Field Collector Signature (' + operatorName + ')'}
+          </div>
+        </div>
+        <div>
+          <div style="height: 40px; border-bottom: 1px solid #94a3b8;"></div>
+          <div style="font-size: 11px; font-weight: 700; color: #475569; margin-top: 4px;">Cashier / Auditor Acknowledgment</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modal.classList.add('active');
+  document.body.classList.add('modal-open');
+}
+
+function printCollectorHandoverSlip() {
+  const content = document.getElementById('collector-handover-slip-content');
+  if (!content) return;
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Collection Handover Slip</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; color: #000; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #ddd; padding: 6px; font-size: 12px; }
+        @media print { body { padding: 0; } }
+      </style>
+    </head>
+    <body>
+      ${content.innerHTML}
+      <script>
+        window.onload = function() { window.print(); window.close(); }
+      </script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
+// ========================================================
+// 4. FIELD COLLECTOR ROSTER (SETTINGS)
+// ========================================================
+function renderCollectorsRoster() {
+  const container = document.getElementById('collectors-roster-container');
+  if (!container) return;
+
+  const collectors = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
+  if (collectors.length === 0) {
+    container.innerHTML = `
+      <div style="padding: 16px; text-align: center; color: #64748b; font-size: 12.5px;">
+        No field collectors registered yet. Click <strong>+ Add Field Collector</strong> above to register a Google account.
+      </div>
+    `;
+    return;
+  }
+
+  let html = `
+    <table class="data-table" style="margin: 0; font-size: 12.5px;">
+      <thead>
+        <tr>
+          <th style="padding: 8px 12px;">Collector Name</th>
+          <th style="padding: 8px 12px;">Google Email</th>
+          <th style="padding: 8px 12px;">Assigned Route</th>
+          <th style="padding: 8px 12px;">Phone</th>
+          <th style="padding: 8px 12px;">Status</th>
+          <th style="padding: 8px 12px; text-align: right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  collectors.forEach(c => {
+    const isActive = c.active !== false;
+    html += `
+      <tr>
+        <td style="padding: 8px 12px; font-weight: 700; color: #0f172a;">${c.name}</td>
+        <td style="padding: 8px 12px; font-family: monospace; color: #2563eb;">${c.email}</td>
+        <td style="padding: 8px 12px;">${c.route || 'General'}</td>
+        <td style="padding: 8px 12px;">${c.phone || '-'}</td>
+        <td style="padding: 8px 12px;">
+          <span class="badge" style="background: ${isActive ? '#ecfdf5' : '#fef2f2'}; color: ${isActive ? '#047857' : '#b91c1c'}; border: 1px solid ${isActive ? '#a7f3d0' : '#fca5a5'}; font-size: 11px; padding: 2px 6px; border-radius: 4px;">
+            ${isActive ? '● Active' : '○ Inactive'}
+          </span>
+        </td>
+        <td style="padding: 8px 12px; text-align: right; white-space: nowrap;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="openEditCollectorModal('${c.id}')" style="font-size: 11px; padding: 2px 8px; margin-right: 4px;">Edit</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="toggleCollectorStatus('${c.id}')" style="font-size: 11px; padding: 2px 8px; color: ${isActive ? '#b91c1c' : '#047857'}; border-color: ${isActive ? '#fca5a5' : '#a7f3d0'};">
+            ${isActive ? 'Deactivate' : 'Activate'}
+          </button>
+        </td>
+      </tr>
+    `;
+  });
+
+  html += `</tbody></table>`;
+  container.innerHTML = html;
+}
+
+function openAddCollectorModal() {
+  document.getElementById('collector-modal-title').textContent = '🛵 Add Field Collector';
+  document.getElementById('collector-form-id').value = '';
+  document.getElementById('collector-form-name').value = '';
+  document.getElementById('collector-form-email').value = '';
+  document.getElementById('collector-form-phone').value = '';
+  document.getElementById('collector-form-route').value = '';
+  document.getElementById('collector-form-active').checked = true;
+  openModal('modal-collector-editor');
+}
+
+function openEditCollectorModal(collectorId) {
+  const c = (state.settings.collectors || []).find(col => col.id === collectorId);
+  if (!c) return;
+
+  document.getElementById('collector-modal-title').textContent = `🛵 Edit Collector: ${c.name}`;
+  document.getElementById('collector-form-id').value = c.id;
+  document.getElementById('collector-form-name').value = c.name;
+  document.getElementById('collector-form-email').value = c.email;
+  document.getElementById('collector-form-phone').value = c.phone || '';
+  document.getElementById('collector-form-route').value = c.route || '';
+  document.getElementById('collector-form-active').checked = c.active !== false;
+  openModal('modal-collector-editor');
+}
+
+function handleSaveCollector(event) {
+  event.preventDefault();
+  const id = document.getElementById('collector-form-id').value;
+  const name = document.getElementById('collector-form-name').value.trim();
+  const email = document.getElementById('collector-form-email').value.trim().toLowerCase();
+  const phone = document.getElementById('collector-form-phone').value.trim();
+  const route = document.getElementById('collector-form-route').value.trim() || 'General Route';
+  const active = document.getElementById('collector-form-active').checked;
+
+  if (!name || !email) {
+    alert('Please enter both Collector Name and valid Google Email.');
+    return;
+  }
+
+  if (!Array.isArray(state.settings.collectors)) {
+    state.settings.collectors = [];
+  }
+
+  if (id) {
+    const existing = state.settings.collectors.find(c => c.id === id);
+    if (existing) {
+      existing.name = name;
+      existing.email = email;
+      existing.phone = phone;
+      existing.route = route;
+      existing.active = active;
+    }
+  } else {
+    state.settings.collectors.push({
+      id: 'col_' + Date.now(),
+      name,
+      email,
+      phone,
+      route,
+      active
+    });
+  }
+
+  saveData();
+  if (typeof syncSettingsToFirestore === 'function') {
+    syncSettingsToFirestore(state.settings);
+  }
+  closeModal('modal-collector-editor');
+  renderCollectorsRoster();
+  showToast(`✓ Field Collector saved: ${name}`);
+}
+
+function toggleCollectorStatus(collectorId) {
+  const c = (state.settings.collectors || []).find(col => col.id === collectorId);
+  if (!c) return;
+  c.active = !c.active;
+  saveData();
+  if (typeof syncSettingsToFirestore === 'function') {
+    syncSettingsToFirestore(state.settings);
+  }
+  renderCollectorsRoster();
+  showToast(`✓ Collector ${c.name} ${c.active ? 'activated' : 'deactivated'}`);
+}
+
+// ========================================================
+// 5. LOCAL-FIRST OFFLINE COLLECTION MODE & AUTO-SYNC ENGINE
+// ========================================================
+let _isSyncingOfflineQueue = false;
+let _currentConflictItem = null;
+
+function updateOfflineSyncBadge() {
+  const badge = document.getElementById('offline-sync-badge');
+  const icon = document.getElementById('offline-sync-icon');
+  const text = document.getElementById('offline-sync-text');
+  if (!badge) return;
+
+  const queue = state.offlineSyncQueue || [];
+  const isOnline = navigator.onLine;
+
+  badge.classList.remove('online', 'pending', 'offline');
+
+  if (!isOnline) {
+    badge.classList.add('offline');
+    if (icon) icon.textContent = '📡';
+    if (text) {
+      text.textContent = `Offline · ${queue.length} Pending`;
+      text.style.color = '#991b1b';
+    }
+  } else if (queue.length > 0) {
+    badge.classList.add('pending');
+    if (icon) icon.textContent = '⏳';
+    if (text) {
+      text.textContent = `${queue.length} to Sync`;
+      text.style.color = '#b45309';
+    }
+  } else {
+    badge.classList.add('online');
+    if (icon) icon.textContent = '☁️';
+    if (text) {
+      text.textContent = 'All Synced';
+      text.style.color = '#16a34a';
+    }
+  }
+}
+
+function setupOfflineSyncListeners() {
+  window.addEventListener('online', () => {
+    updateOfflineSyncBadge();
+    showToast('📶 Internet connection restored. Syncing offline collections...');
+    triggerOfflineSync();
+  });
+
+  window.addEventListener('offline', () => {
+    updateOfflineSyncBadge();
+    showToast('📡 You are now in Offline Mode. Collections will save locally.');
+  });
+
+  window.addEventListener('focus', () => {
+    if (navigator.onLine && (state.offlineSyncQueue || []).length > 0) {
+      triggerOfflineSync();
+    }
+  });
+
+  // Background sync check every 20 seconds
+  setInterval(() => {
+    if (navigator.onLine && (state.offlineSyncQueue || []).length > 0 && !_isSyncingOfflineQueue) {
+      triggerOfflineSync();
+    }
+  }, 20000);
+}
+
+function triggerManualOfflineSync() {
+  if (!navigator.onLine) {
+    alert('Device is currently offline. Connect to mobile data / Wi-Fi to sync with the cloud.');
+    return;
+  }
+  showToast('🔄 Checking for offline transactions to sync...');
+  triggerOfflineSync();
+}
+
+async function triggerOfflineSync() {
+  if (_isSyncingOfflineQueue || !navigator.onLine || !state.offlineSyncQueue || state.offlineSyncQueue.length === 0) {
+    updateOfflineSyncBadge();
+    return;
+  }
+
+  if (typeof firestoreDb === 'undefined' || !firestoreDb) {
+    updateOfflineSyncBadge();
+    return;
+  }
+
+  _isSyncingOfflineQueue = true;
+  updateOfflineSyncBadge();
+
+  try {
+    const item = state.offlineSyncQueue[0];
+    if (!item) {
+      _isSyncingOfflineQueue = false;
+      return;
+    }
+
+    // Conflict Check against cloud customer record
+    const custDoc = await firestoreDb.collection('customers').doc(item.customerId).get();
+    if (custDoc && custDoc.exists) {
+      const cloudCust = custDoc.data();
+      const cloudInst = (cloudCust.instalments || []).find(i => i && i.number === item.instalmentNumber);
+      
+      // If cloud instalment already settled by another operator
+      if (cloudInst && cloudInst.status === 'Received' && cloudInst.receiptNumber && cloudInst.receiptNumber !== item.receiptNumber && cloudInst.receiptNumber !== item.provisionalReceipt) {
+        showSyncConflictModal(item, cloudInst);
+        _isSyncingOfflineQueue = false;
+        return;
+      }
+    }
+
+    // No conflict -> Push transaction to Firestore
+    await firestoreDb.collection('transactions').doc(item.id || item.offlineTxnId).set({
+      ...item,
+      syncedAt: new Date().toISOString()
+    });
+
+    // Remove from local queue
+    state.offlineSyncQueue.shift();
+    try {
+      localStorage.setItem('jsr_finance_offline_queue', JSON.stringify(state.offlineSyncQueue));
+    } catch (e) {}
+
+    updateOfflineSyncBadge();
+    _isSyncingOfflineQueue = false;
+
+    // Process next item recursively
+    if (state.offlineSyncQueue.length > 0) {
+      triggerOfflineSync();
+    } else {
+      showToast('✓ All offline collections successfully synced to cloud!');
+    }
+  } catch (err) {
+    console.warn('Offline sync attempt error:', err);
+    _isSyncingOfflineQueue = false;
+    updateOfflineSyncBadge();
+  }
+}
+
+function showSyncConflictModal(localItem, serverItem) {
+  _currentConflictItem = localItem;
+  const modal = document.getElementById('sync-conflict-backdrop');
+  const details = document.getElementById('sync-conflict-details');
+  if (!modal || !details) return;
+
+  details.innerHTML = `
+    <div style="background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+      <strong style="color: #991b1b; font-size: 13.5px;">Cloud Conflict Detected:</strong>
+      <div style="margin-top: 6px; font-size: 12.5px; color: #334155; line-height: 1.5;">
+        Borrower: <strong>${localItem.customerName} (#${localItem.customerNumber}, Loan #${localItem.loanNumber})</strong><br>
+        Instalment: <strong>Week #${localItem.instalmentNumber}</strong><br>
+        Collected Offline By: <strong style="color: #2563eb;">${localItem.collector}</strong> (₹ ${Number(localItem.amount).toLocaleString('en-IN')})<br>
+        Server Status: Already marked Paid by <u>${serverItem.paidBy || 'Another Operator'}</u> on cloud.
+      </div>
+    </div>
+    <p style="font-size: 12.5px; color: #475569; margin: 0;">
+      To prevent double-billing and preserve exact field collector attribution, choose how to apply this collection:
+    </p>
+  `;
+
+  modal.style.display = 'flex';
+  document.body.classList.add('modal-open');
+}
+
+function submitSyncConflictResolution() {
+  if (!_currentConflictItem) return;
+  const item = _currentConflictItem;
+  const choice = document.querySelector('input[name="sync-conflict-choice"]:checked')?.value || 'next';
+
+  const cust = state.customers.find(c => c.id === item.customerId);
+  const collectorName = item.collector || 'Field Collector';
+
+  if (choice === 'next') {
+    // Find next pending instalment
+    if (cust && cust.instalments) {
+      const nextPending = cust.instalments.find(i => i && i.status !== 'Received');
+      if (nextPending) {
+        nextPending.status = 'Received';
+        nextPending.paidAmount = item.amount;
+        nextPending.paidBy = collectorName;
+        nextPending.paidDate = getISTDateString();
+        nextPending.paidTimestamp = getNowTimestamp();
+        nextPending.receiptNumber = item.provisionalReceipt || generateUniqueReceiptNumber(cust.customerNumber, cust.loanNumber, nextPending.number);
+
+        // Record immutable ledger entry with attribution to this field collector!
+        recordTransaction({
+          receiptNumber: nextPending.receiptNumber,
+          customerId: cust.id,
+          customerNumber: cust.customerNumber,
+          loanNumber: cust.loanNumber || 1,
+          customerName: cust.fullName,
+          instalmentNumber: nextPending.number,
+          amount: item.amount,
+          type: 'payment',
+          collector: collectorName,
+          date: nextPending.paidDate,
+          timestamp: nextPending.paidTimestamp,
+          notes: `Applied from conflict resolution (originally collected for Week #${item.instalmentNumber})`
+        });
+
+        saveData();
+        if (typeof syncCustomerToFirestore === 'function') {
+          syncCustomerToFirestore(cust);
+        }
+      }
+    }
+  } else if (choice === 'advance') {
+    recordTransaction({
+      receiptNumber: `ADV-${Date.now()}-${item.customerNumber}`,
+      customerId: item.customerId,
+      customerNumber: item.customerNumber,
+      loanNumber: item.loanNumber || 1,
+      customerName: item.customerName,
+      instalmentNumber: item.instalmentNumber,
+      amount: item.amount,
+      type: 'payment',
+      collector: collectorName,
+      date: getISTDateString(),
+      timestamp: getNowTimestamp(),
+      notes: `Advance payment recorded via sync conflict resolution for Week #${item.instalmentNumber}`
+    });
+    saveData();
+  } else {
+    // Admin review
+    recordTransaction({
+      receiptNumber: `REVIEW-${Date.now()}-${item.customerNumber}`,
+      customerId: item.customerId,
+      customerNumber: item.customerNumber,
+      loanNumber: item.loanNumber || 1,
+      customerName: item.customerName,
+      instalmentNumber: item.instalmentNumber,
+      amount: item.amount,
+      type: 'payment',
+      collector: collectorName,
+      date: getISTDateString(),
+      timestamp: getNowTimestamp(),
+      notes: `FLAGGED FOR ADMIN REVIEW: Original collection for Week #${item.instalmentNumber} already marked settled on cloud.`
+    });
+    saveData();
+  }
+
+  // Remove from offline queue
+  state.offlineSyncQueue = state.offlineSyncQueue.filter(q => q.offlineTxnId !== item.offlineTxnId);
+  try {
+    localStorage.setItem('jsr_finance_offline_queue', JSON.stringify(state.offlineSyncQueue));
+  } catch (e) {}
+
+  _currentConflictItem = null;
+  const modal = document.getElementById('sync-conflict-backdrop');
+  if (modal) modal.style.display = 'none';
+
+  showToast(`✓ Resolved! Collection of ₹${item.amount} attributed to ${collectorName}`);
+  updateOfflineSyncBadge();
+  renderCollectionMatrix();
+  if (state.activeTab === 'summary') renderDashboard();
+  updateHeaderStats();
 }
 
 // Start application when DOM is ready
