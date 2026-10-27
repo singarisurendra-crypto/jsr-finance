@@ -1,7 +1,12 @@
 import os
 import re
+import sys
 import math
 from datetime import datetime, timezone, timedelta
+
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+
 
 def test_pr1_pr2_integrity():
     with open('app.js', 'r', encoding='utf-8') as f:
@@ -159,6 +164,47 @@ def test_pr5_excel_legacy_import():
 
     print("[PASS] PR-005 Excel & Legacy Data Import with 0-Rupee Balance Drift verified.")
 
+def test_pr6_partial_payment_collection():
+    with open('app.js', 'r', encoding='utf-8') as f:
+        app_content = f.read()
+    with open('index.html', 'r', encoding='utf-8') as f:
+        html_content = f.read()
+
+    # 1. Check getPortfolioStats partial calculation
+    assert "inst.status === 'Partial'" in app_content, "Missing Partial status check in app.js"
+    assert "todayCollected += (Number(inst.paidAmount) || 0);" in app_content, "Missing accurate todayCollected partial amount addition"
+    assert "todayCollected += (Number(inst.paidAmount) || cust.instalmentAmount);" not in app_content, "Found buggy fallback for Partial status in todayCollected"
+
+    # 2. Check renderRunSheet partial calculation
+    assert "collectedTodayRupees += (Number(inst.paidAmount) || 0);" in app_content, "Missing renderRunSheet partial amount addition"
+
+    # 3. Check WhatsApp receipt call
+    assert "sendWhatsAppPaymentReceipt" in app_content, "Missing sendWhatsAppPaymentReceipt in app.js"
+
+    # 4. Check Partial Pay Modal in index.html & app.js
+    assert 'id="modal-partial-pay"' in html_content, "Missing modal-partial-pay in index.html"
+    assert 'id="partial-calc-today-collected"' in html_content, "Missing partial-calc-today-collected in index.html"
+    assert 'id="partial-calc-pending-amount"' in html_content, "Missing partial-calc-pending-amount in index.html"
+    assert 'id="partial-modal-undo-btn"' in html_content, "Missing partial-modal-undo-btn in index.html"
+    assert 'function openPartialPayModal' in app_content, "Missing openPartialPayModal in app.js"
+    assert 'function updatePartialPayCalc' in app_content, "Missing updatePartialPayCalc in app.js"
+    assert 'function handlePartialModalUndo' in app_content, "Missing handlePartialModalUndo in app.js"
+
+    # 5. Check collection matrix partial tooltip and toolbar
+    assert 'Amount Received: ' in app_content and 'Pending Instalment Amount: ' in app_content, "Missing detailed partial tooltip in collection matrix"
+    assert '½ Partial Pay' in app_content, "Missing ½ Partial Pay button in collection cards"
+    assert 'sched-quick-toolbar' in app_content, "Missing sched-quick-toolbar in app.js"
+
+    # 6. Check handleInstalmentClick routing for Partial
+    assert "if (custInst && custInst.status === 'Partial') {" in app_content, "Missing direct routing of Partial square click to modal"
+    assert "openPartialPayModal(customerId, instNumber);" in app_content, "Missing openPartialPayModal call in handleInstalmentClick"
+
+    # 7. Check Quick Receive hint element
+    assert 'id="quick-receive-hint"' in html_content, "Missing quick-receive-hint in index.html"
+    assert 'is Partial (Paid: ₹' in app_content, "Missing partial helper hint in handleQuickCustNumChange"
+
+    print("[PASS] PR-006 Partial Payment & Today's Collection Invariants verified.")
+
 if __name__ == "__main__":
     print("--- Running Master Production Verification Test Suite ---")
     test_pr1_pr2_integrity()
@@ -166,6 +212,8 @@ if __name__ == "__main__":
     test_pr4_financial_analytics_and_wcag()
     test_whatsapp_phone_sanitization()
     test_pr5_excel_legacy_import()
+    test_pr6_partial_payment_collection()
     print("=========================================================")
     print("ALL TESTS PASSED! ZERO REGRESSION CERTIFIED.")
     print("=========================================================")
+
