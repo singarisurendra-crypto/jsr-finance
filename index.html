@@ -143,6 +143,10 @@
         <span>☁️ Sync:</span>
         <strong style="color: #16a34a;">Live ↻</strong>
       </button>
+      <button class="stat-pill offline-sync-pill online" id="offline-sync-badge" onclick="triggerManualOfflineSync()" title="Local-First Offline Storage & Background Sync Engine" style="cursor: pointer;">
+        <span id="offline-sync-icon">☁️</span>
+        <strong id="offline-sync-text" style="color: #16a34a;">All Synced</strong>
+      </button>
     </div>
   </header>
 
@@ -254,6 +258,26 @@
           </div>
         </div>
 
+        <!-- Admin-Only Today's Operator Collections Breakdown (Personal & Field Collectors) -->
+        <div id="dashboard-collector-breakdown" class="card" style="margin-bottom: 24px; display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <div style="font-size: 15px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 6px;">
+                <span>👥</span> Today's Operator Collections Breakdown
+              </div>
+              <div style="font-size: 12px; color: #64748b;">Daily collected totals, receipt counts, and handover slips by operator</div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="badge" style="background: #eff6ff; color: #1d4ed8; font-weight: 700; font-size: 11px; padding: 4px 10px; border: 1px solid #bfdbfe;">
+                👑 Admin Master View
+              </span>
+            </div>
+          </div>
+          <div id="collector-breakdown-cards" class="collector-breakdown-grid">
+            <!-- Dynamic operator cards rendered here -->
+          </div>
+        </div>
+
         <!-- Recovery Progress Bar Card -->
         <div class="card" style="margin-bottom: 24px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -295,6 +319,10 @@
                 <option value="payment">✓ Received Payments</option>
                 <option value="partial">½ Partial Payments</option>
                 <option value="undo">↩️ Undos & Rollbacks</option>
+              </select>
+              <select id="recent-collector-filter" class="form-control" onchange="renderRecentTransactions()" style="font-size: 12px; padding: 6px 10px;">
+                <option value="all">👤 All Operators</option>
+                <option value="Admin">👑 Admin (Personal Collections)</option>
               </select>
               <select id="recent-loan-filter" class="form-control" onchange="renderRecentTransactions()" style="font-size: 12px; padding: 6px 10px;">
                 <option value="all">📋 All Loans</option>
@@ -1138,10 +1166,30 @@
 
                 <div class="form-full">
                   <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 10px 0;">
-                  <h4 style="font-size: 14px; margin-bottom: 6px; color: #334155;">🛡️ Security & Access Control</h4>
-                  <label class="form-label">Authorized Google Operator Emails (Security Whitelist):</label>
-                  <input type="text" id="setting-operator-whitelist" class="form-control" placeholder="e.g. partner@gmail.com, collector@gmail.com" style="width: 100%;">
-                  <div class="form-help">Comma-separated emails authorized to sign in with Google in addition to owner (<code>singarisurendra@gmail.com</code>).</div>
+                  <h4 style="font-size: 14px; margin-bottom: 12px; color: #334155;">🛡️ Role-Based Access Control & Google OAuth 2.0 (Zero PIN)</h4>
+                  
+                  <div style="margin-bottom: 14px;">
+                    <label class="form-label">👑 Administrator Google Email ID:</label>
+                    <input type="email" id="setting-admin-email" class="form-control" placeholder="e.g. singarisurendra@gmail.com" style="width: 100%;">
+                    <div class="form-help">Designated Admin account with full master control over dashboard, settings, and collector roster.</div>
+                  </div>
+
+                  <div style="margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                      <label class="form-label" style="margin: 0;">🛵 Field Collectors Roster (Google OAuth Logins):</label>
+                      <button type="button" class="btn btn-sm btn-primary" onclick="openAddCollectorModal()">+ Add Field Collector</button>
+                    </div>
+                    <div id="collectors-roster-container" style="border: 1px solid #e2e8f0; border-radius: 8px; overflow-x: auto; background: #ffffff;">
+                      <!-- Roster table dynamically rendered here -->
+                    </div>
+                    <div class="form-help" style="margin-top: 6px;">Field collectors sign in directly with their authorized Google account. Their collections are attributed to their name and route.</div>
+                  </div>
+
+                  <div>
+                    <label class="form-label">Additional Authorized Google Emails (Optional Whitelist):</label>
+                    <input type="text" id="setting-operator-whitelist" class="form-control" placeholder="e.g. partner@jsrfinance.com, auditor@jsrfinance.com" style="width: 100%;">
+                    <div class="form-help">Comma-separated additional Google accounts authorized to access the system.</div>
+                  </div>
                 </div>
 
                 <div class="form-full" style="margin-top: 10px;">
@@ -1386,9 +1434,9 @@
               </div>
             </div>
 
-            <!-- Notice shown when financial terms are locked due to recorded payments -->
+            <!-- Notice shown when financial terms and disbursal date are locked due to recorded payments -->
             <div id="cust-form-lock-notice" class="form-full" style="display: none; background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 8px; padding: 10px 14px; margin-bottom: 4px; font-size: 12px; color: #92400e; line-height: 1.4;">
-              <strong>🔒 Financial Terms Locked:</strong> One or more instalments have already been received for this loan. Principal Amount, Number of Instalments, and Instalment Amount cannot be edited while payment history exists. To modify these terms, undo all received instalments first in the collection sheet.
+              <strong>🔒 Financial Terms & Date Locked:</strong> One or more instalments have already been received for this loan. Loan Disbursal Date, Principal Amount, Number of Instalments, and Instalment Amount cannot be edited while payment history exists. To modify these terms, undo all received instalments first in the collection sheet.
             </div>
 
             <div>
@@ -1963,6 +2011,194 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="closeModal('modal-kyc-viewer')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODAL: CUSTOMER PROFILE PHOTO LIGHTBOX          -->
+  <!-- ============================================== -->
+  <div id="photo-lightbox-backdrop" class="photo-lightbox-backdrop" style="display: none;" onclick="closeCustomerPhotoLightbox()">
+    <div class="photo-lightbox-card" onclick="event.stopPropagation()">
+      <div class="photo-lightbox-header">
+        <h4 id="photo-lightbox-name" style="margin: 0; font-size: 15px; font-weight: 700; color: #0f172a;">Customer Photo</h4>
+        <button type="button" class="modal-close" onclick="closeCustomerPhotoLightbox()">&times;</button>
+      </div>
+      <div class="photo-lightbox-body">
+        <div class="photo-lightbox-img-wrap">
+          <img id="photo-lightbox-img" src="" alt="Customer Photo" class="photo-lightbox-img">
+        </div>
+        <div class="photo-lightbox-meta">
+          <div id="photo-lightbox-loan" style="font-size: 12.5px; font-weight: 600; color: #475569;"></div>
+          <div id="photo-lightbox-phone" style="font-size: 12px; color: #64748b;"></div>
+          <div id="photo-lightbox-kyc" style="margin-top: 4px;"></div>
+        </div>
+      </div>
+      <div style="padding: 10px 18px 16px; display: flex; justify-content: center;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeCustomerPhotoLightbox()" style="min-width: 100px;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL: CUSTOMER DETAIL & NEAR-FULL-SCREEN BOTTOM SHEET   -->
+  <!-- ======================================================== -->
+  <div id="customer-detail-backdrop" class="cust-detail-backdrop" style="display: none;" onclick="requestCloseCustomerDetailModal()"></div>
+  <div id="modal-customer-detail" class="cust-detail-modal" style="display: none;">
+    <div class="cust-detail-sheet-handle"></div>
+    <div class="cust-detail-header">
+      <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+        <div id="cust-detail-avatar-box"></div>
+        <div style="min-width: 0;">
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <h3 id="cust-detail-name" style="margin: 0; font-size: 16px; font-weight: 800; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></h3>
+            <span id="cust-detail-num-badge" class="cust-id-prefix"></span>
+          </div>
+          <div id="cust-detail-sub" style="font-size: 11.5px; color: #64748b; margin-top: 2px;"></div>
+        </div>
+      </div>
+      <button type="button" class="modal-close" onclick="requestCloseCustomerDetailModal()" style="font-size: 24px; padding: 4px 8px; cursor: pointer;">&times;</button>
+    </div>
+
+    <!-- Multi-Loan Selector Tabs -->
+    <div id="cust-detail-loan-tabs" class="cust-detail-loan-tabs">
+      <!-- Loan tabs dynamically rendered -->
+    </div>
+
+    <!-- Loan Content Container -->
+    <div id="cust-detail-loan-content" class="cust-detail-body">
+      <!-- Active loan balances, quick pay toolbar, and 4-row matrix rendered here -->
+    </div>
+
+    <!-- Modal Footer with Close Button -->
+    <div class="cust-detail-footer">
+      <div id="cust-detail-footer-status" style="font-size: 12px; color: #64748b;"></div>
+      <button type="button" class="btn btn-outline btn-close-detail" onclick="requestCloseCustomerDetailModal()">
+        ✕ Close Window
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODAL: OFFLINE SYNC CONFLICT RESOLUTION        -->
+  <!-- ============================================== -->
+  <div id="sync-conflict-backdrop" class="modal-overlay" style="display: none; z-index: 100010;">
+    <div class="modal-dialog" style="max-width: 540px;">
+      <div class="modal-header" style="background: #fffbeb; border-bottom: 1.5px solid #fde68a;">
+        <h3 class="modal-title" style="color: #92400e; display: flex; align-items: center; gap: 6px;">
+          <span>⚠️</span> Offline Sync Conflict Resolution
+        </h3>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <div id="sync-conflict-details" style="font-size: 13px; color: #334155; line-height: 1.5;">
+          <!-- Dynamically populated with local vs cloud conflict details -->
+        </div>
+        <div style="margin-top: 16px;">
+          <label class="form-label" style="font-weight: 700;">Select Resolution Action:</label>
+          <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 8px;">
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1.5px solid #2563eb; background: #eff6ff; border-radius: 8px; cursor: pointer;">
+              <input type="radio" name="sync-conflict-choice" value="next" checked style="margin-top: 3px;">
+              <div>
+                <strong style="color: #1e40af;">Apply to Next Due Instalment (Recommended)</strong>
+                <p style="margin: 2px 0 0 0; font-size: 11.5px; color: #475569;">
+                  Credits the collected money to the subsequent pending instalment and attributes this collection to this collector.
+                </p>
+              </div>
+            </label>
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid #cbd5e1; background: #ffffff; border-radius: 8px; cursor: pointer;">
+              <input type="radio" name="sync-conflict-choice" value="advance" style="margin-top: 3px;">
+              <div>
+                <strong>Record as Advance / Excess Payment</strong>
+                <p style="margin: 2px 0 0 0; font-size: 11.5px; color: #64748b;">
+                  Logs transaction and credits amount to customer's prepaid balance under this collector's name.
+                </p>
+              </div>
+            </label>
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid #cbd5e1; background: #ffffff; border-radius: 8px; cursor: pointer;">
+              <input type="radio" name="sync-conflict-choice" value="admin-review" style="margin-top: 3px;">
+              <div>
+                <strong>Hold for Admin Audit Review</strong>
+                <p style="margin: 2px 0 0 0; font-size: 11.5px; color: #64748b;">
+                  Retains provisional receipt in audit log and flags for administrator manual verification.
+                </p>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn btn-primary" onclick="submitSyncConflictResolution()">
+          Confirm Resolution & Update Attribution
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODAL: ADD / EDIT FIELD COLLECTOR              -->
+  <!-- ============================================== -->
+  <div id="modal-collector-editor" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="collector-modal-title">🛵 Field Collector Profile</h3>
+        <button class="modal-close" onclick="closeModal('modal-collector-editor')">&times;</button>
+      </div>
+      <form onsubmit="handleSaveCollector(event)">
+        <div class="modal-body">
+          <input type="hidden" id="collector-form-id">
+          <div class="form-grid">
+            <div class="form-full">
+              <label class="form-label">Full Name:</label>
+              <input type="text" id="collector-form-name" class="form-control" placeholder="e.g. Raju Sharma" required style="width: 100%;">
+            </div>
+            <div class="form-full">
+              <label class="form-label">Google Account Email (Required for Login):</label>
+              <input type="email" id="collector-form-email" class="form-control" placeholder="e.g. raju.collector@gmail.com" required style="width: 100%;">
+              <div class="form-help">Must match the Google account the collector uses on their phone.</div>
+            </div>
+            <div>
+              <label class="form-label">Phone Number:</label>
+              <input type="tel" id="collector-form-phone" class="form-control" placeholder="10-digit mobile" style="width: 100%;">
+            </div>
+            <div>
+              <label class="form-label">Assigned Route / Area:</label>
+              <input type="text" id="collector-form-route" class="form-control" placeholder="e.g. Market Ward A" style="width: 100%;">
+            </div>
+            <div class="form-full">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; color: #1e293b;">
+                <input type="checkbox" id="collector-form-active" checked style="width: 16px; height: 16px;">
+                <span>Active Collector (Allowed to sign in & collect)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-collector-editor')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Collector</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- MODAL: COLLECTOR DAILY HANDOVER & AUDIT SLIP    -->
+  <!-- ============================================== -->
+  <div id="modal-collector-handover" class="modal-overlay">
+    <div class="modal-dialog" style="max-width: 520px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="collector-handover-title" style="display: flex; align-items: center; gap: 6px;">
+          <span>📄</span> Daily Collection Handover Slip
+        </h3>
+        <button class="modal-close" onclick="closeModal('modal-collector-handover')">&times;</button>
+      </div>
+      <div class="modal-body" style="padding: 16px;">
+        <div id="collector-handover-slip-content">
+          <!-- Handover slip rendered dynamically -->
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between;">
+        <button type="button" class="btn btn-outline" onclick="closeModal('modal-collector-handover')">Close</button>
+        <button type="button" class="btn btn-primary" onclick="printCollectorHandoverSlip()">🖨️ Print Slip</button>
       </div>
     </div>
   </div>
