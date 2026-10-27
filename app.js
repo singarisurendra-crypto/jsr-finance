@@ -4216,7 +4216,7 @@ function renderCollectionMatrix() {
                 ${custIdStr} • ${cust.phone || 'No Phone'}
               </div>
               <div class="cust-financial-terms">
-                ${formatMoney(cust.givenAmount)} • ${formatMoney(cust.instalmentAmount)}/${unitLabel.toLowerCase()}
+                <span>${formatMoney(cust.givenAmount)}</span> • <span>${formatMoney(cust.instalmentAmount)}/${unitLabel.toLowerCase()}</span> • <span class="cust-bal-payable" style="color: ${effectiveStats.balance <= 0 ? '#15803d' : '#b45309'};" title="Remaining Balance Payable">Bal: ${formatMoney(effectiveStats.balance)}</span>
               </div>
             </div>
           </div>
@@ -8138,14 +8138,41 @@ function closeModal(modalId) {
   }
 }
 
-function showToast(message) {
+function showToast(message, duration = 3000) {
   const toast = document.getElementById('app-toast');
-  if (!toast) return;
-  toast.textContent = message;
-  toast.style.display = 'block';
-  setTimeout(() => {
-    toast.style.display = 'none';
-  }, 2600);
+  if (toast) {
+    toast.textContent = message;
+    toast.style.display = 'block';
+    if (toast._timer) clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => {
+      toast.style.display = 'none';
+    }, duration);
+  }
+
+  // Also mirror message directly into Customer Detail Modal if currently open
+  const detailModal = document.getElementById('modal-customer-detail');
+  const alertBox = document.getElementById('cust-detail-alert-box');
+  if (detailModal && detailModal.style.display !== 'none' && alertBox) {
+    alertBox.textContent = message;
+    alertBox.style.display = 'block';
+    if (message.includes('⚠️') || message.includes('🔒')) {
+      alertBox.style.background = '#fffbeb';
+      alertBox.style.color = '#92400e';
+      alertBox.style.border = '1.5px solid #fde68a';
+    } else if (message.includes('✓') || message.includes('✅') || message.includes('↩️')) {
+      alertBox.style.background = '#f0fdf4';
+      alertBox.style.color = '#166534';
+      alertBox.style.border = '1.5px solid #bbf7d0';
+    } else {
+      alertBox.style.background = '#f8fafc';
+      alertBox.style.color = '#1e293b';
+      alertBox.style.border = '1.5px solid #cbd5e1';
+    }
+    if (alertBox._timer) clearTimeout(alertBox._timer);
+    alertBox._timer = setTimeout(() => {
+      alertBox.style.display = 'none';
+    }, duration);
+  }
 }
 
 // ----------------------------------------------------
@@ -8878,11 +8905,21 @@ function openCustomerDetailModal(customerId, event) {
   const backdrop = document.getElementById('customer-detail-backdrop');
   if (!modal || !backdrop) return;
 
+  // Clear any previous in-modal alert
+  const alertBox = document.getElementById('cust-detail-alert-box');
+  if (alertBox) {
+    alertBox.style.display = 'none';
+    alertBox.textContent = '';
+  }
+
   renderCustomerDetailModalContent(customerId);
 
   backdrop.style.display = 'block';
   modal.style.display = 'flex';
   document.body.classList.add('modal-open');
+
+  const bodyContainer = document.getElementById('cust-detail-loan-content');
+  if (bodyContainer) bodyContainer.scrollTop = 0;
 }
 
 function switchCustomerDetailLoan(targetLoanId) {
@@ -8900,6 +8937,9 @@ function switchCustomerDetailLoan(targetLoanId) {
 
   state.activeDetailCustomerId = targetLoanId;
   renderCustomerDetailModalContent(targetLoanId);
+
+  const bodyContainer = document.getElementById('cust-detail-loan-content');
+  if (bodyContainer) bodyContainer.scrollTop = 0;
 }
 
 function renderCustomerDetailModalContent(loanId) {
@@ -8913,9 +8953,21 @@ function renderCustomerDetailModalContent(loanId) {
   const avatarBox = document.getElementById('cust-detail-avatar-box');
   const footerStatus = document.getElementById('cust-detail-footer-status');
 
+  // Loan Financials & Effective Stats
+  const instCount = cust.totalInstalments || 52;
+  const isDaily = cust.frequency === 'Daily' || instCount === 100;
+  const unitLabel = isDaily ? 'Day' : 'Week';
+  const effectiveStats = getCustomerEffectiveStats(cust);
+  const totalPayable = instCount * (cust.instalmentAmount || 200);
+  const totalPaid = effectiveStats.totalPaidAmount;
+  const remainingBal = Math.max(0, totalPayable - totalPaid);
+  const completionPct = totalPayable > 0 ? Math.min(100, Math.round((totalPaid / totalPayable) * 100)) : 0;
+
   if (nameEl) nameEl.textContent = cust.fullName;
   if (numBadge) numBadge.textContent = `#${cust.customerNumber}`;
-  if (subEl) subEl.textContent = `${cust.phone || 'No phone'} • 📍 ${cust.areaRoute || 'General'} • Started: ${cust.startDate || '-'}`;
+  if (subEl) {
+    subEl.innerHTML = `${cust.phone || 'No phone'} • 📍 ${cust.areaRoute || 'General'} • <span style="color: #b45309; font-weight: 700;">Bal: ${formatMoney(remainingBal)}</span> • Started: ${cust.startDate || '-'}`;
+  }
   if (avatarBox) {
     avatarBox.innerHTML = `
       <div class="cust-avatar" style="width: 36px; height: 36px; border-radius: 50%; overflow: hidden; background: #e0e7ff; color: #3730a3; font-weight: 700; display: flex; align-items: center; justify-content: center; cursor: pointer;" onclick="openCustomerPhotoLightbox('${cust.id}', event)">
@@ -8945,16 +8997,6 @@ function renderCustomerDetailModalContent(loanId) {
     }).join('');
   }
 
-  // Loan Financials & Effective Stats
-  const instCount = cust.totalInstalments || 52;
-  const isDaily = cust.frequency === 'Daily' || instCount === 100;
-  const unitLabel = isDaily ? 'Day' : 'Week';
-  const effectiveStats = getCustomerEffectiveStats(cust);
-  const totalPayable = instCount * (cust.instalmentAmount || 200);
-  const totalPaid = effectiveStats.totalPaidAmount;
-  const remainingBal = Math.max(0, totalPayable - totalPaid);
-  const completionPct = totalPayable > 0 ? Math.min(100, Math.round((totalPaid / totalPayable) * 100)) : 0;
-
   // Next Due Instalment
   let nextDueSeq = 1;
   const insts = effectiveStats.insts;
@@ -8969,22 +9011,23 @@ function renderCustomerDetailModalContent(loanId) {
   const isNextPartial = nextDueInst && nextDueInst.status === 'Partial';
   const nextRemainingDue = isNextPartial ? Math.max(0, (cust.instalmentAmount || 0) - (Number(nextDueInst.paidAmount) || 0)) : (cust.instalmentAmount || 0);
 
-  // Checkbox Grid
+  // Checkbox Grid (With vibrant green checkmarks for paid and orange for partial)
   let gridCellsHtml = '';
   for (let sq = 1; sq <= instCount; sq++) {
     const inst = insts[sq - 1];
-    let btnClass = 'sched-box-pending';
+    let btnClass = 'is-pending sched-box-pending';
     let btnIcon = '';
     let instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)})`;
 
     if (inst && inst.status === 'Received') {
-      btnClass = 'sched-box-paid';
+      btnClass = 'is-paid sched-box-paid';
       btnIcon = '✓';
-      instTitle = `${unitLabel} #${sq}: Paid (${formatMoney(inst.paidAmount || cust.instalmentAmount)}) on ${inst.paidDate || '-'}`;
+      instTitle = `${unitLabel} #${sq}: Paid (${formatMoney(inst.paidAmount || cust.instalmentAmount)}) on ${inst.paidDate || '-'}. Tap to undo.`;
     } else if (inst && inst.status === 'Partial') {
-      btnClass = 'sched-box-partial';
-      btnIcon = '½';
-      instTitle = `${unitLabel} #${sq}: Partial (Rec'd: ${formatMoney(inst.paidAmount || 0)})`;
+      btnClass = 'is-partial sched-box-partial';
+      const pAmt = Number(inst.paidAmount) || 0;
+      btnIcon = `<span class="sched-partial-amt"><span class="sched-partial-currency">₹</span>${pAmt}</span>`;
+      instTitle = `${unitLabel} #${sq}: Partial (Rec'd: ${formatMoney(pAmt)} • Pending: ${formatMoney((cust.instalmentAmount || 0) - pAmt)}). Tap to complete.`;
     }
 
     gridCellsHtml += `
@@ -9026,7 +9069,7 @@ function renderCustomerDetailModalContent(loanId) {
           <div style="font-size: 16px; font-weight: 800; color: #15803d;">${formatMoney(totalPaid)}</div>
         </div>
         <div>
-          <span style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700;">Remaining Balance</span>
+          <span style="font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 700;">Balance Payable</span>
           <div style="font-size: 16px; font-weight: 800; color: #b45309;">${formatMoney(remainingBal)}</div>
         </div>
         <div>
@@ -9047,6 +9090,7 @@ function renderCustomerDetailModalContent(loanId) {
           ? `<span style="color: #b45309; font-weight: 700; margin-left: 4px;">½ Partial (Rec'd: ${formatMoney(nextDueInst.paidAmount || 0)} • Pending: ${formatMoney(nextRemainingDue)})</span>`
           : `<span style="color: #1e40af; font-weight: 700; margin-left: 4px;">Due ${formatMoney(cust.instalmentAmount)}</span>`
         }
+        <span style="margin-left: 8px; color: #b45309; font-weight: 700; background: #fffbeb; padding: 2px 7px; border-radius: 4px; border: 1px solid #fde68a;">Bal Payable: ${formatMoney(remainingBal)}</span>
       </div>
       <div style="display: flex; gap: 8px; align-items: center;">
         <button type="button" class="btn btn-sm" style="background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; font-weight: 700; padding: 5px 12px; border-radius: 6px; cursor: pointer;" onclick="openPartialPayModal('${cust.id}', ${nextDueSeq})">
