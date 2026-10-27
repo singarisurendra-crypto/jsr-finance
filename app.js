@@ -641,12 +641,149 @@ function hideLoansTooltip() {
   }
 }
 
+// Interactive 3-Dot Actions Menu Popover for Customer Pro Actions
+function toggleCustomerActionsMenu(event, customerId) {
+  if (event && event.stopPropagation) {
+    event.stopPropagation();
+  }
+  const popover = document.getElementById('cust-actions-menu-popover');
+  const backdrop = document.getElementById('cust-actions-backdrop');
+  if (!popover) return;
+
+  if (popover.dataset.openCust === customerId && popover.style.display !== 'none' && popover.style.display !== '') {
+    hideCustomerActionsMenu();
+    return;
+  }
+
+  const cust = state.customers.find(c => c.id === customerId);
+  if (!cust) return;
+
+  const stats = getCustomerStats(cust);
+  const totalInst = cust.totalInstalments || 52;
+  const nextDueSeq = (cust.instalments || []).findIndex(i => !i || i.status !== 'Received') + 1 || totalInst;
+
+  let avatarInner = cust.fullName ? cust.fullName.charAt(0).toUpperCase() : 'C';
+  if (cust.photoUrl) {
+    avatarInner = `<img src="${cust.photoUrl}" style="width:100%; height:100%; object-fit:cover;">`;
+  }
+
+  popover.innerHTML = `
+    <div class="cust-menu-header">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div style="width:36px; height:36px; border-radius:50%; overflow:hidden; background:#2563eb; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px; flex-shrink:0;">
+          ${avatarInner}
+        </div>
+        <div>
+          <div style="font-weight:800; font-size:14px; color:#0f172a;">#${cust.customerNumber} - ${cust.fullName} <span class="cust-loan-badge">L${cust.loanNumber || 1}</span></div>
+          <div style="font-size:11.5px; color:#64748b;">${cust.phone || 'No phone'} • Bal: <strong style="color:#b45309;">${formatMoney(stats.balance)}</strong></div>
+        </div>
+      </div>
+      <button type="button" class="modal-close" onclick="hideCustomerActionsMenu()" style="font-size:22px; cursor:pointer; background:none; border:none; color:#64748b;">&times;</button>
+    </div>
+
+    <div class="cust-menu-body">
+      <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openCustomerPassbook('${cust.id}')">
+        <span class="cust-menu-icon" style="background:#eff6ff; color:#1e40af;">🧾</span>
+        <div>
+          <div class="cust-menu-item-title">Customer Passbook & Statement</div>
+          <div class="cust-menu-item-desc">Chronological statement, company letterhead & signatures</div>
+        </div>
+      </button>
+
+      <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openThermalReceiptModal('${cust.id}', ${nextDueSeq > 1 ? nextDueSeq - 1 : 1})">
+        <span class="cust-menu-icon" style="background:#f1f5f9; color:#334155;">🖨️</span>
+        <div>
+          <div class="cust-menu-item-title">Pocket Thermal Slip (58mm)</div>
+          <div class="cust-menu-item-desc">Wireless Bluetooth print or instant 58mm browser print</div>
+        </div>
+      </button>
+
+      <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openKycViewerModal('${cust.id}')">
+        <span class="cust-menu-icon" style="background:#ecfdf5; color:#047857;">🪪</span>
+        <div>
+          <div class="cust-menu-item-title">Borrower KYC Vault & Docs</div>
+          <div class="cust-menu-item-desc">${cust.kycVerified ? '✓ Verified identity proof & camera photo' : 'Inspect uploaded borrower ID documents'}</div>
+        </div>
+      </button>
+
+      ${!cust.isSettled && stats.balance > 0 ? `
+        <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openSettlementModal('${cust.id}')">
+          <span class="cust-menu-icon" style="background:#faf5ff; color:#7c3aed;">🤝</span>
+          <div>
+            <div class="cust-menu-item-title" style="color:#7c3aed;">Early Loan Foreclosure & Settlement</div>
+            <div class="cust-menu-item-desc">Calculate rebate discount, settle remaining balance & issue NOC</div>
+          </div>
+        </button>
+      ` : (cust.isSettled ? `
+        <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openNOCModal('${cust.id}')">
+          <span class="cust-menu-icon" style="background:#fef3c7; color:#92400e;">📜</span>
+          <div>
+            <div class="cust-menu-item-title" style="color:#92400e;">View Official NOC Certificate</div>
+            <div class="cust-menu-item-desc">No Objection Certificate with legal seal & clearance</div>
+          </div>
+        </button>
+      ` : '')}
+
+      ${(cust.guarantor && cust.guarantor.phone) ? `
+        <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); contactGuarantor('${cust.id}', 'whatsapp')">
+          <span class="cust-menu-icon" style="background:#f0fdf4; color:#16a34a;">💬</span>
+          <div>
+            <div class="cust-menu-item-title" style="color:#16a34a;">WhatsApp Guarantor / Surety</div>
+            <div class="cust-menu-item-desc">Send 1-tap notice to ${cust.guarantor.name} (${cust.guarantor.phone})</div>
+          </div>
+        </button>
+        <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); contactGuarantor('${cust.id}', 'call')">
+          <span class="cust-menu-icon" style="background:#eff6ff; color:#2563eb;">📞</span>
+          <div>
+            <div class="cust-menu-item-title">Call Guarantor Directly</div>
+            <div class="cust-menu-item-desc">Dial ${cust.guarantor.phone} (${cust.guarantor.rel || 'Surety'})</div>
+          </div>
+        </button>
+      ` : ''}
+
+      <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openEditCustomerModal('${cust.id}')">
+        <span class="cust-menu-icon" style="background:#f8fafc; color:#475569;">✏️</span>
+        <div>
+          <div class="cust-menu-item-title">Edit Customer Profile</div>
+          <div class="cust-menu-item-desc">Update phone number, address, route, or surety</div>
+        </div>
+      </button>
+    </div>
+  `;
+
+  popover.dataset.openCust = customerId;
+  popover.style.display = 'flex';
+  if (backdrop) backdrop.style.display = 'block';
+  document.body.classList.add('modal-open');
+}
+
+function hideCustomerActionsMenu() {
+  const popover = document.getElementById('cust-actions-menu-popover');
+  const backdrop = document.getElementById('cust-actions-backdrop');
+  if (popover) {
+    popover.style.display = 'none';
+    popover.dataset.openCust = '';
+  }
+  if (backdrop) {
+    backdrop.style.display = 'none';
+  }
+  if (!document.querySelector('.modal-overlay.active') && (!document.getElementById('loans-tooltip-popover') || document.getElementById('loans-tooltip-popover').style.display === 'none')) {
+    document.body.classList.remove('modal-open');
+  }
+}
+
 // Global document click listener to close loans tooltip when clicking outside
 document.addEventListener('click', (e) => {
   const popover = document.getElementById('loans-tooltip-popover');
   if (popover && popover.style.display !== 'none' && popover.style.display !== '') {
     if (!popover.contains(e.target) && !e.target.closest('.loans-badge')) {
       hideLoansTooltip();
+    }
+  }
+  const actionsPopover = document.getElementById('cust-actions-menu-popover');
+  if (actionsPopover && actionsPopover.style.display !== 'none' && actionsPopover.style.display !== '') {
+    if (!actionsPopover.contains(e.target) && !e.target.closest('.btn-cust-3dot')) {
+      hideCustomerActionsMenu();
     }
   }
   if (e.target && e.target.classList && e.target.classList.contains('modal-overlay')) {
@@ -658,6 +795,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     hideLoansTooltip();
+    hideCustomerActionsMenu();
     document.querySelectorAll('.modal-overlay.active').forEach(m => {
       closeModal(m.id);
     });
@@ -3922,7 +4060,7 @@ function renderCollectionMatrix() {
 
     const activePartialInst = (cust.instalments || []).find(i => i && i.status === 'Partial');
     const partialBadgeHtml = activePartialInst
-      ? `<span class="badge" style="background:#fef3c7; color:#b45309; border:1px solid #f59e0b; font-size:10px; padding:1px 6px; margin-left:4px; font-weight:700; border-radius:4px;" title="${unitLabel} #${activePartialInst.number}: Paid ${formatMoney(activePartialInst.paidAmount || 0)} • Pending ${formatMoney((cust.instalmentAmount || 0) - (activePartialInst.paidAmount || 0))}">½ Partial: ${formatMoney(activePartialInst.paidAmount || 0)} rec'd • Pending ${formatMoney((cust.instalmentAmount || 0) - (activePartialInst.paidAmount || 0))}</span>`
+      ? `<span class="badge-partial-pill" title="${unitLabel} #${activePartialInst.number}: Partial Payment rec'd ${formatMoney(activePartialInst.paidAmount || 0)} • Pending ${formatMoney((cust.instalmentAmount || 0) - (activePartialInst.paidAmount || 0))}">½ ${formatMoney(activePartialInst.paidAmount || 0)}</span>`
       : '';
 
     let nextDueSeq = 1;
@@ -3958,14 +4096,12 @@ function renderCollectionMatrix() {
             <div class="cust-avatar" style="${avatarStyle}">${avatarContent}</div>
             <div class="cust-info-left">
               <div class="cust-name-row">
-                <span class="cust-name">${cust.fullName}</span>
+                <span class="cust-name" title="${cust.fullName}">${cust.fullName}</span>
                 <span class="cust-loan-badge">L${cust.loanNumber || 1}</span>
-                ${creditBadgeHtml}
-                ${kycBadgeHtml}
-                ${settledBadgeHtml}
+                ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 5px; flex-shrink:0; white-space:nowrap;">⚠️ Due ${stats.missedCount}</span>` : ''}
                 ${partialBadgeHtml}
-                ${isLockedByOther ? `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-size:10px; padding:1px 6px; margin-left:4px; font-weight:700; border-radius:4px;">🔒 Editing by ${activeLock.lockedBy}</span>` : ''}
-                ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 5px; margin-left:4px;">⚠️ Due ${stats.missedCount}</span>` : ''}
+                ${settledBadgeHtml}
+                ${isLockedByOther ? `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-size:10px; padding:1px 6px; flex-shrink:0; font-weight:700; border-radius:4px;">🔒 ${activeLock.lockedBy}</span>` : ''}
               </div>
               <div class="cust-sub-details">
                 ${custIdStr} • ${cust.phone || 'No Phone'}
@@ -4012,7 +4148,7 @@ function renderCollectionMatrix() {
             ` : ''}
 
             <!-- Quick Action Toolbar: Pay Pending or Partial Pay -->
-            <div class="sched-quick-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12.5px;">
+            <div class="sched-quick-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12.5px; flex-wrap: wrap; gap: 8px;">
               <div style="color: #334155; font-weight: 600;">
                 <span>${unitLabel} #${nextDueSeq}:</span>
                 ${isNextPartial 
@@ -4020,7 +4156,7 @@ function renderCollectionMatrix() {
                   : `<span style="color: #1e40af; font-weight: 700; margin-left: 4px;">Due ${formatMoney(cust.instalmentAmount)}</span>`
                 }
               </div>
-              <div style="display: flex; gap: 8px;">
+              <div style="display: flex; gap: 8px; align-items: center;">
                 <button type="button" class="btn btn-sm" style="background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="openPartialPayModal('${cust.id}', ${nextDueSeq})">
                   ½ Partial Pay
                 </button>
@@ -4030,33 +4166,20 @@ function renderCollectionMatrix() {
               </div>
             </div>
 
-            <!-- Pro Suite Toolbar: Passbook, Thermal Slip, Settlement, Guarantor -->
-            <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 12px; flex-wrap: wrap;">
-              <button type="button" class="btn btn-sm btn-outline" style="font-size: 11.5px; padding: 4px 9px;" onclick="openCustomerPassbook('${cust.id}')">
-                🧾 Passbook
+            <!-- Customer Details & Quick Actions Bar: Rating, KYC, Surety + 3-Dot More Menu -->
+            <div class="sched-sub-toolbar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                ${creditBadgeHtml}
+                ${kycBadgeHtml}
+                ${cust.guarantor && cust.guarantor.name ? `
+                  <span class="guar-pill" onclick="contactGuarantor('${cust.id}', 'whatsapp')" title="Surety: ${cust.guarantor.name} (${cust.guarantor.phone || 'No phone'}) - Tap to WhatsApp" style="cursor: pointer;">
+                    👥 Surety: ${cust.guarantor.name}
+                  </span>
+                ` : ''}
+              </div>
+              <button type="button" class="btn-cust-3dot" onclick="toggleCustomerActionsMenu(event, '${cust.id}')" title="More Customer Actions (Passbook, Thermal Slip, KYC, Settlement)">
+                <span>⋮</span> More Options
               </button>
-              <button type="button" class="btn btn-sm btn-outline" style="font-size: 11.5px; padding: 4px 9px;" onclick="openThermalReceiptModal('${cust.id}', ${nextDueSeq > 1 ? nextDueSeq - 1 : 1})" title="Pocket Thermal Receipt">
-                🖨️ Thermal Slip
-              </button>
-              ${cust.photoUrl || cust.kycDocUrl ? `
-                <button type="button" class="btn btn-sm btn-outline" style="font-size: 11.5px; padding: 4px 9px;" onclick="openKycViewerModal('${cust.id}')">
-                  🪪 KYC Docs
-                </button>
-              ` : ''}
-              ${!cust.isSettled && stats.balance > 0 ? `
-                <button type="button" class="btn btn-sm" style="font-size: 11.5px; padding: 4px 9px; background: #faf5ff; color: #7c3aed; border: 1px solid #d8b4fe; font-weight: 700;" onclick="openSettlementModal('${cust.id}')">
-                  🤝 Settle Loan & NOC
-                </button>
-              ` : (cust.isSettled ? `
-                <button type="button" class="btn btn-sm" style="font-size: 11.5px; padding: 4px 9px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-weight: 700;" onclick="openNOCModal('${cust.id}')">
-                  📜 Official NOC
-                </button>
-              ` : '')}
-              ${cust.guarantor && cust.guarantor.phone ? `
-                <button type="button" class="guar-pill" onclick="contactGuarantor('${cust.id}', 'whatsapp')" title="WhatsApp Guarantor ${cust.guarantor.name}">
-                  👥 Surety: ${cust.guarantor.name} 💬
-                </button>
-              ` : ''}
             </div>
 
             <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
