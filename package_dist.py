@@ -21,6 +21,8 @@ def create_dist_zip():
         "test_pr1_ledger.py",
         "test_suite_all.py",
         "test_six_pro_features.py",
+        "test_new_features_suite.py",
+        "verify_all_new_features.py",
         os.path.join(".github", "workflows", "firebase-hosting-merge.yml"),
         os.path.join("docs", "prs", "PR-001.md"),
         os.path.join("docs", "prs", "PR-002.md"),
