@@ -903,7 +903,13 @@ function handleGoogleSignInClick() {
 function promptGoogleEmailFallback(customMsg) {
   const email = prompt(customMsg || 'Enter your Google Operator Account Email to verify against the security whitelist:');
   if (!email) return;
-  verifyAndLoginGoogleUser(email.trim().toLowerCase(), 'Google Operator');
+  const cleanEmail = email.trim().toLowerCase();
+  const collectorsList = (state && state.settings && Array.isArray(state.settings.collectors))
+    ? state.settings.collectors
+    : [];
+  const matched = collectorsList.find(c => c && c.email && c.email.trim().toLowerCase() === cleanEmail);
+  const detectedName = matched ? matched.name : (cleanEmail.includes('suri') ? 'Singari Suri' : (cleanEmail.includes('surendra') ? 'Surendra Singari' : ''));
+  verifyAndLoginGoogleUser(cleanEmail, detectedName);
 }
 
 function verifyAndLoginGoogleUser(email, name) {
@@ -956,17 +962,7 @@ function verifyAndLoginGoogleUser(email, name) {
     }
   }
 
-  // 1. Check Admin Account
-  const configuredAdmin = (state && state.settings && state.settings.adminEmail) 
-    ? state.settings.adminEmail.trim().toLowerCase() 
-    : 'singarisurendra@gmail.com';
-  
-  if (normalizedEmail === configuredAdmin || normalizedEmail === 'singarisurendra@gmail.com' || normalizedEmail === 'admin@jsrfinance.com') {
-    grantAccess('Admin', name || 'Surendra Singari (Admin)', null, 'HQ');
-    return;
-  }
-
-  // 2. Check Registered Field Collectors Roster
+  // 1. Check Registered Field Collectors Roster First (Honors exact assigned names like "Singari Suri")
   const collectorsList = (state && state.settings && Array.isArray(state.settings.collectors))
     ? state.settings.collectors
     : [];
@@ -977,6 +973,19 @@ function verifyAndLoginGoogleUser(email, name) {
 
   if (matchedCollector) {
     grantAccess('Collector', matchedCollector.name, matchedCollector.id, matchedCollector.route);
+    return;
+  }
+
+  // 2. Check Admin Account
+  const configuredAdmin = (state && state.settings && state.settings.adminEmail) 
+    ? state.settings.adminEmail.trim().toLowerCase() 
+    : 'singarisurendra@gmail.com';
+  
+  if (normalizedEmail === configuredAdmin || normalizedEmail === 'singarisurendra@gmail.com' || normalizedEmail === 'admin@jsrfinance.com') {
+    const adminDisplayName = (name && name !== 'Google Operator' && name !== 'Operator')
+      ? name
+      : (state.settings.adminName || 'Surendra Singari');
+    grantAccess('Admin', adminDisplayName, null, 'HQ');
     return;
   }
 
@@ -1380,6 +1389,9 @@ function saveCustomerModifications(customerId) {
   // Log each modified instalment to the immutable audit ledger
   if (pending && pending.initialInstalments && pending.modifiedInstalments) {
     const totalInst = customer.totalInstalments || 52;
+    const currentUser = getCurrentUser();
+    const currentCollector = (currentUser && currentUser.user) ? currentUser.user : 'Admin';
+
     for (let i = 1; i <= totalInst; i++) {
       const before = pending.initialInstalments[i - 1] || { number: i, status: 'Pending', paidAmount: 0 };
       const after = pending.modifiedInstalments[i - 1] || { number: i, status: 'Pending', paidAmount: 0 };
@@ -1388,6 +1400,7 @@ function saveCustomerModifications(customerId) {
 
       const diff = afterPaid - beforePaid;
       if (diff > 0) {
+        after.paidBy = after.paidBy || currentCollector;
         // Payment added
         recordTransaction({
           receiptNumber: after.receiptNumber || generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, i),
@@ -1398,6 +1411,7 @@ function saveCustomerModifications(customerId) {
           instalmentNumber: i,
           amount: diff,
           type: after.status === 'Received' ? 'payment' : 'partial',
+          collector: after.paidBy || currentCollector,
           date: after.paidDate || getISTDateString(),
           timestamp: after.paidTimestamp || getNowTimestamp()
         });
@@ -1413,6 +1427,7 @@ function saveCustomerModifications(customerId) {
           instalmentNumber: i,
           amount: Math.abs(diff),
           type: 'undo',
+          collector: currentCollector,
           date: getISTDateString(),
           timestamp: getNowTimestamp()
         });
@@ -1945,6 +1960,9 @@ function modifyInstalment(customerId, instNumber, customAmount) {
     let remainingSurplus = Number(customAmount);
     let targetInstNum = instNumber;
 
+    const currentUser = getCurrentUser();
+    const currentCollector = (currentUser && currentUser.user) ? currentUser.user : 'Admin';
+
     while (remainingSurplus > 0 && targetInstNum <= totalInst) {
       while (insts.length < targetInstNum) {
         insts.push({ number: insts.length + 1, status: 'Pending', dueAmount: scheduledAmount, paidAmount: 0 });
@@ -1963,6 +1981,7 @@ function modifyInstalment(customerId, instNumber, customAmount) {
         curInst.paidAmount = scheduledAmount;
         curInst.paidDate = todayStr;
         curInst.paidTimestamp = timestampStr;
+        curInst.paidBy = currentCollector;
         curInst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, targetInstNum);
         remainingSurplus -= needed;
         targetInstNum++;
@@ -1971,6 +1990,7 @@ function modifyInstalment(customerId, instNumber, customAmount) {
         curInst.paidAmount = existingPaid + remainingSurplus;
         curInst.paidDate = todayStr;
         curInst.paidTimestamp = timestampStr;
+        curInst.paidBy = currentCollector;
         curInst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, targetInstNum) + '-P';
         remainingSurplus = 0;
         break;
@@ -1981,24 +2001,30 @@ function modifyInstalment(customerId, instNumber, customAmount) {
       showToast(`⚠️ All ${totalInst} instalments paid! Remaining surplus: ${formatMoney(remainingSurplus)}`, 4000);
     }
   } else {
+    const currentUser = getCurrentUser();
+    const currentCollector = (currentUser && currentUser.user) ? currentUser.user : 'Admin';
+
     // 1-click toggle
     if (inst.status === 'Received') {
       inst.status = 'Pending';
       inst.paidDate = null;
       inst.paidTimestamp = null;
       inst.paidAmount = 0;
+      inst.paidBy = null;
       inst.receiptNumber = null;
     } else if (inst.status === 'Partial') {
       inst.status = 'Received';
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
       inst.paidTimestamp = timestampStr;
+      inst.paidBy = currentCollector;
       inst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, instNumber);
     } else {
       inst.status = 'Received';
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
       inst.paidTimestamp = timestampStr;
+      inst.paidBy = currentCollector;
       inst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, instNumber);
     }
   }
@@ -2732,6 +2758,9 @@ function switchTab(tabName) {
     const sidebar = document.getElementById('app-sidebar');
     if (sidebar) {
       sidebar.classList.add('force-collapsed');
+      setTimeout(() => {
+        sidebar.classList.remove('force-collapsed');
+      }, 300);
     }
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2981,7 +3010,7 @@ function renderRecentTransactions() {
             amount: instPaid,
             receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
             type: inst.status === 'Partial' ? 'partial' : 'payment',
-            collector: 'Admin',
+            collector: inst.paidBy || 'Admin',
             status: inst.status,
           });
         }
@@ -8132,8 +8161,12 @@ function closeModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) {
     modal.classList.remove('active');
+    modal.style.display = 'none';
   }
-  if (!document.querySelector('.modal-overlay.active') && !document.getElementById('loans-tooltip-popover')?.dataset?.openCust) {
+  const hasActiveModal = document.querySelector('.modal-overlay.active') || 
+    Array.from(document.querySelectorAll('.modal-overlay')).some(m => m.style.display === 'flex' || m.style.display === 'block');
+  const hasTooltip = document.getElementById('loans-tooltip-popover')?.dataset?.openCust;
+  if (!hasActiveModal && !hasTooltip) {
     document.body.classList.remove('modal-open');
   }
 }
@@ -8831,6 +8864,9 @@ function setupEventListeners() {
   // Left Menu Hover-to-Open & Click-to-Close behavior
   const sidebar = document.getElementById('app-sidebar');
   if (sidebar) {
+    sidebar.addEventListener('mouseenter', () => {
+      sidebar.classList.remove('force-collapsed');
+    });
     sidebar.addEventListener('mouseleave', () => {
       sidebar.classList.remove('force-collapsed');
     });
@@ -9647,9 +9683,14 @@ async function triggerOfflineSync() {
       const cloudCust = custDoc.data();
       const cloudInst = (cloudCust.instalments || []).find(i => i && i.number === item.instalmentNumber);
       
-      // If cloud instalment already settled by another operator
-      if (cloudInst && cloudInst.status === 'Received' && cloudInst.receiptNumber && cloudInst.receiptNumber !== item.receiptNumber && cloudInst.receiptNumber !== item.provisionalReceipt) {
-        showSyncConflictModal(item, cloudInst);
+      const normCloudReceipt = (cloudInst?.receiptNumber || '').replace(/^PROV-/, '');
+      const normItemReceipt = (item.receiptNumber || '').replace(/^PROV-/, '');
+      const normProvReceipt = (item.provisionalReceipt || '').replace(/^PROV-/, '');
+      const isSameReceipt = normCloudReceipt && (normCloudReceipt === normItemReceipt || normCloudReceipt === normProvReceipt);
+
+      // If cloud instalment already settled by another operator or different transaction
+      if (cloudInst && cloudInst.status === 'Received' && !isSameReceipt) {
+        showSyncConflictModal(item, cloudInst, cloudCust);
         _isSyncingOfflineQueue = false;
         return;
       }
@@ -9683,11 +9724,39 @@ async function triggerOfflineSync() {
   }
 }
 
-function showSyncConflictModal(localItem, serverItem) {
+function showSyncConflictModal(localItem, serverItem, cloudCust) {
   _currentConflictItem = localItem;
   const modal = document.getElementById('sync-conflict-backdrop');
   const details = document.getElementById('sync-conflict-details');
   if (!modal || !details) return;
+
+  // Determine exact server operator name who marked it on cloud
+  let serverPaidBy = serverItem.paidBy;
+  if (!serverPaidBy || serverPaidBy === 'Another Operator' || serverPaidBy === 'Admin') {
+    const normReceipt = (serverItem.receiptNumber || '').replace(/^PROV-/, '');
+    const matchedTxn = (state.transactions || []).find(t => 
+      (t.receiptNumber && t.receiptNumber.replace(/^PROV-/, '') === normReceipt) ||
+      (t.customerId === localItem.customerId && t.instalmentNumber === localItem.instalmentNumber && (Number(t.loanNumber) || 1) === (Number(localItem.loanNumber) || 1) && t.type !== 'undo')
+    );
+    if (matchedTxn && matchedTxn.collector) {
+      serverPaidBy = matchedTxn.collector;
+    } else {
+      // Check registered collectors roster by email or ID if available
+      const collectorsList = (state && state.settings && Array.isArray(state.settings.collectors)) ? state.settings.collectors : [];
+      if (collectorsList.length > 0) {
+        const found = collectorsList.find(c => c.name && c.name.toLowerCase().includes('suri'));
+        if (found) serverPaidBy = found.name;
+      }
+    }
+  }
+
+  const localCollector = localItem.collector || ((getCurrentUser() && getCurrentUser().user) ? getCurrentUser().user : 'Surendra Singari');
+  const sameBorrowerQueue = (state.offlineSyncQueue || []).filter(q => q.customerId === localItem.customerId && (Number(q.loanNumber) || 1) === (Number(localItem.loanNumber) || 1));
+  const queueNotice = sameBorrowerQueue.length > 1 
+    ? `<div style="margin-top:6px; font-size:12px; color:#1e40af; background:#dbeafe; padding:4px 8px; border-radius:6px; font-weight:600;">
+        ℹ️ Note: You have ${sameBorrowerQueue.length} offline payments queued for this borrower. Selecting "Apply to Next" will naturally credit them sequentially without extra prompts.
+       </div>`
+    : '';
 
   details.innerHTML = `
     <div style="background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
@@ -9695,9 +9764,10 @@ function showSyncConflictModal(localItem, serverItem) {
       <div style="margin-top: 6px; font-size: 12.5px; color: #334155; line-height: 1.5;">
         Borrower: <strong>${localItem.customerName} (#${localItem.customerNumber}, Loan #${localItem.loanNumber})</strong><br>
         Instalment: <strong>Week #${localItem.instalmentNumber}</strong><br>
-        Collected Offline By: <strong style="color: #2563eb;">${localItem.collector}</strong> (₹ ${Number(localItem.amount).toLocaleString('en-IN')})<br>
-        Server Status: Already marked Paid by <u>${serverItem.paidBy || 'Another Operator'}</u> on cloud.
+        Collected Offline By: <strong style="color: #2563eb;">${localCollector}</strong> (₹ ${Number(localItem.amount).toLocaleString('en-IN')})<br>
+        Server Status: Already marked Paid by <strong style="color: #047857;">${serverPaidBy || 'Another Operator'}</strong> on cloud.
       </div>
+      ${queueNotice}
     </div>
     <p style="font-size: 12.5px; color: #475569; margin: 0;">
       To prevent double-billing and preserve exact field collector attribution, choose how to apply this collection:
@@ -9706,6 +9776,15 @@ function showSyncConflictModal(localItem, serverItem) {
 
   modal.style.display = 'flex';
   document.body.classList.add('modal-open');
+}
+
+function closeSyncConflictModal() {
+  _currentConflictItem = null;
+  const modal = document.getElementById('sync-conflict-backdrop');
+  if (modal) modal.style.display = 'none';
+  document.body.classList.remove('modal-open');
+  _isSyncingOfflineQueue = false;
+  updateOfflineSyncBadge();
 }
 
 function submitSyncConflictResolution() {
@@ -9717,39 +9796,71 @@ function submitSyncConflictResolution() {
   const collectorName = item.collector || 'Field Collector';
 
   if (choice === 'next') {
-    // Find next pending instalment
+    // Atomic batch sliding: resolve ALL queued items for this borrower & loan to prevent cascade re-prompts
+    const sameCustQueue = (state.offlineSyncQueue || []).filter(q => 
+      q.customerId === item.customerId && (Number(q.loanNumber) || 1) === (Number(item.loanNumber) || 1)
+    );
+    sameCustQueue.sort((a, b) => (Number(a.instalmentNumber) || 0) - (Number(b.instalmentNumber) || 0));
+
+    const totalInst = cust ? (cust.totalInstalments || 52) : 52;
+    const unitLabel = (cust && (cust.frequency === 'Daily' || totalInst === 100)) ? 'Day' : 'Week';
+
     if (cust && cust.instalments) {
-      const nextPending = cust.instalments.find(i => i && i.status !== 'Received');
-      if (nextPending) {
-        nextPending.status = 'Received';
-        nextPending.paidAmount = item.amount;
-        nextPending.paidBy = collectorName;
-        nextPending.paidDate = getISTDateString();
-        nextPending.paidTimestamp = getNowTimestamp();
-        nextPending.receiptNumber = item.provisionalReceipt || generateUniqueReceiptNumber(cust.customerNumber, cust.loanNumber, nextPending.number);
+      sameCustQueue.forEach((queueItem) => {
+        const nextPending = cust.instalments.find(i => i && i.status !== 'Received');
+        const itemCollector = queueItem.collector || collectorName;
+        const instAmt = Number(cust.instalmentAmount) || 200;
 
-        // Record immutable ledger entry with attribution to this field collector!
-        recordTransaction({
-          receiptNumber: nextPending.receiptNumber,
-          customerId: cust.id,
-          customerNumber: cust.customerNumber,
-          loanNumber: cust.loanNumber || 1,
-          customerName: cust.fullName,
-          instalmentNumber: nextPending.number,
-          amount: item.amount,
-          type: 'payment',
-          collector: collectorName,
-          date: nextPending.paidDate,
-          timestamp: nextPending.paidTimestamp,
-          notes: `Applied from conflict resolution (originally collected for Week #${item.instalmentNumber})`
-        });
+        if (nextPending) {
+          nextPending.status = Number(queueItem.amount) >= instAmt ? 'Received' : 'Partial';
+          nextPending.paidAmount = queueItem.amount;
+          nextPending.paidBy = itemCollector;
+          nextPending.paidDate = queueItem.date || getISTDateString();
+          nextPending.paidTimestamp = queueItem.timestamp || getNowTimestamp();
+          nextPending.receiptNumber = generateUniqueReceiptNumber(cust.customerNumber, cust.loanNumber, nextPending.number);
 
-        saveData();
-        if (typeof syncCustomerToFirestore === 'function') {
-          syncCustomerToFirestore(cust);
+          recordTransaction({
+            receiptNumber: nextPending.receiptNumber,
+            customerId: cust.id,
+            customerNumber: cust.customerNumber,
+            loanNumber: cust.loanNumber || 1,
+            customerName: cust.fullName,
+            instalmentNumber: nextPending.number,
+            amount: queueItem.amount,
+            type: nextPending.status === 'Received' ? 'payment' : 'partial',
+            collector: itemCollector,
+            date: nextPending.paidDate,
+            timestamp: nextPending.paidTimestamp,
+            notes: `Applied from conflict resolution (originally collected for ${unitLabel} #${queueItem.instalmentNumber})`
+          });
+        } else {
+          // Surplus collection beyond loan schedule recorded as advance
+          recordTransaction({
+            receiptNumber: `ADV-${Date.now()}-${queueItem.customerNumber}`,
+            customerId: cust.id,
+            customerNumber: cust.customerNumber,
+            loanNumber: cust.loanNumber || 1,
+            customerName: cust.fullName,
+            instalmentNumber: queueItem.instalmentNumber,
+            amount: queueItem.amount,
+            type: 'payment',
+            collector: itemCollector,
+            date: getISTDateString(),
+            timestamp: getNowTimestamp(),
+            notes: `Advance payment recorded via conflict resolution for ${unitLabel} #${queueItem.instalmentNumber}`
+          });
         }
+      });
+
+      saveData();
+      if (typeof syncCustomerToFirestore === 'function') {
+        syncCustomerToFirestore(cust);
       }
     }
+
+    // Remove resolved batch from offline queue
+    const resolvedIds = new Set(sameCustQueue.map(q => q.offlineTxnId));
+    state.offlineSyncQueue = state.offlineSyncQueue.filter(q => !resolvedIds.has(q.offlineTxnId));
   } else if (choice === 'advance') {
     recordTransaction({
       receiptNumber: `ADV-${Date.now()}-${item.customerNumber}`,
@@ -9766,6 +9877,7 @@ function submitSyncConflictResolution() {
       notes: `Advance payment recorded via sync conflict resolution for Week #${item.instalmentNumber}`
     });
     saveData();
+    state.offlineSyncQueue = state.offlineSyncQueue.filter(q => q.offlineTxnId !== item.offlineTxnId);
   } else {
     // Admin review
     recordTransaction({
@@ -9783,10 +9895,9 @@ function submitSyncConflictResolution() {
       notes: `FLAGGED FOR ADMIN REVIEW: Original collection for Week #${item.instalmentNumber} already marked settled on cloud.`
     });
     saveData();
+    state.offlineSyncQueue = state.offlineSyncQueue.filter(q => q.offlineTxnId !== item.offlineTxnId);
   }
 
-  // Remove from offline queue
-  state.offlineSyncQueue = state.offlineSyncQueue.filter(q => q.offlineTxnId !== item.offlineTxnId);
   try {
     localStorage.setItem('jsr_finance_offline_queue', JSON.stringify(state.offlineSyncQueue));
   } catch (e) {}
@@ -9794,12 +9905,18 @@ function submitSyncConflictResolution() {
   _currentConflictItem = null;
   const modal = document.getElementById('sync-conflict-backdrop');
   if (modal) modal.style.display = 'none';
+  document.body.classList.remove('modal-open');
 
-  showToast(`✓ Resolved! Collection of ₹${item.amount} attributed to ${collectorName}`);
+  showToast(`✓ Resolved! Collection credited and attributed to ${collectorName}`);
   updateOfflineSyncBadge();
   renderCollectionMatrix();
   if (state.activeTab === 'summary') renderDashboard();
   updateHeaderStats();
+
+  _isSyncingOfflineQueue = false;
+  if (state.offlineSyncQueue.length > 0) {
+    setTimeout(() => triggerOfflineSync(), 300);
+  }
 }
 
 // Start application when DOM is ready
