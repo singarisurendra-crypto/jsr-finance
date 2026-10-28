@@ -89,7 +89,10 @@ let state = {
 };
 
 // Unique Session ID for Multi-User & Multi-Tab Concurrency Control
-const CURRENT_SESSION_ID = 'sess_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+if (!window.CURRENT_SESSION_ID) {
+  window.CURRENT_SESSION_ID = 'sess_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+}
+var CURRENT_SESSION_ID = window.CURRENT_SESSION_ID;
 
 // Helper to get formatted display name of currently active operator
 function getCurrentUserDisplayName() {
@@ -847,6 +850,9 @@ function showGoogleAuthGuideAlert(message) {
 }
 
 function handleGoogleSignInClick() {
+  const label = document.getElementById('btn-google-sso-label');
+  if (label) label.textContent = 'Connecting to Google...';
+
   const errorAlert = document.getElementById('login-error-alert');
   if (errorAlert) {
     errorAlert.style.display = 'none';
@@ -868,6 +874,7 @@ function handleGoogleSignInClick() {
 
       firebase.auth().signInWithPopup(provider)
         .then((result) => {
+          if (label) label.textContent = 'Sign In with Google';
           if (result && result.user && result.user.email) {
             verifyAndLoginGoogleUser(result.user.email, result.user.displayName || result.user.email);
           } else {
@@ -875,14 +882,15 @@ function handleGoogleSignInClick() {
           }
         })
         .catch((error) => {
+          if (label) label.textContent = 'Sign In with Google';
           console.warn('Firebase Google Auth event:', error);
           if (error.code === 'auth/operation-not-allowed' || error.code === 'auth/configuration-not-found') {
             showGoogleAuthGuideAlert(
-              `Google Provider is not enabled in Firebase Console yet. Click the '1-Click Owner Sign-In' button above to proceed immediately, or enable Google under Firebase Console > Authentication > Sign-in method.`
+              `Google Provider is not enabled in Firebase Console yet. Click '⚡ 1-Click Fast Sign-In' below to enter immediately, or enable Google under Firebase Console > Authentication > Sign-in method.`
             );
           } else if (error.code === 'auth/unauthorized-domain') {
             showGoogleAuthGuideAlert(
-              `Domain is not authorized in Firebase Console > Authentication > Settings. Use 1-Click Owner Sign-In above to sign in without domain restriction.`
+              `Domain is not authorized in Firebase Console > Authentication > Settings. Click '⚡ 1-Click Fast Sign-In' below to proceed.`
             );
           } else if (error.code === 'auth/popup-blocked') {
             promptGoogleEmailFallback('Popup was blocked by your browser. Enter your whitelisted Google account email:');
@@ -892,11 +900,12 @@ function handleGoogleSignInClick() {
         });
       return;
     } catch (e) {
+      if (label) label.textContent = 'Sign In with Google';
       console.warn('Firebase Auth popup invocation failed:', e);
     }
   }
 
-  // 2. Direct Fallback if Firebase Auth is not present
+  if (label) label.textContent = 'Sign In with Google';
   promptGoogleEmailFallback();
 }
 
