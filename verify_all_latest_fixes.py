@@ -306,40 +306,41 @@ def main():
         print("Setup Result:", json.dumps(setup_res))
         time.sleep(0.5)
 
-        # 2. Verify Top Header Layout & User Badge
-        header_check = client.eval_js("""
+        # 2. Verify Top Header (User badge removed) & Left Sidebar (Lite background #E8F2FF & user card down)
+        header_sidebar_check = client.eval_js("""
             (() => {
                 const badge = document.getElementById('header-user-badge');
-                const avatar = document.getElementById('header-user-avatar');
-                const name = document.getElementById('header-user-name');
-                const role = document.getElementById('header-user-role');
                 const syncPill = document.getElementById('cloud-status-pill');
-                const logoutBtn = badge ? badge.querySelector('.btn-header-logout') : null;
-                const headerStats = document.querySelector('.header-stats');
+                const sidebar = document.getElementById('app-sidebar');
+                const sidebarUserCard = document.getElementById('sidebar-user-card');
+                const sidebarUserAvatar = document.getElementById('sidebar-user-avatar');
+                const sidebarUserName = document.getElementById('sidebar-user-name');
+                const sidebarUserRole = document.getElementById('sidebar-user-role');
+                const sidebarLogout = document.querySelector('.sidebar-logout-btn');
 
-                const computedStyle = badge ? window.getComputedStyle(badge) : null;
-                const roleStyle = role ? window.getComputedStyle(role) : null;
+                const sidebarStyle = sidebar ? window.getComputedStyle(sidebar) : null;
 
                 return {
-                    badgeExists: !!badge,
-                    avatarText: avatar ? avatar.innerText.trim() : '',
-                    nameText: name ? name.innerText.trim() : '',
-                    roleText: role ? role.innerText.trim() : '',
-                    hasLogoutBtn: !!logoutBtn,
+                    headerBadgeExists: !!badge,
                     syncPillExistsInDom: !!syncPill,
-                    badgeBg: computedStyle ? computedStyle.backgroundColor : '',
-                    roleColor: roleStyle ? roleStyle.color : '',
-                    headerStatsOrder: headerStats ? headerStats.children.length : 0
+                    sidebarBg: sidebarStyle ? sidebarStyle.backgroundColor : '',
+                    sidebarUserCardExists: !!sidebarUserCard,
+                    sidebarAvatar: sidebarUserAvatar ? sidebarUserAvatar.innerText.trim() : '',
+                    sidebarName: sidebarUserName ? sidebarUserName.innerText.trim() : '',
+                    sidebarRole: sidebarUserRole ? sidebarUserRole.innerText.trim() : '',
+                    sidebarLogoutExists: !!sidebarLogout
                 };
             })()
         """)
-        print("Header Check:", json.dumps(header_check, indent=2))
-        assert header_check["badgeExists"], "header-user-badge must exist"
-        assert header_check["avatarText"] == "S", f"Expected avatar 'S', got: {header_check['avatarText']}"
-        assert "Surendra" in header_check["nameText"] or "surendra" in header_check["nameText"], f"Expected surendra, got: {header_check['nameText']}"
-        assert "FULL ACCESS" in header_check["roleText"].upper() or "ADMIN" in header_check["roleText"].upper(), f"Expected FULL ACCESS or ADMIN, got: {header_check['roleText']}"
-        assert header_check["hasLogoutBtn"], "Logout button must be inside user badge"
-        assert not header_check["syncPillExistsInDom"], "Sync: Live pill must be removed from top header"
+        print("Header & Sidebar Check:", json.dumps(header_sidebar_check, indent=2))
+        assert not header_sidebar_check["headerBadgeExists"], "Top menu must NOT have Full access / user badge (removed duplicate)"
+        assert not header_sidebar_check["syncPillExistsInDom"], "Sync: Live pill must be removed from top header"
+        assert header_sidebar_check["sidebarBg"] == "rgb(232, 242, 255)", f"Sidebar background must be #E8F2FF, got: {header_sidebar_check['sidebarBg']}"
+        assert header_sidebar_check["sidebarUserCardExists"], "Left menu down must have user card"
+        assert header_sidebar_check["sidebarAvatar"] == "S", f"Sidebar avatar 'S', got: {header_sidebar_check['sidebarAvatar']}"
+        assert "Surendra" in header_sidebar_check["sidebarName"] or "surendra" in header_sidebar_check["sidebarName"], f"Expected surendra, got: {header_sidebar_check['sidebarName']}"
+        assert "FULL ACCESS" in header_sidebar_check["sidebarRole"].upper() or "ADMIN" in header_sidebar_check["sidebarRole"].upper(), f"Expected FULL ACCESS, got: {header_sidebar_check['sidebarRole']}"
+        assert header_sidebar_check["sidebarLogoutExists"], "Left menu down must have logout button"
 
         # 3. Test Collections View & Compact Badges & Balance Placement
         client.eval_js("switchTab('collections');")
@@ -443,27 +444,51 @@ def main():
         client.eval_js("closeCustomerDetailModal();")
         time.sleep(0.3)
 
-        # 6. Customer Master Screen: Verify Action Buttons (Only Edit, Passbook, More Options)
+        # 6. Customer Master Screen: Verify Action Buttons (Edit, Passbook, Delete outside, compact More)
         client.eval_js("switchTab('customers');")
         time.sleep(0.5)
 
         cust_screen_check = client.eval_js("""
             (() => {
                 const tableRow = document.querySelector('#customers-table-body tr');
-                const tableButtons = tableRow ? Array.from(tableRow.querySelectorAll('.btn-group button')).map(b => b.innerText.trim()) : [];
+                const tableButtons = tableRow ? Array.from(tableRow.querySelectorAll('.cust-row-actions button')).map(b => b.innerText.trim()) : [];
 
                 const mobileCard = document.querySelector('#customers-mobile-cards .customer-card');
                 const mobileButtons = mobileCard ? Array.from(mobileCard.querySelectorAll('.customer-card-actions button')).map(b => b.innerText.trim()) : [];
 
+                const editBtn = tableRow ? tableRow.querySelector('.btn-cust-edit') : null;
+                const passBtn = tableRow ? tableRow.querySelector('.btn-cust-passbook') : null;
+                const delBtn = tableRow ? tableRow.querySelector('.btn-cust-delete') : null;
+                const moreBtn = tableRow ? tableRow.querySelector('.btn-cust-more') : null;
+
+                const editStyle = editBtn ? window.getComputedStyle(editBtn) : null;
+                const passStyle = passBtn ? window.getComputedStyle(passBtn) : null;
+                const delStyle = delBtn ? window.getComputedStyle(delBtn) : null;
+                const moreStyle = moreBtn ? window.getComputedStyle(moreBtn) : null;
+
                 return {
                     tableButtons,
-                    mobileButtons
+                    mobileButtons,
+                    editBg: editStyle ? editStyle.backgroundColor : '',
+                    editColor: editStyle ? editStyle.color : '',
+                    passBg: passStyle ? passStyle.backgroundColor : '',
+                    passColor: passStyle ? passStyle.color : '',
+                    delBg: delStyle ? delStyle.backgroundColor : '',
+                    delColor: delStyle ? delStyle.color : '',
+                    moreBg: moreStyle ? moreStyle.backgroundColor : '',
+                    moreColor: moreStyle ? moreStyle.color : ''
                 };
             })()
         """)
         print("Customer Screen Action Buttons Check:", json.dumps(cust_screen_check, indent=2))
-        assert cust_screen_check["tableButtons"] == ["Edit", "Passbook", "More Options ▾"], f"Table row buttons unexpected: {cust_screen_check['tableButtons']}"
-        assert cust_screen_check["mobileButtons"] == ["Edit", "Passbook", "More Options ▾"], f"Mobile card buttons unexpected: {cust_screen_check['mobileButtons']}"
+        assert "✏️ Edit" in cust_screen_check["tableButtons"], "Edit button must exist in table"
+        assert "🧾 Passbook" in cust_screen_check["tableButtons"], "Passbook button must exist in table"
+        assert "🗑️ Delete" in cust_screen_check["tableButtons"], "Delete button must be moved outside to table row"
+        assert "⋯ More" in cust_screen_check["tableButtons"], "More button must be compact '⋯ More'"
+        assert cust_screen_check["editBg"] == "rgb(239, 246, 255)", f"Edit button background blue, got {cust_screen_check['editBg']}"
+        assert cust_screen_check["passBg"] == "rgb(240, 253, 244)", f"Passbook button background green, got {cust_screen_check['passBg']}"
+        assert cust_screen_check["delBg"] == "rgb(254, 242, 242)", f"Delete button background red, got {cust_screen_check['delBg']}"
+        assert cust_screen_check["moreBg"] == "rgb(245, 243, 255)", f"More button background purple, got {cust_screen_check['moreBg']}"
 
         # 7. Check More Options Popover Menu Items
         more_menu_check = client.eval_js(f"""
@@ -564,7 +589,9 @@ def main():
         assert completed_loan_check["isFilterAll"], "Filter status must be reset to 'all'"
         assert completed_loan_check["filterVal"] == "all", "Filter dropdown select value must be 'all'"
 
-        # Capture final screenshot
+        # Capture final screenshot on Customers screen showing the updated action buttons
+        client.eval_js("switchTab('customers');")
+        time.sleep(0.5)
         client.screenshot("verified_all_latest_fixes.png")
         print("\n🎉 ALL VERIFICATIONS PASSED 100% SUCCESSFULLY!")
 
