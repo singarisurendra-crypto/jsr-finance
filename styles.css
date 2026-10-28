@@ -296,8 +296,8 @@ body {
 
 .sidebar {
   width: 68px;
-  background: #111827;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: #E8F2FF;
+  border-right: 1px solid #bfdbfe;
   padding: 20px 10px;
   display: flex;
   flex-direction: column;
@@ -312,7 +312,7 @@ body {
   white-space: nowrap;
   flex-shrink: 0;
   scrollbar-width: none;
-  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.15);
+  box-shadow: 2px 0 16px rgba(37, 99, 235, 0.08);
 }
 
 .sidebar::-webkit-scrollbar {
@@ -322,7 +322,7 @@ body {
 /* Hover / Move Over -> Open for selection */
 .sidebar:hover:not(.force-collapsed) {
   width: 250px;
-  box-shadow: 6px 0 25px rgba(0, 0, 0, 0.3);
+  box-shadow: 6px 0 25px rgba(30, 58, 138, 0.15);
 }
 
 .nav-link {
@@ -330,7 +330,7 @@ body {
   align-items: center;
   gap: 14px;
   padding: 12px 13px;
-  color: #94a3b8;
+  color: #334155;
   text-decoration: none;
   border-radius: 12px;
   font-weight: 600;
@@ -346,7 +346,7 @@ body {
 .nav-svg {
   width: 22px;
   height: 22px;
-  stroke: currentColor;
+  stroke: #475569;
   flex-shrink: 0;
   transition: transform 0.2s ease, stroke 0.2s ease;
 }
@@ -367,15 +367,19 @@ body {
 }
 
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.nav-link:hover .nav-svg {
+  stroke: #1e40af;
 }
 
 .nav-link.active {
   background: #4F46E5;
   color: #ffffff;
   border: 1px solid #6366f1;
-  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
   font-weight: 700;
 }
 
@@ -395,37 +399,117 @@ body {
   stroke: #ffffff;
 }
 
+/* Sidebar Bottom User & Logout Section (Left Menu Down) */
+.sidebar-bottom-section {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #bfdbfe;
+}
+
+.sidebar-user-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  background: #ffffff;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.08);
+  overflow: hidden;
+  min-height: 44px;
+}
+
+.sidebar-user-card:hover {
+  background: #f8fafc;
+  border-color: #93c5fd;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.16);
+  transform: translateY(-1px);
+}
+
+.sidebar-user-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  opacity: 0;
+  transform: translateX(-10px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar:hover:not(.force-collapsed) .sidebar-user-info {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.sidebar-user-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-user-role {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #16a34a;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .sidebar-logout-btn {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 13px;
-  color: #f87171;
+  padding: 10px 12px;
+  color: #dc2626;
   text-decoration: none;
   border-radius: 12px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13.5px;
   letter-spacing: -0.2px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s ease;
   border: 1px solid transparent;
-  position: relative;
-  min-height: 46px;
-  margin-top: auto;
+  min-height: 42px;
 }
 
 .sidebar-logout-btn:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: #fca5a5;
-  border-color: rgba(239, 68, 68, 0.3);
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
 }
 
 .sidebar-logout-btn .nav-svg {
   width: 22px;
   height: 22px;
-  stroke: currentColor;
+  stroke: #dc2626;
   flex-shrink: 0;
-  transition: transform 0.2s ease, stroke 0.2s ease;
+  transition: transform 0.2s ease;
 }
 
 .sidebar-logout-btn .nav-text {
@@ -440,11 +524,6 @@ body {
   opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
-}
-
-.sidebar-logout-btn:hover {
-  background: #fef2f2;
-  color: #b91c1c;
 }
 
 /* ==================================================== */
@@ -1077,13 +1156,14 @@ thead th.sticky-col-3 {
   background: #f8fafc;
   color: #475569;
   font-weight: 700;
-  padding: 12px 16px;
+  padding: 10px 10px;
   border-bottom: 1px solid var(--border);
   font-size: 12px;
   position: sticky;
   top: 0;
   z-index: 10;
   box-shadow: 0 1px 0 var(--border);
+  white-space: nowrap;
 }
 
 .modal .data-table th,
@@ -1094,12 +1174,34 @@ thead th.sticky-col-3 {
 }
 
 .data-table td {
-  padding: 12px 16px;
+  padding: 10px 10px;
   border-bottom: 1px solid #f1f5f9;
 }
 
 .data-table tbody tr:hover {
   background-color: #f8fafc;
+}
+
+/* Sticky Right Actions Column */
+.data-table th:last-child,
+.data-table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 12;
+  box-shadow: -3px 0 8px rgba(15, 23, 42, 0.06);
+}
+
+.data-table th:last-child {
+  background: #f8fafc;
+  z-index: 20;
+}
+
+.data-table td:last-child {
+  background: #ffffff;
+}
+
+.data-table tbody tr:hover td:last-child {
+  background: #f8fafc;
 }
 
 /* Progress Bar */
@@ -1441,18 +1543,103 @@ body.modal-open .loans-tooltip-popover {
   margin-top: 1px;
 }
 
-.customer-card-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 12px;
-  flex-wrap: wrap;
+/* Customer Master Table Actions (Compact 2x2 Grid with Fintech Color Coding) */
+.cust-row-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(72px, 1fr));
+  gap: 5px;
+  width: 160px;
 }
 
-.customer-card-actions .btn {
-  flex: 1 1 auto;
-  min-width: fit-content;
+.btn-cust-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease-in-out;
+  border: 1px solid transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  line-height: 1.2;
+}
+
+.btn-cust-action:active {
+  transform: scale(0.96);
+}
+
+/* Edit: Soft Ice Blue */
+.btn-cust-action.btn-cust-edit {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+.btn-cust-action.btn-cust-edit:hover {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #93c5fd;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.18);
+  transform: translateY(-1px);
+}
+
+/* Passbook: Soft Mint Green */
+.btn-cust-action.btn-cust-passbook {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #bbf7d0;
+}
+.btn-cust-action.btn-cust-passbook:hover {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+  box-shadow: 0 2px 6px rgba(22, 163, 74, 0.18);
+  transform: translateY(-1px);
+}
+
+/* Delete: Soft Rose Red (Moved Outside) */
+.btn-cust-action.btn-cust-delete {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+.btn-cust-action.btn-cust-delete:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.18);
+  transform: translateY(-1px);
+}
+
+/* More: Soft Sleek Purple (Compact, Never Bulky) */
+.btn-cust-action.btn-cust-more {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-color: #ddd6fe;
+}
+.btn-cust-action.btn-cust-more:hover {
+  background: #ede9fe;
+  color: #5b21b6;
+  border-color: #c4b5fd;
+  box-shadow: 0 2px 6px rgba(109, 40, 217, 0.18);
+  transform: translateY(-1px);
+}
+
+.customer-card-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.customer-card-actions .btn-cust-action {
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: 13px;
+  border-radius: 8px;
+  min-height: 38px;
 }
 
 /* ==================================================== */
