@@ -129,14 +129,15 @@ body {
   align-items: center;
   gap: 8px;
   font-size: 12.5px;
-  flex-shrink: 1;
+  flex: 1 1 auto;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   padding: 2px 0;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  margin: 0 12px;
 }
 
 .header-stats::-webkit-scrollbar {
@@ -202,7 +203,7 @@ body {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  margin-left: 8px;
+  margin-left: auto;
 }
 
 .logged-user-pill {
