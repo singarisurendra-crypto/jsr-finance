@@ -2060,6 +2060,80 @@ function modifyInstalment(customerId, instNumber, customAmount) {
   renderCollectionMatrix();
 }
 
+// ====================================================
+// PROGRESSIVE WEB APP (PWA) & SERVICE WORKER CONTROLLER
+// ====================================================
+let _deferredPwaPrompt = null;
+
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js', { scope: './' })
+        .then(registration => {
+          console.log('[PWA] Service Worker registered with scope:', registration.scope);
+          registration.onupdatefound = () => {
+            const installingWorker = registration.installing;
+            if (installingWorker) {
+              installingWorker.onstatechange = () => {
+                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.log('[PWA] New version installed! Will activate on reload.');
+                  if (typeof showToast === 'function') {
+                    showToast('🚀 JSR Finance updated in background!', 4000);
+                  }
+                }
+              };
+            }
+          };
+        })
+        .catch(err => {
+          console.warn('[PWA] Service Worker registration failed:', err);
+        });
+    });
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _deferredPwaPrompt = e;
+    const btnHeader = document.getElementById('btn-install-pwa');
+    if (btnHeader) btnHeader.style.display = 'inline-flex';
+    const btnSettings = document.getElementById('btn-install-pwa-settings');
+    if (btnSettings) btnSettings.style.display = 'inline-flex';
+  });
+
+  window.addEventListener('appinstalled', () => {
+    _deferredPwaPrompt = null;
+    const btnHeader = document.getElementById('btn-install-pwa');
+    if (btnHeader) btnHeader.style.display = 'none';
+    const btnSettings = document.getElementById('btn-install-pwa-settings');
+    if (btnSettings) btnSettings.style.display = 'none';
+    const pwaStatus = document.getElementById('pwa-install-status-text');
+    if (pwaStatus) pwaStatus.textContent = 'Installed as Native Standalone App';
+    if (typeof showToast === 'function') {
+      showToast('🎉 JSR Finance Mobile App installed successfully on your device!');
+    }
+  });
+}
+
+async function handlePwaInstallClick() {
+  if (_deferredPwaPrompt) {
+    _deferredPwaPrompt.prompt();
+    const { outcome } = await _deferredPwaPrompt.userChoice;
+    console.log('[PWA] User install choice:', outcome);
+    if (outcome === 'accepted') {
+      _deferredPwaPrompt = null;
+      const btnHeader = document.getElementById('btn-install-pwa');
+      if (btnHeader) btnHeader.style.display = 'none';
+    }
+  } else {
+    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIos) {
+      alert('To install JSR Finance on iPhone/iPad:\n1. Tap the Share button at the bottom of Safari (square with up arrow).\n2. Scroll down and tap "Add to Home Screen".');
+    } else {
+      alert('To install JSR Finance:\n1. Open browser menu (three dots ⋮ at top right).\n2. Tap "Install app" or "Add to Home screen".');
+    }
+  }
+}
+
 // Initialize App
 function initApp() {
   checkAuthSession();
@@ -2079,6 +2153,7 @@ function initApp() {
   if (window.lucide) {
     window.lucide.createIcons();
   }
+  registerServiceWorker();
 }
 
 // Self-Healing Accounting Invariant Guard: Protects customer records across all loans (e.g. L1, L2, L3)
@@ -9688,8 +9763,16 @@ async function triggerOfflineSync() {
       const normProvReceipt = (item.provisionalReceipt || '').replace(/^PROV-/, '');
       const isSameReceipt = normCloudReceipt && (normCloudReceipt === normItemReceipt || normCloudReceipt === normProvReceipt);
 
-      // If cloud instalment already settled by another operator or different transaction
-      if (cloudInst && cloudInst.status === 'Received' && !isSameReceipt) {
+      // Check if this cloud instalment was settled by the same collector for the same amount or session
+      const isSameCollector = cloudInst && cloudInst.paidBy && item.collector && (
+        cloudInst.paidBy.trim().toLowerCase() === item.collector.trim().toLowerCase()
+      );
+      const isSameAmount = cloudInst && (Number(cloudInst.paidAmount) === Number(item.amount) || Number(cloudInst.dueAmount) === Number(item.amount));
+      const isOwnConfirmedSave = (cloudCust && cloudCust.lastModifiedSession && typeof CURRENT_SESSION_ID !== 'undefined' && cloudCust.lastModifiedSession === CURRENT_SESSION_ID);
+      const isSelfSync = isSameReceipt || (isSameCollector && isSameAmount) || isOwnConfirmedSave;
+
+      // If cloud instalment already settled by a DIFFERENT operator or conflicting payment
+      if (cloudInst && cloudInst.status === 'Received' && !isSelfSync) {
         showSyncConflictModal(item, cloudInst, cloudCust);
         _isSyncingOfflineQueue = false;
         return;
