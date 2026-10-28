@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=58">
+  <link rel="stylesheet" href="styles.css?v=59">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -102,6 +102,13 @@
           <div class="brand-title" id="brand-business-name">JSR Finance</div>
           <div class="brand-sub">Instalment Receiving & Microfinance System</div>
         </div>
+      </div>
+
+      <!-- Logged Operator Badge (Always visible in top header) -->
+      <div class="logged-user-pill" id="header-user-badge" onclick="switchTab('settings')" title="Logged in via Google Account. Click to open Settings." style="margin-left: auto; margin-right: 10px;">
+        <span id="header-user-icon">👑</span>
+        <strong id="header-user-name">Surendra Singari</strong>
+        <span class="logged-user-role" id="header-user-role">Admin</span>
       </div>
 
       <!-- Mobile Header Actions: Logout -->
@@ -2388,8 +2395,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=58"></script>
-  <script src="firebase-sync.js?v=58"></script>
-  <script src="app.js?v=58"></script>
+  <script src="firebase-config.js?v=59"></script>
+  <script src="firebase-sync.js?v=59"></script>
+  <script src="app.js?v=59"></script>
 </body>
 </html>
