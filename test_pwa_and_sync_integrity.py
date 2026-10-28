@@ -73,8 +73,8 @@ def test_pwa_and_sync():
     assert 'id="btn-install-pwa"' in html, "Header install button missing"
     assert 'id="btn-install-pwa-settings"' in html, "Settings install button missing"
     assert 'Mobile App &amp; Offline PWA Suite' in html or 'Mobile App & Offline PWA Suite' in html, "PWA settings card missing"
-    assert 'styles.css?v=55' in html, "styles.css?v=55 version tag missing"
-    assert 'app.js?v=55' in html, "app.js?v=55 version tag missing"
+    assert 'styles.css?v=56' in html, "styles.css?v=56 version tag missing"
+    assert 'app.js?v=56' in html, "app.js?v=56 version tag missing"
     print("  [OK] index.html links, icons, and UI install buttons verified")
 
     # 5. Verify firestore.rules security lockdown
