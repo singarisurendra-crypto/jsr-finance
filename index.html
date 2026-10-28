@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=63">
+  <link rel="stylesheet" href="styles.css?v=65">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -138,23 +138,6 @@
       </button>
     </div>
 
-    <!-- Right: User Profile Pill & Logout (Matches User Drawing) -->
-    <div class="header-user-section">
-      <div class="logged-user-pill" id="header-user-badge" onclick="switchTab('settings')" title="Logged in. Click to open Settings.">
-        <div class="user-avatar-circle" id="header-user-avatar">S</div>
-        <div class="user-info-text">
-          <span class="user-display-name" id="header-user-name">surendra</span>
-          <span class="user-access-tag" id="header-user-role">FULL ACCESS</span>
-        </div>
-        <button type="button" class="btn-header-logout" onclick="event.stopPropagation(); handleLogout()" title="Logout">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-            <polyline points="16 17 21 12 16 7"></polyline>
-            <line x1="21" y1="12" x2="9" y2="12"></line>
-          </svg>
-        </button>
-      </div>
-    </div>
   </header>
 
   <div class="app-layout">
@@ -203,14 +186,24 @@
         </svg>
         <span class="nav-text">Settings & Config</span>
       </a>
-      <a class="sidebar-logout-btn" onclick="handleLogout()" title="Sign Out" style="margin-top: auto; border-top: 1px solid #f1f5f9; color: #dc2626; cursor: pointer;">
-        <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #dc2626;">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/>
-          <line x1="21" y1="12" x2="9" y2="12"/>
-        </svg>
-        <span class="nav-text" style="color: #dc2626; font-weight: 600;">Logout</span>
-      </a>
+      <!-- Bottom Left Menu: Logged User & Full Access & Logout (Handled with left menu down) -->
+      <div class="sidebar-bottom-section" id="sidebar-bottom-section">
+        <div class="sidebar-user-card" id="sidebar-user-card" onclick="switchTab('settings')" title="Logged in. Click to open Settings.">
+          <div class="sidebar-user-avatar" id="sidebar-user-avatar">S</div>
+          <div class="sidebar-user-info">
+            <span class="sidebar-user-name" id="sidebar-user-name">surendra</span>
+            <span class="sidebar-user-role" id="sidebar-user-role">FULL ACCESS</span>
+          </div>
+        </div>
+        <a class="sidebar-logout-btn" onclick="handleLogout()" title="Sign Out">
+          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #dc2626;">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          <span class="nav-text" style="color: #dc2626; font-weight: 600;">Logout</span>
+        </a>
+      </div>
     </aside>
 
     <!-- Main Content Workspace -->
@@ -567,7 +560,7 @@
                 <th>Net Profit</th>
                 <th>Paid / Total</th>
                 <th>Balance</th>
-                <th>Actions</th>
+                <th style="min-width: 165px; text-align: center;">Actions</th>
               </tr>
             </thead>
             <tbody id="customers-table-body">
@@ -2389,8 +2382,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=63"></script>
-  <script src="firebase-sync.js?v=63"></script>
-  <script src="app.js?v=63"></script>
+  <script src="firebase-config.js?v=65"></script>
+  <script src="firebase-sync.js?v=65"></script>
+  <script src="app.js?v=65"></script>
 </body>
 </html>
