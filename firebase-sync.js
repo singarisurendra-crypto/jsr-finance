@@ -5,6 +5,7 @@
 
 let firestoreDb = null;
 let isCloudSyncActive = false;
+const CURRENT_SESSION_ID = 'SESS-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
 
 // Initialize Google Firebase & Firestore
 function initGoogleCloudDatabase() {
@@ -32,6 +33,16 @@ function initGoogleCloudDatabase() {
       firestoreDb = firebase.firestore();
       isCloudSyncActive = true;
       updateCloudStatusIndicator(true, config.projectId);
+      
+      // Ensure Firebase Auth session exists so request.auth != null is satisfied for security rules
+      if (firebase.auth) {
+        firebase.auth().onAuthStateChanged((user) => {
+          if (!user) {
+            firebase.auth().signInAnonymously().catch(e => console.warn('Anonymous auth fallback:', e));
+          }
+        });
+      }
+
       setupFirestoreRealtimeListeners();
       console.log('Successfully connected to Google Cloud Firestore:', config.projectId);
     } catch (err) {
@@ -85,20 +96,27 @@ function setupFirestoreRealtimeListeners() {
         if (!c) return;
         const loanTag = (Number(c.loanNumber) || 1) > 1 ? ` (Loan #${c.loanNumber})` : '';
 
+        // If this document was updated by our own local session, do NOT notify as an external user update!
+        if (c.lastModifiedSession === CURRENT_SESSION_ID) {
+          return;
+        }
+
+        const modifierName = c.lastModifiedBy || 'another operator';
+
         if (change.type === 'added') {
-          showToast(`✨ Customer #${c.customerNumber}${loanTag} (${c.fullName}) added in another session.`);
+          showToast(`✨ Customer #${c.customerNumber}${loanTag} (${c.fullName}) added by ${modifierName}.`);
         } else if (change.type === 'modified') {
           // Reconcile pending local modifications on this customer to prevent collision/stale writes
           if (state.pendingModifications && state.pendingModifications[c.id]) {
             delete state.pendingModifications[c.id];
-            showToast(`🔄 Customer #${c.customerNumber}${loanTag} updated remotely. Session refreshed with latest ledger.`, 4000);
+            showToast(`🔄 Customer #${c.customerNumber}${loanTag} updated by ${modifierName}. Session refreshed with latest ledger.`, 4000);
           } else {
-            showToast(`🔄 Customer #${c.customerNumber}${loanTag} updated in another session.`);
+            showToast(`🔄 Customer #${c.customerNumber}${loanTag} updated by ${modifierName}.`);
           }
         } else if (change.type === 'removed') {
           if (state.expandedCustomerIds) state.expandedCustomerIds.delete(c.id);
           if (state.pendingModifications) delete state.pendingModifications[c.id];
-          showToast(`🗑️ Customer #${c.customerNumber}${loanTag} deleted in another session.`, 4000);
+          showToast(`🗑️ Customer #${c.customerNumber}${loanTag} deleted by ${modifierName}.`, 4000);
         }
       });
     }
@@ -410,7 +428,14 @@ async function getNextAtomicCustomerNumber(requestedNumber, customerName) {
 async function syncCustomerToFirestore(customer) {
   if (!firestoreDb || !isCloudSyncActive) return;
   try {
-    await firestoreDb.collection('customers').doc(customer.id).set(customer);
+    const currentUser = (typeof getCurrentUser === 'function') ? getCurrentUser() : null;
+    const payload = {
+      ...customer,
+      lastModifiedSession: typeof CURRENT_SESSION_ID !== 'undefined' ? CURRENT_SESSION_ID : null,
+      lastModifiedBy: currentUser ? currentUser.user : 'Operator',
+      lastModifiedAt: new Date().toISOString()
+    };
+    await firestoreDb.collection('customers').doc(customer.id).set(payload);
   } catch (err) {
     console.error('Error saving customer to Google Cloud Firestore:', err);
   }
