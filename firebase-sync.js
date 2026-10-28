@@ -5,7 +5,10 @@
 
 let firestoreDb = null;
 let isCloudSyncActive = false;
-const CURRENT_SESSION_ID = 'SESS-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
+if (!window.CURRENT_SESSION_ID) {
+  window.CURRENT_SESSION_ID = 'SESS-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
+}
+var CURRENT_SESSION_ID = window.CURRENT_SESSION_ID;
 
 // Initialize Google Firebase & Firestore
 function initGoogleCloudDatabase() {
