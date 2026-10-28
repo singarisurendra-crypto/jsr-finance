@@ -1,34 +1,42 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 1. Customers Collection: Requires valid customer data
+    
+    // Strict Security Guard: Only authenticated operators can access data
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated operator is owner / administrator
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'singarisurendra@gmail.com' ||
+        request.auth.token.email == 'admin@jsrfinance.com'
+      );
+    }
+
+    // 1. Customers Collection: Authenticated operators only; Deletions restricted to Admin
     match /customers/{customerId} {
-      allow read: if true;
-      allow create, update: if request.resource.data.customerNumber != null 
-                            && request.resource.data.fullName != null
-                            && request.resource.data.givenAmount != null;
-      allow delete: if true;
+      allow read, create, update: if isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // 2. Transactions Collection: Append-Only Immutable Audit Ledger
-    // Once created, historical transactions cannot be altered or deleted by anyone
+    // Authenticated operators can record collections; NO ONE can alter or delete past transactions
     match /transactions/{txnId} {
-      allow read: if true;
-      allow create: if request.resource.data.amount != null 
-                    && request.resource.data.type in ['payment', 'partial', 'undo'];
+      allow read, create: if isAuthenticated() && request.resource.data.amount != null;
       allow update, delete: if false;
     }
 
-    // 3. System Configuration & Settings
+    // 3. System Configuration & Settings: Read for operators, write restricted to Admin
     match /config/{configId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if false;
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
 
-    // 4. Collaborative Editing Locks (Real-time concurrency control)
+    // 4. Collaborative Editing Locks & Session Heartbeats
     match /editing_locks/{lockId} {
-      allow read, create, update, delete: if true;
+      allow read, write, delete: if isAuthenticated();
     }
   }
 }
