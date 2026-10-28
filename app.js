@@ -2833,13 +2833,17 @@ function getPortfolioStats(loanFilter = 'all') {
   };
 }
 
-// Update Logged User Badge in Header
+// Update Logged User Badge in Sidebar Bottom and Header (if present)
 function updateHeaderUserBadge() {
   const badge = document.getElementById('header-user-badge');
   const nameEl = document.getElementById('header-user-name');
   const roleEl = document.getElementById('header-user-role');
   const avatarEl = document.getElementById('header-user-avatar');
-  if (!badge) return;
+
+  const sCard = document.getElementById('sidebar-user-card');
+  const sName = document.getElementById('sidebar-user-name');
+  const sRole = document.getElementById('sidebar-user-role');
+  const sAvatar = document.getElementById('sidebar-user-avatar');
 
   const curUser = getCurrentUser();
   let userName = 'surendra';
@@ -2853,7 +2857,7 @@ function updateHeaderUserBadge() {
     } else {
       roleTag = curUser.role ? curUser.role.toUpperCase() : 'COLLECTOR';
     }
-  } else if (state.settings.adminEmail) {
+  } else if (state.settings && state.settings.adminEmail) {
     userName = state.settings.adminEmail.split('@')[0];
     roleTag = 'FULL ACCESS';
   }
@@ -2866,7 +2870,12 @@ function updateHeaderUserBadge() {
   if (nameEl) nameEl.textContent = userName;
   if (roleEl) roleEl.textContent = roleTag;
   if (avatarEl) avatarEl.textContent = initial;
-  badge.title = `Logged in as ${userName} (${roleTag}). Click to open Settings.`;
+  if (badge) badge.title = `Logged in as ${userName} (${roleTag}). Click to open Settings.`;
+
+  if (sName) sName.textContent = userName;
+  if (sRole) sRole.textContent = roleTag;
+  if (sAvatar) sAvatar.textContent = initial;
+  if (sCard) sCard.title = `Logged in as ${userName} (${roleTag}). Click to open Settings.`;
 }
 
 // Update Persistent Header Stats
@@ -5178,10 +5187,11 @@ function renderCustomersTable() {
           ${hasMultipleLoans ? `<div class="cust-total-sub" title="Combined balance across ${allLoans.length} loans">Total Bal: ${formatMoney(totalCustBal)}</div>` : ''}
         </td>
         <td>
-          <div class="btn-group">
-            <button class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${c.id}')" title="Edit Customer Profile">Edit</button>
-            <button class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${c.id}')" title="Passbook & Statement">Passbook</button>
-            <button class="btn btn-outline btn-sm" onclick="toggleCustomerActionsMenu(event, '${c.id}')" title="More Customer Actions (Thermal Slip, Loan, WA, Settle, KYC, Delete)">More Options ▾</button>
+          <div class="cust-row-actions">
+            <button type="button" class="btn-cust-action btn-cust-edit" onclick="openEditCustomerModal('${c.id}')" title="Edit Customer Profile">✏️ Edit</button>
+            <button type="button" class="btn-cust-action btn-cust-passbook" onclick="openCustomerPassbook('${c.id}')" title="Passbook & Statement">🧾 Passbook</button>
+            <button type="button" class="btn-cust-action btn-cust-delete" onclick="deleteCustomer('${c.id}')" title="Delete Customer & Loan">🗑️ Delete</button>
+            <button type="button" class="btn-cust-action btn-cust-more" onclick="toggleCustomerActionsMenu(event, '${c.id}')" title="More Customer Actions (Thermal Slip, Additional Loan, WhatsApp, Settlement, KYC)">⋯ More</button>
           </div>
         </td>
       </tr>
@@ -5295,9 +5305,10 @@ function renderCustomersTable() {
           </div>
 
           <div class="customer-card-actions">
-            <button class="btn btn-outline" onclick="openEditCustomerModal('${c.id}')" style="flex: 1;">Edit</button>
-            <button class="btn btn-outline" onclick="openCustomerPassbook('${c.id}')" style="flex: 1;">Passbook</button>
-            <button class="btn btn-outline" onclick="toggleCustomerActionsMenu(event, '${c.id}')" style="flex: 1;">More Options ▾</button>
+            <button type="button" class="btn-cust-action btn-cust-edit" onclick="openEditCustomerModal('${c.id}')">✏️ Edit</button>
+            <button type="button" class="btn-cust-action btn-cust-passbook" onclick="openCustomerPassbook('${c.id}')">🧾 Passbook</button>
+            <button type="button" class="btn-cust-action btn-cust-delete" onclick="deleteCustomer('${c.id}')">🗑️ Delete</button>
+            <button type="button" class="btn-cust-action btn-cust-more" onclick="toggleCustomerActionsMenu(event, '${c.id}')">⋯ More</button>
           </div>
         </div>
       `;
