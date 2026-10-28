@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=59">
+  <link rel="stylesheet" href="styles.css?v=62">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -95,71 +95,65 @@
 
   <!-- Top Navigation & Global Header -->
   <header class="app-header">
-    <div class="app-header-top">
-      <div class="brand-section">
-        <div class="brand-icon">₹</div>
-        <div>
-          <div class="brand-title" id="brand-business-name">JSR Finance</div>
-          <div class="brand-sub">Instalment Receiving & Microfinance System</div>
-        </div>
-      </div>
-
-      <!-- Logged Operator Badge (Always visible in top header) -->
-      <div class="logged-user-pill" id="header-user-badge" onclick="switchTab('settings')" title="Logged in via Google Account. Click to open Settings." style="margin-left: auto; margin-right: 10px;">
-        <span id="header-user-icon">👑</span>
-        <strong id="header-user-name">Surendra Singari</strong>
-        <span class="logged-user-role" id="header-user-role">Admin</span>
-      </div>
-
-      <!-- Mobile Header Actions: Logout -->
-      <div class="mobile-header-actions">
-        <button class="mobile-header-btn" onclick="handleLogout()" title="Logout" style="color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.2);">
-          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-          <span>Logout</span>
-        </button>
+    <div class="brand-section">
+      <div class="brand-icon">₹</div>
+      <div>
+        <div class="brand-title" id="brand-business-name">JSR Finance</div>
+        <div class="brand-sub">Instalment Receiving & Microfinance System</div>
       </div>
     </div>
 
+    <!-- Center: Financial Stats Ticker (Crisp, High-Contrast & Legible) -->
     <div class="header-stats">
-      <div class="stat-pill">
+      <div class="stat-pill stat-pill-active">
         <span>Active:</span>
         <strong id="header-active-cust">0</strong>
       </div>
-      <div class="stat-pill">
+      <div class="stat-pill stat-pill-disbursed">
         <span>Disbursed:</span>
         <strong id="header-disbursed">₹ 0</strong>
       </div>
-      <div class="stat-pill">
+      <div class="stat-pill stat-pill-collected">
         <span>Collected:</span>
         <strong id="header-collected" style="color: #4ade80;">₹ 0</strong>
       </div>
-      <div class="stat-pill" style="background: rgba(147, 51, 234, 0.18); border-color: rgba(168, 85, 247, 0.35);">
+      <div class="stat-pill stat-pill-profit">
         <span>Profit:</span>
-        <strong id="header-profit" style="color: #c084fc;">₹ 0</strong>
+        <strong id="header-profit" style="color: #fde047;">₹ 0</strong>
       </div>
-      <div class="stat-pill" style="background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.35);">
+      <div class="stat-pill stat-pill-today">
         <span>Today:</span>
         <strong id="header-today" style="color: #4ade80;">₹ 0</strong>
       </div>
-      <button class="stat-pill" onclick="openCashTallyModal()" style="cursor: pointer; background: rgba(245, 158, 11, 0.18); border-color: rgba(245, 158, 11, 0.35); color: #fef08a;" title="End-of-day Cash Tally & Handover Slip">
+      <button type="button" class="stat-pill stat-pill-cash" onclick="openCashTallyModal()" style="cursor: pointer;" title="End-of-day Cash Tally & Handover Slip">
         <span>💵 Cash Tally</span>
       </button>
-      <button class="stat-pill" id="cloud-status-pill" onclick="handleSyncPillClick()" style="cursor: pointer; background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.35);" title="Google Cloud Firebase Real-Time Sync & System Settings">
-        <span>☁️ Sync:</span>
-        <strong style="color: #4ade80;" id="cloud-status-text">Live (Google Cloud Firebase) ↻</strong>
-      </button>
-      <button class="stat-pill offline-sync-pill online" id="offline-sync-badge" onclick="triggerManualOfflineSync()" title="Local-First Offline Storage & Background Sync Engine" style="cursor: pointer;">
+      <button type="button" class="stat-pill offline-sync-pill online" id="offline-sync-badge" onclick="triggerManualOfflineSync()" title="Local-First Offline Storage & Background Sync Engine" style="cursor: pointer;">
         <span id="offline-sync-icon">☁️</span>
         <strong id="offline-sync-text" style="color: #4ade80;">All Synced</strong>
       </button>
-      <button class="stat-pill pwa-install-pill" id="btn-install-pwa" onclick="handlePwaInstallClick()" style="display: none; cursor: pointer; background: rgba(59, 130, 246, 0.25); border-color: rgba(96, 165, 250, 0.5);" title="Install JSR Finance Mobile App on your phone or desktop">
+      <button type="button" class="stat-pill pwa-install-pill" id="btn-install-pwa" onclick="handlePwaInstallClick()" style="display: none; cursor: pointer;" title="Install JSR Finance Mobile App on your phone or desktop">
         <span>📲</span>
         <strong style="color: #93c5fd;">Install App</strong>
       </button>
+    </div>
+
+    <!-- Right: User Profile Pill & Logout (Matches User Drawing) -->
+    <div class="header-user-section">
+      <div class="logged-user-pill" id="header-user-badge" onclick="switchTab('settings')" title="Logged in. Click to open Settings.">
+        <div class="user-avatar-circle" id="header-user-avatar">S</div>
+        <div class="user-info-text">
+          <span class="user-display-name" id="header-user-name">surendra</span>
+          <span class="user-access-tag" id="header-user-role">FULL ACCESS</span>
+        </div>
+        <button type="button" class="btn-header-logout" onclick="event.stopPropagation(); handleLogout()" title="Logout">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -1121,54 +1115,6 @@
           </div>
         </div>
 
-        <!-- Google Cloud Firebase Real-Time Database & Live Sync Overview Card -->
-        <div class="card" id="card-cloud-firebase-sync" style="margin-bottom: 24px; border: 1.5px solid #38bdf8; background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; border-bottom: 1px solid #e0f2fe; padding-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-            <div>
-              <h3 style="font-size: 16px; color: #0369a1; margin: 0; display: flex; align-items: center; gap: 8px;">
-                <span>☁️</span> Google Cloud Firebase Real-Time Database & Live Sync
-              </h3>
-              <p style="font-size: 13px; color: #0284c7; margin: 4px 0 0 0;">
-                Enterprise multi-user real-time sync with conflict resolution and automated offline queuing.
-              </p>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span id="settings-firebase-badge" style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 700;">
-                ● Live Connected (Google Cloud)
-              </span>
-            </div>
-          </div>
-
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px;">
-            <div style="background: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
-              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #0284c7;">Firebase Project ID</div>
-              <div style="font-size: 13.5px; font-weight: 700; color: #0f172a; margin-top: 4px;">jsr-finance-app-4a72e</div>
-              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Google Cloud Firestore (us-central1)</div>
-            </div>
-
-            <div style="background: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
-              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #0284c7;">Database Security Rules</div>
-              <div style="font-size: 13.5px; font-weight: 700; color: #15803d; margin-top: 4px;">🔒 Hardened & Locked</div>
-              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Authorized Google accounts only</div>
-            </div>
-
-            <div style="background: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
-              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #0284c7;">Active Session ID</div>
-              <div style="font-size: 12px; font-family: monospace; font-weight: 700; color: #334155; margin-top: 4px;" id="settings-session-id">-</div>
-              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Self-sync ghost alert suppression active</div>
-            </div>
-          </div>
-
-          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-primary" onclick="refreshSessionData(true)" style="gap: 6px; font-size: 12.5px;">
-              <span>↻</span> Force Refresh Live Cloud Data
-            </button>
-            <button type="button" class="btn btn-outline" onclick="triggerManualOfflineSync()" style="gap: 6px; font-size: 12.5px; color: #0284c7; border-color: #7dd3fc;">
-              <span>☁️</span> Check Offline Sync Queue
-            </button>
-          </div>
-        </div>
-
         <div class="settings-layout-grid">
           <!-- Settings Form -->
           <div class="card">
@@ -1382,6 +1328,54 @@
             <div style="font-size: 12px; color: #64748b;">
               On Android/Chrome: Click "Install App". On iPhone/Safari: Tap Share ➔ "Add to Home Screen".
             </div>
+          </div>
+        </div>
+
+        <!-- Google Cloud Firebase Real-Time Database & Live Sync Overview Card (Moved to Bottom) -->
+        <div class="card" id="card-cloud-firebase-sync" style="margin-top: 24px; border: 1.5px solid #38bdf8; background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; border-bottom: 1px solid #e0f2fe; padding-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <h3 style="font-size: 16px; color: #0369a1; margin: 0; display: flex; align-items: center; gap: 8px;">
+                <span>☁️</span> Google Cloud Firebase Real-Time Database & Live Sync
+              </h3>
+              <p style="font-size: 13px; color: #0284c7; margin: 4px 0 0 0;">
+                Enterprise multi-user real-time sync with conflict resolution and automated offline queuing.
+              </p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="settings-firebase-badge" style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 700;">
+                ● Live Connected (Google Cloud)
+              </span>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px;">
+            <div style="background: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #0284c7;">Firebase Project ID</div>
+              <div style="font-size: 13.5px; font-weight: 700; color: #0f172a; margin-top: 4px;">jsr-finance-app-4a72e</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Cloud Firestore (us-central1)</div>
+            </div>
+
+            <div style="background: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #0284c7;">Database Security Rules</div>
+              <div style="font-size: 13.5px; font-weight: 700; color: #15803d; margin-top: 4px;">🔒 Hardened & Locked</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Authorized Google accounts only</div>
+            </div>
+
+            <div style="background: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #0284c7;">Active Session ID</div>
+              <div style="font-size: 12px; font-family: monospace; font-weight: 700; color: #334155; margin-top: 4px;" id="settings-session-id">-</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Self-sync ghost alert suppression active</div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="refreshSessionData(true)" style="gap: 6px; font-size: 12.5px;">
+              <span>↻</span> Force Refresh Live Cloud Data
+            </button>
+            <button type="button" class="btn btn-outline" onclick="triggerManualOfflineSync()" style="gap: 6px; font-size: 12.5px; color: #0284c7; border-color: #7dd3fc;">
+              <span>☁️</span> Check Offline Sync Queue
+            </button>
           </div>
         </div>
       </section>
@@ -2395,8 +2389,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=59"></script>
-  <script src="firebase-sync.js?v=59"></script>
-  <script src="app.js?v=59"></script>
+  <script src="firebase-config.js?v=62"></script>
+  <script src="firebase-sync.js?v=62"></script>
+  <script src="app.js?v=62"></script>
 </body>
 </html>
