@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=56">
+  <link rel="stylesheet" href="styles.css?v=57">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -122,7 +122,7 @@
           </svg>
           <span>Settings</span>
         </button>
-        <button class="mobile-header-btn" onclick="handleLogout()" title="Logout" style="color: #dc2626; border-color: #fecaca; background: #fef2f2;">
+        <button class="mobile-header-btn" onclick="handleLogout()" title="Logout" style="color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.2);">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
             <polyline points="16 17 21 12 16 7"/>
@@ -144,30 +144,30 @@
       </div>
       <div class="stat-pill">
         <span>Collected:</span>
-        <strong id="header-collected" style="color: #16a34a;">₹ 0</strong>
+        <strong id="header-collected" style="color: #4ade80;">₹ 0</strong>
       </div>
-      <div class="stat-pill" style="background: #faf5ff; border-color: #e9d5ff;">
+      <div class="stat-pill" style="background: rgba(147, 51, 234, 0.18); border-color: rgba(168, 85, 247, 0.35);">
         <span>Profit:</span>
-        <strong id="header-profit" style="color: #7c3aed;">₹ 0</strong>
+        <strong id="header-profit" style="color: #c084fc;">₹ 0</strong>
       </div>
-      <div class="stat-pill" style="background: #f0fdf4; border-color: #bbf7d0;">
+      <div class="stat-pill" style="background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.35);">
         <span>Today:</span>
-        <strong id="header-today" style="color: #16a34a;">₹ 0</strong>
+        <strong id="header-today" style="color: #4ade80;">₹ 0</strong>
       </div>
-      <button class="stat-pill" onclick="openCashTallyModal()" style="cursor: pointer; background: #fffbeb; border-color: #fde68a;" title="End-of-day Cash Tally & Handover Slip">
+      <button class="stat-pill" onclick="openCashTallyModal()" style="cursor: pointer; background: rgba(245, 158, 11, 0.18); border-color: rgba(245, 158, 11, 0.35); color: #fef08a;" title="End-of-day Cash Tally & Handover Slip">
         <span>💵 Cash Tally</span>
       </button>
-      <button class="stat-pill" id="cloud-status-pill" onclick="refreshSessionData(true)" style="cursor: pointer; background: rgba(34, 197, 94, 0.15); border-color: #22c55e;" title="Click to refresh session data">
+      <button class="stat-pill" id="cloud-status-pill" onclick="refreshSessionData(true)" style="cursor: pointer; background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.35);" title="Click to refresh session data">
         <span>☁️ Sync:</span>
-        <strong style="color: #16a34a;">Live ↻</strong>
+        <strong style="color: #4ade80;">Live ↻</strong>
       </button>
       <button class="stat-pill offline-sync-pill online" id="offline-sync-badge" onclick="triggerManualOfflineSync()" title="Local-First Offline Storage & Background Sync Engine" style="cursor: pointer;">
         <span id="offline-sync-icon">☁️</span>
-        <strong id="offline-sync-text" style="color: #16a34a;">All Synced</strong>
+        <strong id="offline-sync-text" style="color: #4ade80;">All Synced</strong>
       </button>
-      <button class="stat-pill pwa-install-pill" id="btn-install-pwa" onclick="handlePwaInstallClick()" style="display: none; cursor: pointer; background: #eff6ff; border-color: #3b82f6;" title="Install JSR Finance Mobile App on your phone or desktop">
+      <button class="stat-pill pwa-install-pill" id="btn-install-pwa" onclick="handlePwaInstallClick()" style="display: none; cursor: pointer; background: rgba(59, 130, 246, 0.25); border-color: rgba(96, 165, 250, 0.5);" title="Install JSR Finance Mobile App on your phone or desktop">
         <span>📲</span>
-        <strong style="color: #2563eb;">Install App</strong>
+        <strong style="color: #93c5fd;">Install App</strong>
       </button>
     </div>
   </header>
@@ -2287,7 +2287,7 @@
   </div>
 
   <!-- Toast Notification -->
-  <div id="app-toast"></div>
+  <div id="app-toast" style="display: none;"></div>
 
   <!-- Mobile Bottom Navigation Bar (High-Tech Mobile Experience) -->
   <nav class="mobile-nav" id="mobile-nav">
@@ -2356,8 +2356,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=56"></script>
-  <script src="firebase-sync.js?v=56"></script>
-  <script src="app.js?v=56"></script>
+  <script src="firebase-config.js?v=57"></script>
+  <script src="firebase-sync.js?v=57"></script>
+  <script src="app.js?v=57"></script>
 </body>
 </html>
