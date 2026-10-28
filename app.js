@@ -2794,6 +2794,32 @@ function getPortfolioStats(loanFilter = 'all') {
   };
 }
 
+// Update Logged User Badge in Header
+function updateHeaderUserBadge() {
+  const badge = document.getElementById('header-user-badge');
+  const nameEl = document.getElementById('header-user-name');
+  const roleEl = document.getElementById('header-user-role');
+  const iconEl = document.getElementById('header-user-icon');
+  if (!badge) return;
+
+  const curUser = getCurrentUser();
+  if (curUser && curUser.user && curUser.user !== 'Admin') {
+    if (nameEl) nameEl.textContent = curUser.user;
+    if (roleEl) roleEl.textContent = curUser.role || 'Operator';
+    if (iconEl) iconEl.textContent = curUser.role === 'Admin' ? '👑' : '🛵';
+    badge.title = `Logged in as ${curUser.user} (${curUser.role || 'Operator'}). Click to view settings.`;
+  } else if (curUser && curUser.role === 'Admin') {
+    if (nameEl) nameEl.textContent = curUser.user || 'Surendra Singari';
+    if (roleEl) roleEl.textContent = 'Admin';
+    if (iconEl) iconEl.textContent = '👑';
+    badge.title = 'Logged in as Administrator (Owner). Click to view settings.';
+  } else {
+    if (nameEl) nameEl.textContent = state.settings.adminEmail ? state.settings.adminEmail.split('@')[0] : 'Operator';
+    if (roleEl) roleEl.textContent = curUser ? (curUser.role || 'Operator') : 'Operator';
+    if (iconEl) iconEl.textContent = '👤';
+  }
+}
+
 // Update Persistent Header Stats
 function updateHeaderStats() {
   const stats = getPortfolioStats('all');
@@ -2810,6 +2836,9 @@ function updateHeaderStats() {
 
   // Set business name in header and brand
   document.getElementById('brand-business-name').textContent = state.settings.businessName || 'JSR Finance';
+
+  // Synchronize active logged user pill
+  updateHeaderUserBadge();
 }
 
 // Navigation & Tab Switching
@@ -3467,9 +3496,9 @@ function renderAnalyticsFollowupCustomers() {
 
     let statusBadge = '';
     if (item.isAtRisk) {
-      statusBadge = `<span class="badge-status badge-status-atrisk" style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px;">⚠️ At Risk • Due ${stats.missedCount}</span>`;
+      statusBadge = `<span class="badge-status badge-status-atrisk" style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px;" title="High Risk: Borrower is ${stats.missedCount} instalments behind schedule">⚠️ At Risk • ${stats.missedCount} Overdue</span>`;
     } else if (item.isOverdue) {
-      statusBadge = `<span class="badge-overdue" style="font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px;">⚠️ Due ${stats.missedCount}</span>`;
+      statusBadge = `<span class="badge-overdue" style="font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px;" title="Delayed Schedule: Borrower is ${stats.missedCount} instalments behind schedule">⚠️ ${stats.missedCount} Overdue</span>`;
     } else if (item.isCompleted) {
       statusBadge = `<span class="badge-status badge-status-completed" style="background:#dcfce7; color:#15803d; border:1px solid #86efac; font-size:11px; font-weight:700; padding:2px 7px; border-radius:6px;">✅ Completed</span>`;
     }
@@ -4281,8 +4310,10 @@ function renderCollectionMatrix() {
     }
 
     const activePartialInst = (cust.instalments || []).find(i => i && i.status === 'Partial');
+    const partialRecd = activePartialInst ? (Number(activePartialInst.paidAmount) || 0) : 0;
+    const partialRemaining = activePartialInst ? Math.max(0, (cust.instalmentAmount || 0) - partialRecd) : 0;
     const partialBadgeHtml = activePartialInst
-      ? `<span class="badge-partial-pill" title="${unitLabel} #${activePartialInst.number}: Partial Payment rec'd ${formatMoney(activePartialInst.paidAmount || 0)} • Pending ${formatMoney((cust.instalmentAmount || 0) - (activePartialInst.paidAmount || 0))}">½ ${formatMoney(activePartialInst.paidAmount || 0)}</span>`
+      ? `<span class="badge-partial-pill" style="font-size:10px; padding:1px 6px; flex-shrink:0; white-space:nowrap;" title="Partial Payment Recorded: ${unitLabel} #${activePartialInst.number} has received ${formatMoney(partialRecd)}, with ${formatMoney(partialRemaining)} remaining due.">◐ Partial: ${formatMoney(partialRecd)} Rec'd (${formatMoney(partialRemaining)} Due)</span>`
       : '';
 
     let nextDueSeq = 1;
@@ -4320,7 +4351,7 @@ function renderCollectionMatrix() {
               <div class="cust-name-row">
                 <span class="cust-name" title="${cust.fullName}">${cust.fullName}</span>
                 <span class="cust-loan-badge">L${cust.loanNumber || 1}</span>
-                ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 5px; flex-shrink:0; white-space:nowrap;">⚠️ Due ${stats.missedCount}</span>` : ''}
+                ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 6px; flex-shrink:0; white-space:nowrap;" title="Delayed Schedule: Borrower is ${stats.missedCount} instalment${stats.missedCount > 1 ? 's' : ''} behind schedule (Total Overdue: ${formatMoney(stats.missedCount * (cust.instalmentAmount || 0))})">⚠️ ${stats.missedCount} Overdue (Delayed)</span>` : ''}
                 ${partialBadgeHtml}
                 ${settledBadgeHtml}
                 ${isLockedByOther ? `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-size:10px; padding:1px 6px; flex-shrink:0; font-weight:700; border-radius:4px;">🔒 ${activeLock.lockedBy}</span>` : ''}
@@ -4329,7 +4360,7 @@ function renderCollectionMatrix() {
                 ${custIdStr} • ${cust.phone || 'No Phone'}
               </div>
               <div class="cust-financial-terms">
-                <span>${formatMoney(cust.givenAmount)}</span> • <span>${formatMoney(cust.instalmentAmount)}/${unitLabel.toLowerCase()}</span> • <span class="cust-bal-payable" style="color: ${effectiveStats.balance <= 0 ? '#15803d' : '#b45309'};" title="Remaining Balance Payable">Bal: ${formatMoney(effectiveStats.balance)}</span>
+                <span>${formatMoney(cust.givenAmount)}</span> • <span>${formatMoney(cust.instalmentAmount)}/${unitLabel.toLowerCase()}</span> • <span class="cust-bal-payable" style="color: ${effectiveStats.balance <= 0 ? '#15803d' : '#b45309'};" title="Total Remaining Loan Balance: ${formatMoney(effectiveStats.balance)} across all remaining instalments (Disbursed: ${formatMoney(cust.givenAmount)}, Total Payable: ${formatMoney(cust.totalPayable || effectiveStats.totalPayable)})">💳 Total Loan Balance: ${formatMoney(effectiveStats.balance)}</span>
               </div>
             </div>
           </div>
@@ -5020,8 +5051,8 @@ function renderCustomersTable() {
 
     const rating = stats.creditRating || calculateCreditRating(c);
     const avatarHtml = c.photoUrl
-      ? `<img src="${c.photoUrl}" alt="Photo" class="cust-avatar-img" style="width:34px; height:34px; border-radius:50%; object-fit:cover; border:1px solid #cbd5e1; flex-shrink:0;">`
-      : `<div style="width:34px; height:34px; border-radius:50%; background:#e2e8f0; color:#334155; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; flex-shrink:0;">${(c.fullName || 'C').charAt(0).toUpperCase()}</div>`;
+      ? `<img src="${c.photoUrl}" alt="Photo" class="cust-avatar-img" style="width:34px; height:34px; border-radius:50%; object-fit:cover; border:1px solid #cbd5e1; flex-shrink:0; cursor:pointer;" onclick="openCustomerPhotoLightbox('${c.id}', event)" title="Click to view borrower photo & KYC details">`
+      : `<div class="cust-avatar" style="width:34px; height:34px; border-radius:50%; background:#e2e8f0; color:#334155; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; flex-shrink:0; cursor:pointer;" onclick="openCustomerPhotoLightbox('${c.id}', event)" title="Click to view borrower profile & KYC details">${(c.fullName || 'C').charAt(0).toUpperCase()}</div>`;
     const creditBadgeHtml = `<span class="credit-badge ${rating.badgeClass}" title="Credit Health: ${rating.stars} (${rating.tier})">⭐ ${rating.score.toFixed(1)}</span>`;
     const kycBadgeHtml = c.kycVerified
       ? `<span class="kyc-badge" onclick="openKycViewerModal('${c.id}')" title="KYC Verified - Click to View">✓ KYC</span>`
@@ -5040,7 +5071,7 @@ function renderCustomersTable() {
       <tr>
         <td>
           <strong style="color:#1e3a8a; font-size:14px;">#${c.customerNumber}</strong>${loanBadgeHtml}
-          ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="${stats.missedCount} instalments behind schedule">⚠️ Due ${stats.missedCount}</span>` : ''}
+          ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="Delayed Schedule: Borrower is ${stats.missedCount} instalments behind schedule (Overdue: ${formatMoney(stats.missedCount * (c.instalmentAmount || 0))})">⚠️ ${stats.missedCount} Overdue</span>` : ''}
         </td>
         <td>
           <div style="display:flex; align-items:center; gap:8px;">
@@ -5127,8 +5158,8 @@ function renderCustomersTable() {
 
       const rating = stats.creditRating || calculateCreditRating(c);
       const avatarHtml = c.photoUrl
-        ? `<img src="${c.photoUrl}" alt="Photo" class="cust-avatar-img" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid #cbd5e1; flex-shrink:0;">`
-        : `<div style="width:36px; height:36px; border-radius:50%; background:#e2e8f0; color:#334155; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; flex-shrink:0;">${(c.fullName || 'C').charAt(0).toUpperCase()}</div>`;
+        ? `<img src="${c.photoUrl}" alt="Photo" class="cust-avatar-img" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid #cbd5e1; flex-shrink:0; cursor:pointer;" onclick="openCustomerPhotoLightbox('${c.id}', event)" title="Click to view borrower photo & KYC details">`
+        : `<div class="cust-avatar" style="width:36px; height:36px; border-radius:50%; background:#e2e8f0; color:#334155; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; flex-shrink:0; cursor:pointer;" onclick="openCustomerPhotoLightbox('${c.id}', event)" title="Click to view borrower profile & KYC details">${(c.fullName || 'C').charAt(0).toUpperCase()}</div>`;
       const creditBadgeHtml = `<span class="credit-badge ${rating.badgeClass}" title="Credit Health: ${rating.stars} (${rating.tier})">⭐ ${rating.score.toFixed(1)}</span>`;
       const kycBadgeHtml = c.kycVerified
         ? `<span class="kyc-badge" onclick="openKycViewerModal('${c.id}')" title="KYC Verified - Click to View">✓ KYC</span>`
@@ -5168,7 +5199,7 @@ function renderCustomersTable() {
                 <span style="font-size:10px;">▾</span>
               </button>
               <span class="badge-status ${stats.isCompleted ? 'badge-status-completed' : 'badge-status-active'}">${stats.isCompleted ? '✓ Completed' : '● Active'}</span>
-              ${stats.isOverdue ? `<span class="badge-status badge-status-overdue">⚠️ Due ${stats.missedCount}</span>` : ''}
+              ${stats.isOverdue ? `<span class="badge-status badge-status-overdue" title="Delayed Schedule: Borrower is ${stats.missedCount} instalments behind schedule (Overdue: ${formatMoney(stats.missedCount * (c.instalmentAmount || 0))})">⚠️ ${stats.missedCount} Overdue</span>` : ''}
             </div>
           </div>
 
@@ -8444,7 +8475,7 @@ function renderRunSheet() {
             ${isPaidToday
               ? `<span class="badge-status badge-status-success">✓ Paid Today</span>`
               : (stats.isOverdue
-                  ? `<span class="badge-status badge-status-overdue">⚠️ Due ${stats.missedCount}</span>`
+                  ? `<span class="badge-status badge-status-overdue" title="Delayed Schedule: Borrower is ${stats.missedCount} instalments behind schedule (Overdue: ${formatMoney(stats.missedCount * (c.instalmentAmount || 0))})">⚠️ ${stats.missedCount} Overdue (Delayed)</span>`
                   : `<span style="font-size: 12px; font-weight: 700; color: #2563eb;">${unitLabel} #${nextDueNum}</span>`)}
           </div>
         </div>
@@ -9336,6 +9367,65 @@ function applyRoleBasedPermissions() {
   }
 }
 
+// Helper to accurately aggregate today's collections across audit ledger transactions AND customer instalments
+function getTodayCollectorTransactions() {
+  const todayStr = getISTDateString();
+  const recordedKeys = new Set();
+  const items = [];
+
+  if (state.transactions && Array.isArray(state.transactions)) {
+    state.transactions.forEach(t => {
+      if ((t.date === todayStr || t.date === 'Today') && t.type !== 'undo') {
+        const cust = (state.customers || []).find(c => 
+          (c.id && c.id === t.customerId) || 
+          (c.customerNumber && c.customerNumber.toString() === (t.customerNumber || '').toString())
+        );
+        items.push({
+          customerId: t.customerId || (cust ? cust.id : ''),
+          customerNumber: t.customerNumber || (cust ? cust.customerNumber : ''),
+          loanNumber: Number(t.loanNumber) || (cust ? Number(cust.loanNumber) : 1) || 1,
+          customerName: t.customerName || (cust ? cust.fullName : 'Customer'),
+          instalmentNumber: t.instalmentNumber,
+          receiptNumber: t.receiptNumber || '',
+          amount: Number(t.amount) || 0,
+          collector: t.collector || 'Admin',
+          collectorId: t.collectorId || null
+        });
+        if (t.customerId && t.instalmentNumber) {
+          recordedKeys.add(`${t.customerId}_${t.instalmentNumber}`);
+        }
+      }
+    });
+  }
+
+  // Fallback: also scan active customer instalments paid today not yet logged as transaction rows
+  (state.customers || []).forEach((c) => {
+    const cLoanNum = Number(c.loanNumber) || 1;
+    const cInstAmt = Number(c.instalmentAmount) || 200;
+    (c.instalments || []).forEach((inst) => {
+      if (inst && (inst.status === 'Received' || inst.status === 'Partial') && (inst.paidDate === todayStr || inst.paidDate === 'Today')) {
+        const key = `${c.id}_${inst.number}`;
+        if (!recordedKeys.has(key)) {
+          const instPaid = (inst.status === 'Received') ? (Number(inst.paidAmount) || cInstAmt) : (Number(inst.paidAmount) || 0);
+          items.push({
+            customerId: c.id,
+            customerNumber: c.customerNumber,
+            loanNumber: cLoanNum,
+            customerName: c.fullName,
+            instalmentNumber: inst.number,
+            receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
+            amount: instPaid,
+            collector: inst.paidBy || 'Admin',
+            collectorId: null
+          });
+        }
+      }
+    });
+  });
+
+  return items;
+}
+
 function renderCollectorBreakdownWidget() {
   const breakdownCard = document.getElementById('dashboard-collector-breakdown');
   const cardsContainer = document.getElementById('collector-breakdown-cards');
@@ -9350,12 +9440,11 @@ function renderCollectorBreakdownWidget() {
   }
   breakdownCard.style.display = 'block';
 
-  const todayStr = getISTDateString();
-  const todayTxns = (state.transactions || []).filter(t => (t.date === todayStr || t.date === 'Today') && t.type !== 'undo');
+  const todayTxns = getTodayCollectorTransactions();
 
   // 1. Admin Personal Collections
   const adminTxns = todayTxns.filter(t => 
-    !t.collector || t.collector === 'Admin' || t.collector.toLowerCase().includes('admin') || t.collector === currentUser.user
+    !t.collector || t.collector === 'Admin' || t.collector.toLowerCase().includes('admin') || (currentUser && t.collector === currentUser.user)
   );
   const adminTotal = adminTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const adminCount = adminTxns.length;
@@ -9430,13 +9519,15 @@ function openCollectorHandoverModal(operatorName) {
       : `<span>🛵</span> Field Collector Handover Slip: ${operatorName}`;
   }
 
-  const txns = (state.transactions || []).filter(t => {
-    if (t.date !== todayStr && t.date !== 'Today') return false;
-    if (t.type === 'undo') return false;
+  const allTodayTxns = getTodayCollectorTransactions();
+  const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
+  const rosterCol = roster.find(c => c.name === operatorName || c.email === operatorName);
+
+  const txns = allTodayTxns.filter(t => {
     if (isAdm) {
       return !t.collector || t.collector === 'Admin' || t.collector.toLowerCase().includes('admin');
     }
-    return t.collector === operatorName;
+    return t.collector === operatorName || (rosterCol && (t.collector === rosterCol.name || t.collector === rosterCol.email || t.collectorId === rosterCol.id));
   });
 
   const totalAmount = txns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
