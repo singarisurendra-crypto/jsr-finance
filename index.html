@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=57">
+  <link rel="stylesheet" href="styles.css?v=58">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -80,16 +80,7 @@
             <span id="btn-google-sso-label">Sign In with Google</span>
           </button>
 
-          <div style="margin-top: 14px; display: flex; flex-direction: column; gap: 8px;">
-            <button type="button" onclick="quickLoginOwner()" style="background: transparent; border: 1px dashed #cbd5e1; color: #475569; padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#3b82f6'; this.style.color='#1d4ed8';" onmouseout="this.style.borderColor='#cbd5e1'; this.style.color='#475569';" title="Instant access as Owner/Admin (singarisurendra@gmail.com)">
-              ⚡ 1-Click Fast Sign-In (Surendra Singari)
-            </button>
-            <button type="button" onclick="promptGoogleEmailFallback()" style="background: transparent; border: none; color: #64748b; font-size: 11.5px; cursor: pointer; text-decoration: underline;">
-              Sign in with another operator email
-            </button>
-          </div>
-
-          <div style="font-size: 11.5px; color: #64748b; margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 5px;">
+          <div style="font-size: 11.5px; color: #64748b; margin-top: 16px; display: flex; align-items: center; justify-content: center; gap: 5px;">
             <span>🛡️</span>
             <span>Strict Security Gate: Whitelisted Google accounts only</span>
           </div>
@@ -113,15 +104,8 @@
         </div>
       </div>
 
-      <!-- Mobile Quick Actions: Settings & Logout Relocated to Header -->
+      <!-- Mobile Header Actions: Logout -->
       <div class="mobile-header-actions">
-        <button class="mobile-header-btn" data-tab="settings" onclick="switchTab('settings')" title="Settings & Config">
-          <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-          <span>Settings</span>
-        </button>
         <button class="mobile-header-btn" onclick="handleLogout()" title="Logout" style="color: #fca5a5; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.2);">
           <svg class="nav-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -157,9 +141,9 @@
       <button class="stat-pill" onclick="openCashTallyModal()" style="cursor: pointer; background: rgba(245, 158, 11, 0.18); border-color: rgba(245, 158, 11, 0.35); color: #fef08a;" title="End-of-day Cash Tally & Handover Slip">
         <span>💵 Cash Tally</span>
       </button>
-      <button class="stat-pill" id="cloud-status-pill" onclick="refreshSessionData(true)" style="cursor: pointer; background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.35);" title="Click to refresh session data">
+      <button class="stat-pill" id="cloud-status-pill" onclick="handleSyncPillClick()" style="cursor: pointer; background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.35);" title="Google Cloud Firebase Real-Time Sync & System Settings">
         <span>☁️ Sync:</span>
-        <strong style="color: #4ade80;">Live ↻</strong>
+        <strong style="color: #4ade80;" id="cloud-status-text">Live (Google Cloud Firebase) ↻</strong>
       </button>
       <button class="stat-pill offline-sync-pill online" id="offline-sync-badge" onclick="triggerManualOfflineSync()" title="Local-First Offline Storage & Background Sync Engine" style="cursor: pointer;">
         <span id="offline-sync-icon">☁️</span>
@@ -1127,6 +1111,54 @@
           <div>
             <h1 class="view-title">System Settings & Instalment Configuration</h1>
             <p class="view-subtitle">Configure instalment amounts, default numbers, firm branding, and database backups.</p>
+          </div>
+        </div>
+
+        <!-- Google Cloud Firebase Real-Time Database & Live Sync Overview Card -->
+        <div class="card" id="card-cloud-firebase-sync" style="margin-bottom: 24px; border: 1.5px solid #38bdf8; background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%);">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; border-bottom: 1px solid #e0f2fe; padding-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <h3 style="font-size: 16px; color: #0369a1; margin: 0; display: flex; align-items: center; gap: 8px;">
+                <span>☁️</span> Google Cloud Firebase Real-Time Database & Live Sync
+              </h3>
+              <p style="font-size: 13px; color: #0284c7; margin: 4px 0 0 0;">
+                Enterprise multi-user real-time sync with conflict resolution and automated offline queuing.
+              </p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="settings-firebase-badge" style="background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 700;">
+                ● Live Connected (Google Cloud)
+              </span>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px;">
+            <div style="background: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #0284c7;">Firebase Project ID</div>
+              <div style="font-size: 13.5px; font-weight: 700; color: #0f172a; margin-top: 4px;">jsr-finance-app-4a72e</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Google Cloud Firestore (us-central1)</div>
+            </div>
+
+            <div style="background: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #0284c7;">Database Security Rules</div>
+              <div style="font-size: 13.5px; font-weight: 700; color: #15803d; margin-top: 4px;">🔒 Hardened & Locked</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Authorized Google accounts only</div>
+            </div>
+
+            <div style="background: #ffffff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px;">
+              <div style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #0284c7;">Active Session ID</div>
+              <div style="font-size: 12px; font-family: monospace; font-weight: 700; color: #334155; margin-top: 4px;" id="settings-session-id">-</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Self-sync ghost alert suppression active</div>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="refreshSessionData(true)" style="gap: 6px; font-size: 12.5px;">
+              <span>↻</span> Force Refresh Live Cloud Data
+            </button>
+            <button type="button" class="btn btn-outline" onclick="triggerManualOfflineSync()" style="gap: 6px; font-size: 12.5px; color: #0284c7; border-color: #7dd3fc;">
+              <span>☁️</span> Check Offline Sync Queue
+            </button>
           </div>
         </div>
 
@@ -2356,8 +2388,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=57"></script>
-  <script src="firebase-sync.js?v=57"></script>
-  <script src="app.js?v=57"></script>
+  <script src="firebase-config.js?v=58"></script>
+  <script src="firebase-sync.js?v=58"></script>
+  <script src="app.js?v=58"></script>
 </body>
 </html>
