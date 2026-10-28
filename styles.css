@@ -1,18 +1,18 @@
 /* JSR Instalment Receiving - High-Tech Fintech & Mobile-First Stylesheet */
 :root {
-  --primary: #2563eb;
-  --primary-light: #3b82f6;
-  --primary-dark: #1e3a8a;
+  --primary: #4F46E5;
+  --primary-light: #6366f1;
+  --primary-dark: #172554;
   --accent-cyan: #06b6d4;
   --accent-purple: #8b5cf6;
-  --success: #16a34a;
+  --success: #16A34A;
   --success-bg: #dcfce7;
-  --warning: #d97706;
+  --warning: #F59E0B;
   --warning-bg: #fef3c7;
   --danger: #dc2626;
   --danger-bg: #fee2e2;
-  --surface: #ffffff;
-  --bg-main: #f8fafc;
+  --surface: #FFFFFF;
+  --bg-main: #F5F7FF;
   --border: #e2e8f0;
   --text-main: #0f172a;
   --text-muted: #64748b;
@@ -45,13 +45,10 @@ body {
 
 
 /* ==================================================== */
-/* HIGH-TECH HEADER                                     */
-/* ==================================================== */
-/* ==================================================== */
-/* MODERN FINTECH HERO NAVY HEADER                      */
+/* ROYAL BLUE & INDIGO HEADER (#172554)                 */
 /* ==================================================== */
 .app-header {
-  background: linear-gradient(135deg, #0b1120 0%, #111e38 40%, #172554 75%, #1e3a8a 100%);
+  background: #172554;
   color: #ffffff;
   padding: 10px 20px;
   box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2);
@@ -192,6 +189,39 @@ body {
   transform: translateY(0) scale(0.97);
 }
 
+.logged-user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  padding: 4px 12px;
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.logged-user-pill:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.logged-user-role {
+  background: #4F46E5;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
 /* ==================================================== */
 /* MAIN LAYOUT & DESKTOP SIDEBAR (HERO NAVY THEME)      */
 /* ==================================================== */
@@ -203,8 +233,8 @@ body {
 
 .sidebar {
   width: 68px;
-  background: linear-gradient(180deg, #0b1120 0%, #0f172a 45%, #172554 100%);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111827;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   padding: 20px 10px;
   display: flex;
   flex-direction: column;
@@ -279,10 +309,10 @@ body {
 }
 
 .nav-link.active {
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.35) 0%, rgba(30, 58, 138, 0.6) 100%);
+  background: #4F46E5;
   color: #ffffff;
-  border: 1px solid rgba(96, 165, 250, 0.45);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  border: 1px solid #6366f1;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);
   font-weight: 700;
 }
 
@@ -293,13 +323,13 @@ body {
   top: 10px;
   bottom: 10px;
   width: 4px;
-  background: #60a5fa;
+  background: #a5b4fc;
   border-radius: 0 4px 4px 0;
-  box-shadow: 0 0 8px rgba(96, 165, 250, 0.8);
+  box-shadow: 0 0 8px rgba(165, 180, 252, 0.9);
 }
 
 .nav-link.active .nav-svg {
-  stroke: #60a5fa;
+  stroke: #ffffff;
 }
 
 .sidebar-logout-btn {
@@ -1251,17 +1281,13 @@ body.modal-open .loans-tooltip-popover {
 }
 
 .mobile-nav-item.active {
-  color: #2563eb;
-  background: #eff6ff;
+  color: #4F46E5;
+  background: #eef2ff;
 }
 
 .mobile-nav-item.active .nav-svg {
-  stroke: #2563eb;
-}
-
-.mobile-nav-item.active .nav-svg {
-  stroke: #60a5fa;
-  filter: drop-shadow(0 0 6px rgba(96, 165, 250, 0.7));
+  stroke: #4F46E5;
+  filter: drop-shadow(0 0 6px rgba(79, 70, 229, 0.4));
 }
 
 .mobile-nav-item:active {
@@ -1611,13 +1637,13 @@ body.modal-open .loans-tooltip-popover {
   }
 
   .mobile-nav-item.active {
-    color: #2563eb;
-    background: #eff6ff;
+    color: #4F46E5;
+    background: #eef2ff;
   }
 
   .mobile-nav-item.active .nav-svg {
-    stroke: #2563eb;
-    filter: drop-shadow(0 0 4px rgba(37, 99, 235, 0.35));
+    stroke: #4F46E5;
+    filter: drop-shadow(0 0 4px rgba(79, 70, 229, 0.4));
   }
 
   .mobile-nav-item:active {
@@ -4379,8 +4405,8 @@ select:focus-visible {
 }
 .sched-box-btn.is-partial,
 .sched-box-btn.sched-box-partial {
-  background: #ea580c !important;
-  border-color: #c2410c !important;
+  background: #F59E0B !important;
+  border-color: #d97706 !important;
   color: #ffffff !important;
   padding: 0 1px;
 }
