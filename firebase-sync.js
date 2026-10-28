@@ -63,20 +63,20 @@ function updateCloudStatusIndicator(connected, projectId = '', errorMsg = '') {
   if (!pill) return;
 
   if (connected) {
-    pill.style.background = 'rgba(34, 197, 94, 0.15)';
-    pill.style.borderColor = '#22c55e';
-    pill.innerHTML = `<span>☁️ Sync:</span> <strong style="color:#16a34a;">Live ↻</strong>`;
-    pill.title = 'Google Cloud Firestore Connected. Click to refresh session data.';
+    pill.style.background = 'rgba(34, 197, 94, 0.18)';
+    pill.style.borderColor = 'rgba(34, 197, 94, 0.35)';
+    pill.innerHTML = `<span>☁️ Sync:</span> <strong style="color:#4ade80;">Live (Google Cloud Firebase) ↻</strong>`;
+    pill.title = 'Google Cloud Firebase Live Connected. Click to open Settings & Sync.';
   } else if (errorMsg) {
-    pill.style.background = 'rgba(239, 68, 68, 0.15)';
-    pill.style.borderColor = '#ef4444';
-    pill.innerHTML = `<span>☁️ Sync:</span> <strong style="color:#dc2626;">Error ↻</strong>`;
-    pill.title = `Cloud Connection Error: ${errorMsg}. Click to retry.`;
+    pill.style.background = 'rgba(239, 68, 68, 0.18)';
+    pill.style.borderColor = 'rgba(239, 68, 68, 0.35)';
+    pill.innerHTML = `<span>☁️ Sync:</span> <strong style="color:#f87171;">Offline / Error (Google Cloud Firebase) ↻</strong>`;
+    pill.title = `Cloud Connection Error: ${errorMsg}. Click to open Settings & Sync.`;
   } else {
     pill.style.background = 'rgba(255, 255, 255, 0.12)';
     pill.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-    pill.innerHTML = `<span>☁️ Sync:</span> <strong style="color:#cbd5e1;">Local ↻</strong>`;
-    pill.title = 'Working in Local Mode. Click to refresh session.';
+    pill.innerHTML = `<span>☁️ Sync:</span> <strong style="color:#cbd5e1;">Local Mode (Google Cloud Firebase) ↻</strong>`;
+    pill.title = 'Working in Local Mode. Click to open Settings & Sync.';
   }
 }
 
