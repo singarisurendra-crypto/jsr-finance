@@ -824,27 +824,18 @@ const AUTHORIZED_OPERATOR_WHITELIST = [
   'singarisurendra-crypto@users.noreply.github.com'
 ];
 
-function quickLoginOwner() {
-  verifyAndLoginGoogleUser('singarisurendra@gmail.com', 'Surendra Singari (Owner)');
-}
-
-function showGoogleAuthGuideAlert(message) {
+function showGoogleAuthError(message) {
   const errorAlert = document.getElementById('login-error-alert');
   if (errorAlert) {
     errorAlert.innerHTML = `
       <div style="text-align: left; line-height: 1.5; width: 100%;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px;">
-          <strong style="color: #92400e;">⚠️ Google Sign-In Setup Notice</strong>
-          <button type="button" onclick="quickLoginOwner()" style="background: #2563eb; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;">
-            1-Click Owner Sign-In ↵
-          </button>
-        </div>
+        <strong style="color: #b91c1c;">🚫 Google Authentication Notice</strong><br>
         <span style="font-size: 12px; color: #475569;">${message}</span>
       </div>
     `;
-    errorAlert.style.background = '#fef3c7';
-    errorAlert.style.borderColor = '#fde68a';
-    errorAlert.style.color = '#92400e';
+    errorAlert.style.background = '#fef2f2';
+    errorAlert.style.borderColor = '#fca5a5';
+    errorAlert.style.color = '#b91c1c';
     errorAlert.style.display = 'flex';
   }
 }
@@ -866,7 +857,7 @@ function handleGoogleSignInClick() {
     initGoogleCloudDatabase();
   }
 
-  // 1. Official Firebase Auth Google SSO Popup
+  // Official Firebase Auth Google SSO Popup
   if (typeof firebase !== 'undefined' && firebase.auth) {
     try {
       const provider = new firebase.auth.GoogleAuthProvider();
@@ -878,47 +869,56 @@ function handleGoogleSignInClick() {
           if (result && result.user && result.user.email) {
             verifyAndLoginGoogleUser(result.user.email, result.user.displayName || result.user.email);
           } else {
-            promptGoogleEmailFallback();
+            showGoogleAuthError('No Google user credentials returned. Please try signing in again.');
           }
         })
         .catch((error) => {
           if (label) label.textContent = 'Sign In with Google';
           console.warn('Firebase Google Auth event:', error);
-          if (error.code === 'auth/operation-not-allowed' || error.code === 'auth/configuration-not-found') {
-            showGoogleAuthGuideAlert(
-              `Google Provider is not enabled in Firebase Console yet. Click '⚡ 1-Click Fast Sign-In' below to enter immediately, or enable Google under Firebase Console > Authentication > Sign-in method.`
+          if (error.code === 'auth/popup-blocked') {
+            if (label) label.textContent = 'Redirecting to Google...';
+            firebase.auth().signInWithRedirect(provider);
+          } else if (error.code === 'auth/popup-closed-by-user') {
+            // User closed the popup, leave screen ready for another attempt
+          } else if (error.code === 'auth/operation-not-allowed' || error.code === 'auth/configuration-not-found') {
+            showGoogleAuthError(
+              'Google Provider is not enabled in Firebase Console yet. Please enable Google under Firebase Console > Authentication > Sign-in method.'
             );
           } else if (error.code === 'auth/unauthorized-domain') {
-            showGoogleAuthGuideAlert(
-              `Domain is not authorized in Firebase Console > Authentication > Settings. Click '⚡ 1-Click Fast Sign-In' below to proceed.`
+            showGoogleAuthError(
+              'This domain is not authorized in Firebase Console > Authentication > Settings > Authorized domains. Please add this domain to log in.'
             );
-          } else if (error.code === 'auth/popup-blocked') {
-            promptGoogleEmailFallback('Popup was blocked by your browser. Enter your whitelisted Google account email:');
-          } else if (error.code !== 'auth/popup-closed-by-user') {
-            promptGoogleEmailFallback('Google Sign-In notice (' + (error.message || 'error') + '). Enter your email:');
+          } else {
+            showGoogleAuthError(error.message || 'Google Sign-In failed. Please try again.');
           }
         });
       return;
     } catch (e) {
       if (label) label.textContent = 'Sign In with Google';
       console.warn('Firebase Auth popup invocation failed:', e);
+      showGoogleAuthError('Google Sign-In error: ' + (e.message || e));
+      return;
     }
   }
 
   if (label) label.textContent = 'Sign In with Google';
-  promptGoogleEmailFallback();
+  showGoogleAuthError('Google Authentication service is initializing. Please wait a moment and try again.');
 }
 
-function promptGoogleEmailFallback(customMsg) {
-  const email = prompt(customMsg || 'Enter your Google Operator Account Email to verify against the security whitelist:');
-  if (!email) return;
-  const cleanEmail = email.trim().toLowerCase();
-  const collectorsList = (state && state.settings && Array.isArray(state.settings.collectors))
-    ? state.settings.collectors
-    : [];
-  const matched = collectorsList.find(c => c && c.email && c.email.trim().toLowerCase() === cleanEmail);
-  const detectedName = matched ? matched.name : (cleanEmail.includes('suri') ? 'Singari Suri' : (cleanEmail.includes('surendra') ? 'Surendra Singari' : ''));
-  verifyAndLoginGoogleUser(cleanEmail, detectedName);
+function handleSyncPillClick() {
+  switchTab('settings');
+  if (typeof refreshSessionData === 'function') {
+    refreshSessionData(false);
+  }
+  const sessIdElem = document.getElementById('settings-session-id');
+  if (sessIdElem) sessIdElem.textContent = window.CURRENT_SESSION_ID || 'session_active';
+  const card = document.getElementById('card-cloud-firebase-sync');
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.style.transition = 'box-shadow 0.3s ease';
+    card.style.boxShadow = '0 0 0 3px rgba(56, 189, 248, 0.7)';
+    setTimeout(() => { card.style.boxShadow = ''; }, 2000);
+  }
 }
 
 function verifyAndLoginGoogleUser(email, name) {
@@ -7362,6 +7362,23 @@ function renderSettings() {
   renderCollectorsRoster();
   applyScreenZoom();
   updateSoundToggleButton();
+
+  const sessIdElem = document.getElementById('settings-session-id');
+  if (sessIdElem) sessIdElem.textContent = window.CURRENT_SESSION_ID || 'session_active';
+  const fbBadge = document.getElementById('settings-firebase-badge');
+  if (fbBadge) {
+    if (typeof isCloudSyncActive !== 'undefined' && isCloudSyncActive && typeof firestoreDb !== 'undefined' && firestoreDb) {
+      fbBadge.style.background = '#dcfce7';
+      fbBadge.style.color = '#15803d';
+      fbBadge.style.borderColor = '#86efac';
+      fbBadge.textContent = '● Live Connected (Google Cloud)';
+    } else {
+      fbBadge.style.background = '#fef2f2';
+      fbBadge.style.color = '#dc2626';
+      fbBadge.style.borderColor = '#fca5a5';
+      fbBadge.textContent = '○ Local / Offline Mode';
+    }
+  }
 }
 
 function handleSaveSettings(event) {
