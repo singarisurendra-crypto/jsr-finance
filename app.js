@@ -87,6 +87,7 @@ let state = {
   offlineSyncQueue: JSON.parse(localStorage.getItem('jsr_finance_offline_queue') || '[]'),
   activeDetailCustomerId: null,
 };
+window.state = state;
 
 // Unique Session ID for Multi-User & Multi-Tab Concurrency Control
 if (!window.CURRENT_SESSION_ID) {
@@ -509,6 +510,20 @@ function customerMatchesQuery(c, query) {
 // Open and highlight a specific customer schedule in the Collections view
 function openCustomerScheduleDirect(customerId) {
   switchTab('collections');
+  
+  // Reset filters so completed/settled loans or specific filters don't hide the customer
+  state.filterStatus = 'all';
+  const filterSelect = document.getElementById('collection-filter-select');
+  if (filterSelect) filterSelect.value = 'all';
+
+  state.collectionLoanFilter = 'all';
+  const loanFilterSelect = document.getElementById('collection-loan-filter');
+  if (loanFilterSelect) loanFilterSelect.value = 'all';
+
+  state.searchQuery = '';
+  const searchInput = document.getElementById('global-search-input');
+  if (searchInput) searchInput.value = '';
+
   if (!state.expandedCustomerIds) state.expandedCustomerIds = new Set();
   state.expandedCustomerIds.clear();
   state.expandedCustomerIds.add(customerId);
@@ -751,11 +766,35 @@ function toggleCustomerActionsMenu(event, customerId) {
         </button>
       ` : ''}
 
+      <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openAddLoanForCustomer('${cust.customerNumber}')">
+        <span class="cust-menu-icon" style="background:#eff6ff; color:#2563eb;">➕</span>
+        <div>
+          <div class="cust-menu-item-title" style="color:#2563eb;">Issue Additional Loan</div>
+          <div class="cust-menu-item-desc">Disburse a new loan account (L2, L3) for this customer</div>
+        </div>
+      </button>
+
+      <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); sendWhatsAppDueReminder('${cust.id}')">
+        <span class="cust-menu-icon" style="background:#f0fdf4; color:#16a34a;">💬</span>
+        <div>
+          <div class="cust-menu-item-title" style="color:#16a34a;">Send WhatsApp Reminder</div>
+          <div class="cust-menu-item-desc">Send due date / outstanding balance statement to ${cust.phone || 'borrower'}</div>
+        </div>
+      </button>
+
       <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openEditCustomerModal('${cust.id}')">
         <span class="cust-menu-icon" style="background:#f8fafc; color:#475569;">✏️</span>
         <div>
           <div class="cust-menu-item-title">Edit Customer Profile</div>
           <div class="cust-menu-item-desc">Update phone number, address, route, or surety</div>
+        </div>
+      </button>
+
+      <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); deleteCustomer('${cust.id}')" style="border-color:#fecaca;">
+        <span class="cust-menu-icon" style="background:#fef2f2; color:#dc2626;">🗑️</span>
+        <div>
+          <div class="cust-menu-item-title" style="color:#dc2626;">Delete Customer / Loan</div>
+          <div class="cust-menu-item-desc">Permanently remove this customer record and instalments</div>
         </div>
       </button>
     </div>
@@ -2799,25 +2838,35 @@ function updateHeaderUserBadge() {
   const badge = document.getElementById('header-user-badge');
   const nameEl = document.getElementById('header-user-name');
   const roleEl = document.getElementById('header-user-role');
-  const iconEl = document.getElementById('header-user-icon');
+  const avatarEl = document.getElementById('header-user-avatar');
   if (!badge) return;
 
   const curUser = getCurrentUser();
-  if (curUser && curUser.user && curUser.user !== 'Admin') {
-    if (nameEl) nameEl.textContent = curUser.user;
-    if (roleEl) roleEl.textContent = curUser.role || 'Operator';
-    if (iconEl) iconEl.textContent = curUser.role === 'Admin' ? '👑' : '🛵';
-    badge.title = `Logged in as ${curUser.user} (${curUser.role || 'Operator'}). Click to view settings.`;
-  } else if (curUser && curUser.role === 'Admin') {
-    if (nameEl) nameEl.textContent = curUser.user || 'Surendra Singari';
-    if (roleEl) roleEl.textContent = 'Admin';
-    if (iconEl) iconEl.textContent = '👑';
-    badge.title = 'Logged in as Administrator (Owner). Click to view settings.';
-  } else {
-    if (nameEl) nameEl.textContent = state.settings.adminEmail ? state.settings.adminEmail.split('@')[0] : 'Operator';
-    if (roleEl) roleEl.textContent = curUser ? (curUser.role || 'Operator') : 'Operator';
-    if (iconEl) iconEl.textContent = '👤';
+  let userName = 'surendra';
+  let roleTag = 'FULL ACCESS';
+  let initial = 'S';
+
+  if (curUser && curUser.user) {
+    userName = curUser.user;
+    if (curUser.role === 'Admin') {
+      roleTag = 'FULL ACCESS';
+    } else {
+      roleTag = curUser.role ? curUser.role.toUpperCase() : 'COLLECTOR';
+    }
+  } else if (state.settings.adminEmail) {
+    userName = state.settings.adminEmail.split('@')[0];
+    roleTag = 'FULL ACCESS';
   }
+
+  if (userName.includes('@')) {
+    userName = userName.split('@')[0];
+  }
+  initial = (userName.charAt(0) || 'S').toUpperCase();
+
+  if (nameEl) nameEl.textContent = userName;
+  if (roleEl) roleEl.textContent = roleTag;
+  if (avatarEl) avatarEl.textContent = initial;
+  badge.title = `Logged in as ${userName} (${roleTag}). Click to open Settings.`;
 }
 
 // Update Persistent Header Stats
@@ -4313,7 +4362,7 @@ function renderCollectionMatrix() {
     const partialRecd = activePartialInst ? (Number(activePartialInst.paidAmount) || 0) : 0;
     const partialRemaining = activePartialInst ? Math.max(0, (cust.instalmentAmount || 0) - partialRecd) : 0;
     const partialBadgeHtml = activePartialInst
-      ? `<span class="badge-partial-pill" style="font-size:10px; padding:1px 6px; flex-shrink:0; white-space:nowrap;" title="Partial Payment Recorded: ${unitLabel} #${activePartialInst.number} has received ${formatMoney(partialRecd)}, with ${formatMoney(partialRemaining)} remaining due.">◐ Partial: ${formatMoney(partialRecd)} Rec'd (${formatMoney(partialRemaining)} Due)</span>`
+      ? `<span class="badge-partial-pill" style="font-size:10px; padding:1px 6px; flex-shrink:0; white-space:nowrap;" title="Partial Payment: ${unitLabel} #${activePartialInst.number} paid ${formatMoney(partialRecd)} (${formatMoney(partialRemaining)} remaining due)">½ ${formatMoney(partialRecd)}</span>`
       : '';
 
     let nextDueSeq = 1;
@@ -4351,7 +4400,7 @@ function renderCollectionMatrix() {
               <div class="cust-name-row">
                 <span class="cust-name" title="${cust.fullName}">${cust.fullName}</span>
                 <span class="cust-loan-badge">L${cust.loanNumber || 1}</span>
-                ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 6px; flex-shrink:0; white-space:nowrap;" title="Delayed Schedule: Borrower is ${stats.missedCount} instalment${stats.missedCount > 1 ? 's' : ''} behind schedule (Total Overdue: ${formatMoney(stats.missedCount * (cust.instalmentAmount || 0))})">⚠️ ${stats.missedCount} Overdue (Delayed)</span>` : ''}
+                ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 6px; flex-shrink:0; white-space:nowrap;" title="Delayed Schedule: Borrower is ${stats.missedCount} instalment${stats.missedCount > 1 ? 's' : ''} behind schedule (Total Overdue: ${formatMoney(stats.missedCount * (cust.instalmentAmount || 0))})">⚠️ Due ${stats.missedCount}</span>` : ''}
                 ${partialBadgeHtml}
                 ${settledBadgeHtml}
                 ${isLockedByOther ? `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-size:10px; padding:1px 6px; flex-shrink:0; font-weight:700; border-radius:4px;">🔒 ${activeLock.lockedBy}</span>` : ''}
@@ -4360,7 +4409,7 @@ function renderCollectionMatrix() {
                 ${custIdStr} • ${cust.phone || 'No Phone'}
               </div>
               <div class="cust-financial-terms">
-                <span>${formatMoney(cust.givenAmount)}</span> • <span>${formatMoney(cust.instalmentAmount)}/${unitLabel.toLowerCase()}</span> • <span class="cust-bal-payable" style="color: ${effectiveStats.balance <= 0 ? '#15803d' : '#b45309'};" title="Total Remaining Loan Balance: ${formatMoney(effectiveStats.balance)} across all remaining instalments (Disbursed: ${formatMoney(cust.givenAmount)}, Total Payable: ${formatMoney(cust.totalPayable || effectiveStats.totalPayable)})">💳 Total Loan Balance: ${formatMoney(effectiveStats.balance)}</span>
+                <span>${formatMoney(cust.givenAmount)}</span> • <span>${formatMoney(cust.instalmentAmount)}/${unitLabel.toLowerCase()}</span>
               </div>
             </div>
           </div>
@@ -4400,17 +4449,20 @@ function renderCollectionMatrix() {
               </div>
             ` : ''}
 
-            <!-- Quick Action Toolbar: Pay Pending or Partial Pay -->
+            <!-- Quick Action Toolbar: Pay Pending or Partial Pay & Loan Balance Inside Expanded Area -->
             <div class="sched-quick-toolbar" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12.5px; flex-wrap: wrap; gap: 8px;">
-              <div style="color: #334155; font-weight: 600;">
+              <div style="color: #334155; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <span>${unitLabel} #${nextDueSeq}:</span>
                 ${isNextPartial 
-                  ? `<span style="color: #b45309; font-weight: 700; margin-left: 4px;">½ Partial (Rec'd: ${formatMoney(nextDueInst.paidAmount || 0)} • Pending: ${formatMoney(nextRemainingDue)})</span>`
-                  : `<span style="color: #1e40af; font-weight: 700; margin-left: 4px;">Due ${formatMoney(cust.instalmentAmount)}</span>`
+                  ? `<span style="color: #b45309; font-weight: 700;">½ Partial (Rec'd: ${formatMoney(nextDueInst.paidAmount || 0)} • Pending: ${formatMoney(nextRemainingDue)})</span>`
+                  : `<span style="color: #1e40af; font-weight: 700;">Due ${formatMoney(cust.instalmentAmount)}</span>`
                 }
+                <span class="sched-bal-badge" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 700; background: ${effectiveStats.balance <= 0 ? '#dcfce7' : '#fef3c7'}; color: ${effectiveStats.balance <= 0 ? '#15803d' : '#92400e'}; border: 1px solid ${effectiveStats.balance <= 0 ? '#86efac' : '#f59e0b'};" title="Total Remaining Loan Balance across all instalments">
+                  💳 Bal: ${formatMoney(effectiveStats.balance)}
+                </span>
               </div>
               <div style="display: flex; gap: 8px; align-items: center;">
-                <button type="button" class="btn btn-sm" style="background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="openPartialPayModal('${cust.id}', ${nextDueSeq})">
+                <button type="button" class="btn btn-sm" style="background: #fef3c7; color: #b45309; border: 1px solid #f59e0b; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="openPartialPayModal('${cust.id}', ${nextDueSeq})">
                   ½ Partial Pay
                 </button>
                 <button type="button" class="btn btn-sm" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="toggleInstalmentReceived('${cust.id}', ${nextDueSeq})">
@@ -5071,7 +5123,7 @@ function renderCustomersTable() {
       <tr>
         <td>
           <strong style="color:#1e3a8a; font-size:14px;">#${c.customerNumber}</strong>${loanBadgeHtml}
-          ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="Delayed Schedule: Borrower is ${stats.missedCount} instalments behind schedule (Overdue: ${formatMoney(stats.missedCount * (c.instalmentAmount || 0))})">⚠️ ${stats.missedCount} Overdue</span>` : ''}
+          ${stats.isOverdue ? `<br><span class="badge-overdue" style="margin-top:2px;" title="Delayed Schedule: Borrower is ${stats.missedCount} instalments behind schedule (Overdue: ${formatMoney(stats.missedCount * (c.instalmentAmount || 0))})">⚠️ Due ${stats.missedCount}</span>` : ''}
         </td>
         <td>
           <div style="display:flex; align-items:center; gap:8px;">
@@ -5127,16 +5179,9 @@ function renderCustomersTable() {
         </td>
         <td>
           <div class="btn-group">
+            <button class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${c.id}')" title="Edit Customer Profile">Edit</button>
             <button class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${c.id}')" title="Passbook & Statement">Passbook</button>
-            <button class="btn btn-outline btn-sm" onclick="openThermalReceiptModal('${c.id}')" title="Print Pocket Bluetooth Thermal Slip" style="color:#475569;">🖨️ Slip</button>
-            ${c.isSettled 
-              ? `<button class="btn btn-outline btn-sm" onclick="openNOCModal('${c.id}')" title="View No Objection Certificate" style="color:#059669; border-color:#a7f3d0; font-weight:600;">📜 NOC</button>`
-              : (stats.balance > 0 ? `<button class="btn btn-outline btn-sm" onclick="openSettlementModal('${c.id}')" title="Early Loan Foreclosure & Settlement" style="color:#d97706; border-color:#fde68a;">🤝 Settle</button>` : '')
-            }
-            <button class="btn btn-outline btn-sm" onclick="openAddLoanForCustomer('${c.customerNumber}')" title="Issue additional loan to customer" style="color: #2563eb; font-weight: 600;">+ Loan</button>
-            <button class="btn btn-outline btn-sm" style="color: #16a34a; border-color: #86efac;" onclick="sendWhatsAppDueReminder('${c.id}')" title="Send WhatsApp Due Reminder">💬 WA</button>
-            <button class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${c.id}')">Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" title="Delete">Delete</button>
+            <button class="btn btn-outline btn-sm" onclick="toggleCustomerActionsMenu(event, '${c.id}')" title="More Customer Actions (Thermal Slip, Loan, WA, Settle, KYC, Delete)">More Options ▾</button>
           </div>
         </td>
       </tr>
@@ -5199,7 +5244,7 @@ function renderCustomersTable() {
                 <span style="font-size:10px;">▾</span>
               </button>
               <span class="badge-status ${stats.isCompleted ? 'badge-status-completed' : 'badge-status-active'}">${stats.isCompleted ? '✓ Completed' : '● Active'}</span>
-              ${stats.isOverdue ? `<span class="badge-status badge-status-overdue" title="Delayed Schedule: Borrower is ${stats.missedCount} instalments behind schedule (Overdue: ${formatMoney(stats.missedCount * (c.instalmentAmount || 0))})">⚠️ ${stats.missedCount} Overdue</span>` : ''}
+              ${stats.isOverdue ? `<span class="badge-status badge-status-overdue" title="Delayed Schedule: Borrower is ${stats.missedCount} instalments behind schedule (Overdue: ${formatMoney(stats.missedCount * (c.instalmentAmount || 0))})">⚠️ Due ${stats.missedCount}</span>` : ''}
             </div>
           </div>
 
@@ -5250,16 +5295,9 @@ function renderCustomersTable() {
           </div>
 
           <div class="customer-card-actions">
-            <button class="btn btn-outline" onclick="openCustomerPassbook('${c.id}')">Passbook</button>
-            <button class="btn btn-outline" onclick="openThermalReceiptModal('${c.id}')" title="Print Pocket Bluetooth Thermal Slip">🖨️ Slip</button>
-            ${c.isSettled 
-              ? `<button class="btn btn-outline" onclick="openNOCModal('${c.id}')" style="color:#059669; border-color:#a7f3d0; font-weight:600;">📜 NOC</button>`
-              : (stats.balance > 0 ? `<button class="btn btn-outline" onclick="openSettlementModal('${c.id}')" style="color:#d97706; border-color:#fde68a;">🤝 Settle</button>` : '')
-            }
-            <button class="btn btn-outline" onclick="openAddLoanForCustomer('${c.customerNumber}')" style="color: #2563eb; font-weight: 600;">+ Loan</button>
-            <button class="btn btn-outline" style="color: #16a34a; border-color: #86efac;" onclick="sendWhatsAppDueReminder('${c.id}')">💬 WA</button>
-            <button class="btn btn-outline" onclick="openEditCustomerModal('${c.id}')">Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')" style="flex:0; padding:8px 12px;">Delete</button>
+            <button class="btn btn-outline" onclick="openEditCustomerModal('${c.id}')" style="flex: 1;">Edit</button>
+            <button class="btn btn-outline" onclick="openCustomerPassbook('${c.id}')" style="flex: 1;">Passbook</button>
+            <button class="btn btn-outline" onclick="toggleCustomerActionsMenu(event, '${c.id}')" style="flex: 1;">More Options ▾</button>
           </div>
         </div>
       `;
@@ -9258,10 +9296,10 @@ function renderCustomerDetailModalContent(loanId) {
           ? `<span style="color: #b45309; font-weight: 700; margin-left: 4px;">½ Partial (Rec'd: ${formatMoney(nextDueInst.paidAmount || 0)} • Pending: ${formatMoney(nextRemainingDue)})</span>`
           : `<span style="color: #1e40af; font-weight: 700; margin-left: 4px;">Due ${formatMoney(cust.instalmentAmount)}</span>`
         }
-        <span style="margin-left: 8px; color: #b45309; font-weight: 700; background: #fffbeb; padding: 2px 7px; border-radius: 4px; border: 1px solid #fde68a;">Bal Payable: ${formatMoney(remainingBal)}</span>
+        <span style="margin-left: 8px; color: #b45309; font-weight: 700; background: #fef3c7; padding: 2px 7px; border-radius: 4px; border: 1px solid #f59e0b;">Bal: ${formatMoney(remainingBal)}</span>
       </div>
       <div style="display: flex; gap: 8px; align-items: center;">
-        <button type="button" class="btn btn-sm" style="background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; font-weight: 700; padding: 5px 12px; border-radius: 6px; cursor: pointer;" onclick="openPartialPayModal('${cust.id}', ${nextDueSeq})">
+        <button type="button" class="btn btn-sm" style="background: #fef3c7; color: #b45309; border: 1px solid #f59e0b; font-weight: 700; padding: 5px 12px; border-radius: 6px; cursor: pointer;" onclick="openPartialPayModal('${cust.id}', ${nextDueSeq})">
           ½ Partial Pay
         </button>
         <button type="button" class="btn btn-sm" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-weight: 700; padding: 5px 12px; border-radius: 6px; cursor: pointer;" onclick="handleDetailInstalmentClick('${cust.id}', ${nextDueSeq}, event)">
@@ -9442,10 +9480,23 @@ function renderCollectorBreakdownWidget() {
 
   const todayTxns = getTodayCollectorTransactions();
 
-  // 1. Admin Personal Collections
-  const adminTxns = todayTxns.filter(t => 
-    !t.collector || t.collector === 'Admin' || t.collector.toLowerCase().includes('admin') || (currentUser && t.collector === currentUser.user)
-  );
+  const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
+  const rosterCollectorKeys = new Set();
+  roster.forEach(c => {
+    if (c.name) rosterCollectorKeys.add(c.name.trim().toLowerCase());
+    if (c.email) rosterCollectorKeys.add(c.email.trim().toLowerCase());
+    if (c.id) rosterCollectorKeys.add(c.id.toString().toLowerCase());
+  });
+
+  // 1. Admin Personal Collections (All collections attributed to admin or not claimed by roster field collectors)
+  const adminTxns = todayTxns.filter(t => {
+    const colStr = (t.collector || '').trim().toLowerCase();
+    if (!colStr || colStr === 'admin' || colStr.includes('admin')) return true;
+    if (currentUser && currentUser.user && colStr === currentUser.user.trim().toLowerCase()) return true;
+    if (currentUser && currentUser.email && colStr === currentUser.email.trim().toLowerCase()) return true;
+    if (state.settings.adminEmail && colStr === state.settings.adminEmail.trim().toLowerCase()) return true;
+    return !rosterCollectorKeys.has(colStr);
+  });
   const adminTotal = adminTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const adminCount = adminTxns.length;
 
@@ -9470,7 +9521,6 @@ function renderCollectorBreakdownWidget() {
   `;
 
   // 2. Field Collectors from Roster
-  const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
   roster.forEach(col => {
     const colTxns = todayTxns.filter(t => 
       t.collector === col.name || t.collector === col.email || (t.collectorId && t.collectorId === col.id)
@@ -9646,24 +9696,30 @@ function renderCollectorsRoster() {
     return;
   }
 
-  let html = `
-    <table class="data-table" style="margin: 0; font-size: 12.5px;">
-      <thead>
-        <tr>
-          <th style="padding: 8px 12px;">Collector Name</th>
-          <th style="padding: 8px 12px;">Google Email</th>
-          <th style="padding: 8px 12px;">Assigned Route</th>
-          <th style="padding: 8px 12px;">Phone</th>
-          <th style="padding: 8px 12px;">Status</th>
-          <th style="padding: 8px 12px; text-align: right;">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
+  // 1. Desktop Table View
+  let tableHtml = `
+    <div class="roster-desktop-view">
+      <table class="data-table" style="margin: 0; font-size: 12.5px; width: 100%;">
+        <thead>
+          <tr>
+            <th style="padding: 8px 12px;">Collector Name</th>
+            <th style="padding: 8px 12px;">Google Email</th>
+            <th style="padding: 8px 12px;">Assigned Route</th>
+            <th style="padding: 8px 12px;">Phone</th>
+            <th style="padding: 8px 12px;">Status</th>
+            <th style="padding: 8px 12px; text-align: right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
   `;
+
+  // 2. Mobile Responsive Cards View
+  let cardsHtml = `<div class="roster-mobile-view">`;
 
   collectors.forEach(c => {
     const isActive = c.active !== false;
-    html += `
+
+    tableHtml += `
       <tr>
         <td style="padding: 8px 12px; font-weight: 700; color: #0f172a;">${c.name}</td>
         <td style="padding: 8px 12px; font-family: monospace; color: #2563eb;">${c.email}</td>
@@ -9682,10 +9738,34 @@ function renderCollectorsRoster() {
         </td>
       </tr>
     `;
+
+    cardsHtml += `
+      <div class="roster-card">
+        <div class="roster-card-header">
+          <span class="roster-card-name">${c.name}</span>
+          <span class="badge" style="background: ${isActive ? '#ecfdf5' : '#fef2f2'}; color: ${isActive ? '#047857' : '#b91c1c'}; border: 1px solid ${isActive ? '#a7f3d0' : '#fca5a5'}; font-size: 10.5px; padding: 2px 6px; border-radius: 4px;">
+            ${isActive ? '● Active' : '○ Inactive'}
+          </span>
+        </div>
+        <div class="roster-card-email">${c.email}</div>
+        <div class="roster-card-details">
+          <span>📍 Route: <strong>${c.route || 'General'}</strong></span>
+          <span>📞 Phone: <strong>${c.phone || '-'}</strong></span>
+        </div>
+        <div class="roster-card-actions">
+          <button type="button" class="btn btn-outline btn-sm" onclick="openEditCollectorModal('${c.id}')" style="font-size: 11.5px; flex: 1;">Edit</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="toggleCollectorStatus('${c.id}')" style="font-size: 11.5px; flex: 1; color: ${isActive ? '#b91c1c' : '#047857'}; border-color: ${isActive ? '#fca5a5' : '#a7f3d0'};">
+            ${isActive ? 'Deactivate' : 'Activate'}
+          </button>
+        </div>
+      </div>
+    `;
   });
 
-  html += `</tbody></table>`;
-  container.innerHTML = html;
+  tableHtml += `</tbody></table></div>`;
+  cardsHtml += `</div>`;
+
+  container.innerHTML = tableHtml + cardsHtml;
 }
 
 function openAddCollectorModal() {
