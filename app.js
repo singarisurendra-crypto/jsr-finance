@@ -3222,11 +3222,12 @@ function renderRecentTransactions() {
     // Collector filter
     const collectorFilter = document.getElementById('recent-collector-filter')?.value || 'all';
     if (collectorFilter !== 'all') {
+      const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
       if (collectorFilter === 'Admin') {
-        const isAdm = !item.collector || item.collector === 'Admin' || item.collector.toLowerCase().includes('admin');
-        if (!isAdm) return false;
+        if (roster.some(col => isTransactionForCollector(item, col))) return false;
       } else {
-        if (item.collector !== collectorFilter) return false;
+        const targetCol = roster.find(c => c.name === collectorFilter || c.id === collectorFilter) || { name: collectorFilter };
+        if (!isTransactionForCollector(item, targetCol)) return false;
       }
     }
 
@@ -4582,6 +4583,9 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
   const scheduledAmount = Number(customer.instalmentAmount) || 200;
   const todayStr = getISTDateString();
   const timestampStr = getNowTimestamp();
+  const currentUser = getCurrentUser();
+  const currentCollector = (currentUser && currentUser.user) ? currentUser.user : 'Admin';
+  const currentCollectorId = (currentUser && currentUser.collectorId) ? currentUser.collectorId : null;
 
   if (customAmount !== undefined && customAmount !== null && !isNaN(customAmount) && Number(customAmount) > 0) {
     let remainingSurplus = Number(customAmount);
@@ -4606,6 +4610,8 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
         curInst.paidAmount = scheduledAmount;
         curInst.paidDate = todayStr;
         curInst.paidTimestamp = timestampStr;
+        curInst.paidBy = curInst.paidBy || currentCollector;
+        curInst.collectorId = curInst.collectorId || currentCollectorId;
         curInst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, targetInstNum);
         remainingSurplus -= needed;
         totalCollectedThisAction += needed;
@@ -4619,6 +4625,8 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
           instalmentNumber: targetInstNum,
           amount: needed,
           type: 'payment',
+          collector: curInst.paidBy || currentCollector,
+          collectorId: curInst.collectorId || currentCollectorId,
           date: todayStr,
           timestamp: timestampStr
         });
@@ -4628,6 +4636,8 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
         curInst.paidAmount = existingPaid + remainingSurplus;
         curInst.paidDate = todayStr;
         curInst.paidTimestamp = timestampStr;
+        curInst.paidBy = curInst.paidBy || currentCollector;
+        curInst.collectorId = curInst.collectorId || currentCollectorId;
         curInst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, targetInstNum) + '-P';
         totalCollectedThisAction += remainingSurplus;
 
@@ -4640,6 +4650,8 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
           instalmentNumber: targetInstNum,
           amount: remainingSurplus,
           type: 'partial',
+          collector: curInst.paidBy || currentCollector,
+          collectorId: curInst.collectorId || currentCollectorId,
           date: todayStr,
           timestamp: timestampStr
         });
@@ -4678,6 +4690,8 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
         instalmentNumber: instNumber,
         amount: amtToUndo,
         type: 'undo',
+        collector: currentCollector,
+        collectorId: currentCollectorId,
         date: todayStr,
         timestamp: timestampStr
       });
@@ -4686,6 +4700,8 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       inst.paidDate = null;
       inst.paidTimestamp = null;
       inst.paidAmount = 0;
+      inst.paidBy = null;
+      inst.collectorId = null;
       inst.receiptNumber = null;
       showToast(`↩️ Payment undone for ${unitLabel} #${instNumber} for #${customer.customerNumber}`);
     } else if (inst.status === 'Partial') {
@@ -4694,6 +4710,8 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       inst.paidAmount = scheduledAmount;
       inst.paidDate = todayStr;
       inst.paidTimestamp = timestampStr;
+      inst.paidBy = inst.paidBy || currentCollector;
+      inst.collectorId = inst.collectorId || currentCollectorId;
       inst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, instNumber);
       playCashChime();
 
@@ -4706,6 +4724,8 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
         instalmentNumber: instNumber,
         amount: needed,
         type: 'payment',
+        collector: inst.paidBy || currentCollector,
+        collectorId: inst.collectorId || currentCollectorId,
         date: todayStr,
         timestamp: timestampStr
       });
@@ -4715,6 +4735,8 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       inst.paidDate = todayStr;
       inst.paidTimestamp = timestampStr;
       inst.paidAmount = scheduledAmount;
+      inst.paidBy = currentCollector;
+      inst.collectorId = currentCollectorId;
       inst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, instNumber);
       playCashChime();
 
@@ -4727,6 +4749,8 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
         instalmentNumber: instNumber,
         amount: scheduledAmount,
         type: 'payment',
+        collector: currentCollector,
+        collectorId: currentCollectorId,
         date: todayStr,
         timestamp: timestampStr
       });
@@ -9445,6 +9469,52 @@ function applyRoleBasedPermissions() {
   }
 }
 
+// Robust Multi-Field Collector Attribution Matcher
+// Checks collectorId, normalized name, email, name token/fuzzy containment, and route fallback
+function isTransactionForCollector(t, col) {
+  if (!t || !col) return false;
+
+  // 1. Direct collectorId match
+  if (t.collectorId && col.id && String(t.collectorId).trim().toLowerCase() === String(col.id).trim().toLowerCase()) {
+    return true;
+  }
+
+  const colName = (col.name || '').trim().toLowerCase();
+  const colEmail = (col.email || '').trim().toLowerCase();
+  const tCol = (t.collector || '').trim().toLowerCase();
+
+  // 2. Exact name or email match
+  if (colName && tCol === colName) return true;
+  if (colEmail && tCol === colEmail) return true;
+
+  // 3. Substring / name token overlap (e.g. "Singari Suri" matches "Suri" or "Singari")
+  if (colName && tCol && tCol !== 'admin' && !tCol.includes('admin')) {
+    if (colName.includes(tCol) || tCol.includes(colName)) {
+      return true;
+    }
+    const colParts = colName.split(/\s+/).filter(p => p.length >= 3);
+    const tParts = tCol.split(/\s+/).filter(p => p.length >= 3);
+    if (colParts.some(cp => tParts.includes(cp))) {
+      return true;
+    }
+  }
+
+  // 4. Customer areaRoute fallback: If borrower's route matches collector's assigned route
+  if (col.route && col.active !== false) {
+    const cust = (state.customers || []).find(c =>
+      (c.id && c.id === t.customerId) ||
+      (c.customerNumber && String(c.customerNumber) === String(t.customerNumber))
+    );
+    if (cust && cust.areaRoute && cust.areaRoute.trim().toLowerCase() === col.route.trim().toLowerCase()) {
+      if (!t.collector || t.collector === 'Admin' || tCol === colName || tCol.includes(colName)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 // Helper to accurately aggregate operator collections across audit ledger transactions AND customer instalments by date
 function getCollectorTransactionsByDate(datePreset, customDate) {
   const now = new Date();
@@ -9479,6 +9549,7 @@ function getCollectorTransactionsByDate(datePreset, customDate) {
 
   const recordedKeys = new Set();
   const items = [];
+  const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
 
   if (state.transactions && Array.isArray(state.transactions)) {
     state.transactions.forEach(t => {
@@ -9487,6 +9558,15 @@ function getCollectorTransactionsByDate(datePreset, customDate) {
           (c.id && c.id === t.customerId) || 
           (c.customerNumber && c.customerNumber.toString() === (t.customerNumber || '').toString())
         );
+        let col = t.collector || null;
+        let colId = t.collectorId || null;
+        if ((!col || col === 'Admin') && cust && cust.areaRoute) {
+          const routeCol = roster.find(rc => rc.route && rc.route.trim().toLowerCase() === cust.areaRoute.trim().toLowerCase() && rc.active !== false);
+          if (routeCol) {
+            col = routeCol.name;
+            colId = routeCol.id;
+          }
+        }
         items.push({
           customerId: t.customerId || (cust ? cust.id : ''),
           customerNumber: t.customerNumber || (cust ? cust.customerNumber : ''),
@@ -9495,8 +9575,8 @@ function getCollectorTransactionsByDate(datePreset, customDate) {
           instalmentNumber: t.instalmentNumber,
           receiptNumber: t.receiptNumber || '',
           amount: Number(t.amount) || 0,
-          collector: t.collector || 'Admin',
-          collectorId: t.collectorId || null,
+          collector: col || 'Admin',
+          collectorId: colId,
           date: t.date || todayStr
         });
         if (t.customerId && t.instalmentNumber) {
@@ -9515,6 +9595,15 @@ function getCollectorTransactionsByDate(datePreset, customDate) {
         const key = `${c.id}_${inst.number}`;
         if (!recordedKeys.has(key)) {
           const instPaid = (inst.status === 'Received') ? (Number(inst.paidAmount) || cInstAmt) : (Number(inst.paidAmount) || 0);
+          let col = inst.paidBy || null;
+          let colId = inst.collectorId || null;
+          if (!col && c.areaRoute) {
+            const routeCol = roster.find(rc => rc.route && rc.route.trim().toLowerCase() === c.areaRoute.trim().toLowerCase() && rc.active !== false);
+            if (routeCol) {
+              col = routeCol.name;
+              colId = routeCol.id;
+            }
+          }
           items.push({
             customerId: c.id,
             customerNumber: c.customerNumber,
@@ -9523,8 +9612,8 @@ function getCollectorTransactionsByDate(datePreset, customDate) {
             instalmentNumber: inst.number,
             receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
             amount: instPaid,
-            collector: inst.paidBy || 'Admin',
-            collectorId: null,
+            collector: col || 'Admin',
+            collectorId: colId,
             date: inst.paidDate || todayStr
           });
         }
@@ -9587,55 +9676,16 @@ function renderCollectorBreakdownWidget() {
   }
 
   const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
-  const rosterCollectorKeys = new Set();
-  roster.forEach(c => {
-    if (c.name) rosterCollectorKeys.add(c.name.trim().toLowerCase());
-    if (c.email) rosterCollectorKeys.add(c.email.trim().toLowerCase());
-    if (c.id) rosterCollectorKeys.add(c.id.toString().toLowerCase());
-  });
 
-  // 1. Admin Personal Collections (All collections attributed to admin or not claimed by roster field collectors)
-  const adminTxns = periodTxns.filter(t => {
-    const colStr = (t.collector || '').trim().toLowerCase();
-    if (!colStr || colStr === 'admin' || colStr.includes('admin')) return true;
-    if (currentUser && currentUser.user && colStr === currentUser.user.trim().toLowerCase()) return true;
-    if (currentUser && currentUser.email && colStr === currentUser.email.trim().toLowerCase()) return true;
-    if (state.settings.adminEmail && colStr === state.settings.adminEmail.trim().toLowerCase()) return true;
-    return !rosterCollectorKeys.has(colStr);
-  });
-  const adminTotal = adminTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-  const adminCount = adminTxns.length;
-
-  let html = `
-    <div class="collector-card admin-collector">
-      <div class="collector-card-title">
-        <span style="display: flex; align-items: center; gap: 6px;">
-          <span>👑</span> Admin (Personal Collections)
-        </span>
-        <span class="badge" style="background: #f3e8ff; color: #7c3aed; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Owner</span>
-      </div>
-      <div class="collector-card-amount">₹ ${adminTotal.toLocaleString('en-IN')}</div>
-      <div class="collector-card-meta">
-        <span>🧾 ${adminCount} receipts (${periodLabel})</span>
-      </div>
-      <div class="collector-card-actions">
-        <button type="button" class="btn btn-outline btn-sm" onclick="openCollectorHandoverModal('Admin')" style="width: 100%; font-size: 11.5px; padding: 4px 10px; background: #ffffff; color: #7c3aed; border-color: #d8b4fe; font-weight: 700;">
-          📄 Personal Audit Slip
-        </button>
-      </div>
-    </div>
-  `;
-
-  // 2. Field Collectors from Roster
+  // 1. Field Collectors from Roster (Claim transactions first via isTransactionForCollector)
+  let fieldCardsHtml = '';
   roster.forEach(col => {
-    const colTxns = periodTxns.filter(t => 
-      t.collector === col.name || t.collector === col.email || (t.collectorId && t.collectorId === col.id)
-    );
+    const colTxns = periodTxns.filter(t => isTransactionForCollector(t, col));
     const colTotal = colTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const colCount = colTxns.length;
     const isActive = col.active !== false;
 
-    html += `
+    fieldCardsHtml += `
       <div class="collector-card field-collector">
         <div class="collector-card-title">
           <span style="display: flex; align-items: center; gap: 6px;">
@@ -9658,7 +9708,32 @@ function renderCollectorBreakdownWidget() {
     `;
   });
 
-  cardsContainer.innerHTML = html;
+  // 2. Admin Personal Collections (All collections NOT claimed by any roster field collector)
+  const adminTxns = periodTxns.filter(t => !roster.some(col => isTransactionForCollector(t, col)));
+  const adminTotal = adminTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const adminCount = adminTxns.length;
+
+  const adminCardHtml = `
+    <div class="collector-card admin-collector">
+      <div class="collector-card-title">
+        <span style="display: flex; align-items: center; gap: 6px;">
+          <span>👑</span> Admin (Personal Collections)
+        </span>
+        <span class="badge" style="background: #f3e8ff; color: #7c3aed; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Owner</span>
+      </div>
+      <div class="collector-card-amount">₹ ${adminTotal.toLocaleString('en-IN')}</div>
+      <div class="collector-card-meta">
+        <span>🧾 ${adminCount} receipts (${periodLabel})</span>
+      </div>
+      <div class="collector-card-actions">
+        <button type="button" class="btn btn-outline btn-sm" onclick="openCollectorHandoverModal('Admin')" style="width: 100%; font-size: 11.5px; padding: 4px 10px; background: #ffffff; color: #7c3aed; border-color: #d8b4fe; font-weight: 700;">
+          📄 Personal Audit Slip
+        </button>
+      </div>
+    </div>
+  `;
+
+  cardsContainer.innerHTML = adminCardHtml + fieldCardsHtml;
 }
 
 function openCollectorHandoverModal(operatorName) {
@@ -9678,26 +9753,13 @@ function openCollectorHandoverModal(operatorName) {
 
   const allPeriodTxns = getCollectorTransactionsByDate(datePreset, customDate);
   const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
-  const rosterCol = roster.find(c => c.name === operatorName || c.email === operatorName);
-
-  const currentUser = getCurrentUser();
-  const rosterCollectorKeys = new Set();
-  roster.forEach(c => {
-    if (c.name) rosterCollectorKeys.add(c.name.trim().toLowerCase());
-    if (c.email) rosterCollectorKeys.add(c.email.trim().toLowerCase());
-    if (c.id) rosterCollectorKeys.add(c.id.toString().toLowerCase());
-  });
+  const rosterCol = roster.find(c => c.name === operatorName || c.email === operatorName || c.id === operatorName) || { name: operatorName };
 
   const txns = allPeriodTxns.filter(t => {
     if (isAdm) {
-      const colStr = (t.collector || '').trim().toLowerCase();
-      if (!colStr || colStr === 'admin' || colStr.includes('admin')) return true;
-      if (currentUser && currentUser.user && colStr === currentUser.user.trim().toLowerCase()) return true;
-      if (currentUser && currentUser.email && colStr === currentUser.email.trim().toLowerCase()) return true;
-      if (state.settings.adminEmail && colStr === state.settings.adminEmail.trim().toLowerCase()) return true;
-      return !rosterCollectorKeys.has(colStr);
+      return !roster.some(col => isTransactionForCollector(t, col));
     }
-    return t.collector === operatorName || (rosterCol && (t.collector === rosterCol.name || t.collector === rosterCol.email || t.collectorId === rosterCol.id));
+    return isTransactionForCollector(t, rosterCol);
   });
 
   const totalAmount = txns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
