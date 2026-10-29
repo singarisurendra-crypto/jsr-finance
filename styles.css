@@ -75,6 +75,51 @@ body {
   display: none;
 }
 
+.mobile-header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+.mobile-header-btn .nav-svg {
+  width: 14px;
+  height: 14px;
+  stroke: #475569;
+}
+
+.mobile-header-btn.mobile-logout-btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #dc2626;
+}
+
+.mobile-header-btn.mobile-logout-btn .nav-svg {
+  stroke: #dc2626;
+  width: 15px;
+  height: 15px;
+}
+
 .settings-layout-grid {
   display: grid;
   grid-template-columns: 2fr 1fr;
@@ -1751,17 +1796,20 @@ body.modal-open .loans-tooltip-popover {
   .mobile-header-btn {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
+    gap: 5px;
+    height: 32px;
     background: #f8fafc;
-    border: 1px solid #cbd5e1;
-    border-radius: 20px;
-    padding: 4px 9px;
-    font-size: 11px;
-    font-weight: 700;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 600;
     color: #334155;
     cursor: pointer;
     transition: all 0.15s ease;
     -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
   }
 
   .mobile-header-btn .nav-svg {
@@ -1772,7 +1820,7 @@ body.modal-open .loans-tooltip-popover {
 
   .mobile-header-btn:hover {
     background: #f1f5f9;
-    border-color: #94a3b8;
+    border-color: #cbd5e1;
     color: #0f172a;
   }
 
@@ -1787,13 +1835,23 @@ body.modal-open .loans-tooltip-popover {
   }
 
   .mobile-header-btn.mobile-logout-btn {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: #fef2f2;
-    border-color: #fecaca;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
     color: #dc2626;
   }
 
   .mobile-header-btn.mobile-logout-btn .nav-svg {
     stroke: #dc2626;
+    width: 15px;
+    height: 15px;
   }
 
   .mobile-header-btn.mobile-logout-btn:hover {
@@ -1803,7 +1861,7 @@ body.modal-open .loans-tooltip-popover {
   }
 
   .mobile-header-btn:active {
-    transform: scale(0.92);
+    transform: scale(0.95);
   }
 
   /* Header Stat Ticker on Mobile (Full Touch Scrollability) */
