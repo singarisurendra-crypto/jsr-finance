@@ -324,6 +324,11 @@ def main():
                 const sidebarStyle = sidebar ? window.getComputedStyle(sidebar) : null;
                 const activePillStyle = activePill ? window.getComputedStyle(activePill) : null;
 
+                const mobileActions = document.querySelector('.mobile-header-actions');
+                const mobileSettings = mobileActions ? mobileActions.querySelector('button[data-tab="settings"]') : null;
+                const mobileLogout = mobileActions ? mobileActions.querySelector('.mobile-logout-btn') : null;
+                const mobileActionsStyle = mobileActions ? window.getComputedStyle(mobileActions) : null;
+
                 return {
                     headerBadgeExists: !!badge,
                     syncPillExistsInDom: !!syncPill,
@@ -334,7 +339,11 @@ def main():
                     sidebarName: sidebarUserName ? sidebarUserName.innerText.trim() : '',
                     sidebarRole: sidebarUserRole ? sidebarUserRole.innerText.trim() : '',
                     sidebarLogoutExists: !!sidebarLogout,
-                    activePillMinWidth: activePillStyle ? activePillStyle.minWidth : ''
+                    activePillMinWidth: activePillStyle ? activePillStyle.minWidth : '',
+                    mobileActionsExists: !!mobileActions,
+                    mobileSettingsExists: !!mobileSettings,
+                    mobileLogoutExists: !!mobileLogout,
+                    mobileActionsDisplayDesktop: mobileActionsStyle ? mobileActionsStyle.display : ''
                 };
             })()
         """)
@@ -348,6 +357,10 @@ def main():
         assert "Surendra" in header_sidebar_check["sidebarName"] or "surendra" in header_sidebar_check["sidebarName"], f"Expected surendra, got: {header_sidebar_check['sidebarName']}"
         assert "FULL ACCESS" in header_sidebar_check["sidebarRole"].upper() or "ADMIN" in header_sidebar_check["sidebarRole"].upper(), f"Expected FULL ACCESS, got: {header_sidebar_check['sidebarRole']}"
         assert header_sidebar_check["sidebarLogoutExists"], "Left menu down must have logout button"
+        assert header_sidebar_check["mobileActionsExists"], "Mobile header actions container must exist"
+        assert header_sidebar_check["mobileSettingsExists"], "Mobile top Settings button must exist"
+        assert header_sidebar_check["mobileLogoutExists"], "Mobile top Logout button must exist"
+        assert header_sidebar_check["mobileActionsDisplayDesktop"] == "none", "Mobile header actions must be hidden on desktop view"
 
         # 3. Test Collections View & Compact Badges & Removed Print Option
         client.eval_js("switchTab('collections');")
