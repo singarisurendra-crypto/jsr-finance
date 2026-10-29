@@ -8352,6 +8352,7 @@ function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) {
     modal.classList.add('active');
+    modal.style.display = 'flex';
     document.body.classList.add('modal-open');
     const body = modal.querySelector('.modal-body');
     if (body) body.scrollTop = 0;
@@ -9679,9 +9680,22 @@ function openCollectorHandoverModal(operatorName) {
   const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
   const rosterCol = roster.find(c => c.name === operatorName || c.email === operatorName);
 
+  const currentUser = getCurrentUser();
+  const rosterCollectorKeys = new Set();
+  roster.forEach(c => {
+    if (c.name) rosterCollectorKeys.add(c.name.trim().toLowerCase());
+    if (c.email) rosterCollectorKeys.add(c.email.trim().toLowerCase());
+    if (c.id) rosterCollectorKeys.add(c.id.toString().toLowerCase());
+  });
+
   const txns = allPeriodTxns.filter(t => {
     if (isAdm) {
-      return !t.collector || t.collector === 'Admin' || t.collector.toLowerCase().includes('admin');
+      const colStr = (t.collector || '').trim().toLowerCase();
+      if (!colStr || colStr === 'admin' || colStr.includes('admin')) return true;
+      if (currentUser && currentUser.user && colStr === currentUser.user.trim().toLowerCase()) return true;
+      if (currentUser && currentUser.email && colStr === currentUser.email.trim().toLowerCase()) return true;
+      if (state.settings.adminEmail && colStr === state.settings.adminEmail.trim().toLowerCase()) return true;
+      return !rosterCollectorKeys.has(colStr);
     }
     return t.collector === operatorName || (rosterCol && (t.collector === rosterCol.name || t.collector === rosterCol.email || t.collectorId === rosterCol.id));
   });
@@ -9694,8 +9708,8 @@ function openCollectorHandoverModal(operatorName) {
     rowsHtml += `
       <tr>
         <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9;">${idx + 1}</td>
-        <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9; font-weight: 700;">#${t.customerNumber} - ${t.customerName}</td>
-        <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9;">L${t.loanNumber || 1} • W#${t.instalmentNumber}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9; font-weight: 700;">#${t.customerNumber || '-'} - ${t.customerName || 'Borrower'}</td>
+        <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9;">L${t.loanNumber || 1} • ${t.frequency === 'Daily' ? 'D#' : 'W#'}${t.instalmentNumber || 1}</td>
         <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9; font-family: monospace; font-size: 11px;">${t.receiptNumber || '-'}</td>
         <td style="padding: 6px 8px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700; color: #16a34a;">₹ ${Number(t.amount || 0).toLocaleString('en-IN')}</td>
       </tr>
@@ -9709,7 +9723,7 @@ function openCollectorHandoverModal(operatorName) {
         <div style="font-size: 12px; color: #475569; font-weight: 700; margin-top: 2px;">
           ${isAdm ? 'ADMIN PERSONAL COLLECTIONS AUDIT SLIP' : 'FIELD COLLECTOR CASH HANDOVER & VERIFICATION SLIP'}
         </div>
-        <div style="font-size: 11px; color: #64748b;">Operator: <strong>${operatorName}</strong> • Date: ${todayStr}</div>
+        <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Operator: <strong>${operatorName}</strong> • Date: <strong>${dateHeaderStr}</strong></div>
       </div>
 
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
@@ -9735,7 +9749,7 @@ function openCollectorHandoverModal(operatorName) {
             </tr>
           </thead>
           <tbody>
-            ${rowsHtml || '<tr><td colspan="5" style="text-align: center; padding: 16px; color: #94a3b8;">No collections recorded today for this operator.</td></tr>'}
+            ${rowsHtml || `<tr><td colspan="5" style="text-align: center; padding: 16px; color: #94a3b8;">No collections recorded for ${dateHeaderStr} for this operator.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -9755,9 +9769,9 @@ function openCollectorHandoverModal(operatorName) {
     </div>
   `;
 
-  modal.classList.add('active');
-  document.body.classList.add('modal-open');
+  openModal('modal-collector-handover');
 }
+window.openCollectorHandoverModal = openCollectorHandoverModal;
 
 function printCollectorHandoverSlip() {
   const content = document.getElementById('collector-handover-slip-content');
