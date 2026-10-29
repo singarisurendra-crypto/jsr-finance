@@ -788,9 +788,14 @@ def main():
                 const nowTs = getNowTimestamp();
                 const testCust = state.customers[0];
 
-                // Clear today's test transactions to set up exact user scenario:
-                // Admin: ₹ 12,700 across 3 receipts
-                // Singari Suri: ₹ 2,600 across 2 receipts
+                // Clear today's test transactions & mock customer instalment dates
+                (state.customers || []).forEach(c => {
+                    (c.instalments || []).forEach(inst => {
+                        if (inst && inst.paidDate === todayStr) {
+                            inst.paidDate = '2026-10-01';
+                        }
+                    });
+                });
                 state.transactions = (state.transactions || []).filter(t => t.date !== todayStr);
 
                 // Admin collections totaling ₹ 12,700
