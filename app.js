@@ -5656,8 +5656,16 @@ function openAddCustomerModal() {
   document.getElementById('form-customer-id').value = '';
   document.getElementById('cust-form-loan-number').value = '1';
 
+  const loanTypeWrap = document.getElementById('cust-form-loan-type-wrap');
   const radioNew = document.getElementById('loan-type-new');
-  if (radioNew) radioNew.checked = true;
+  const radioExisting = document.getElementById('loan-type-existing');
+  if (radioNew) { radioNew.disabled = false; radioNew.checked = true; }
+  if (radioExisting) radioExisting.disabled = false;
+  if (loanTypeWrap) {
+    loanTypeWrap.style.opacity = '1';
+    loanTypeWrap.style.pointerEvents = 'auto';
+    loanTypeWrap.title = '';
+  }
   toggleLoanTypeMode('new');
 
   const minPrincipal = (state.settings && !isNaN(state.settings.minGivenAmount) && Number(state.settings.minGivenAmount) > 0)
@@ -5740,6 +5748,18 @@ function openEditCustomerModal(customerId) {
 
   const loanNum = c.loanNumber || 1;
   const isDaily = c.frequency === 'Daily' || (c.totalInstalments === 100);
+
+  // Disable Loan Account Type option when editing customer
+  const loanTypeWrap = document.getElementById('cust-form-loan-type-wrap');
+  const radioNew = document.getElementById('loan-type-new');
+  const radioExisting = document.getElementById('loan-type-existing');
+  if (radioNew) { radioNew.disabled = true; radioNew.checked = true; }
+  if (radioExisting) radioExisting.disabled = true;
+  if (loanTypeWrap) {
+    loanTypeWrap.style.opacity = '0.55';
+    loanTypeWrap.style.pointerEvents = 'none';
+    loanTypeWrap.title = 'Loan account type cannot be modified for existing customer profiles.';
+  }
 
   const minPrincipal = (state.settings && !isNaN(state.settings.minGivenAmount) && Number(state.settings.minGivenAmount) > 0)
     ? Number(state.settings.minGivenAmount)
@@ -9345,11 +9365,11 @@ function renderCustomerDetailModalContent(loanId) {
 
     <!-- Pro Suite Direct Tools -->
     <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 12px; border-top: 1px solid #f1f5f9;">
-      <button type="button" class="btn btn-outline btn-sm" onclick="openPassbookModal('${cust.id}')">
-        📖 Passbook
+      <button type="button" class="btn btn-outline btn-sm" onclick="openCustomerPassbook('${cust.id}')" style="background: #f0fdf4; color: #15803d; border-color: #bbf7d0; font-weight: 600;">
+        🧾 Passbook
       </button>
-      <button type="button" class="btn btn-outline btn-sm" onclick="openThermalSlipModal('${cust.id}', ${nextDueSeq})">
-        🧾 Thermal Slip
+      <button type="button" class="btn btn-outline btn-sm" onclick="openThermalReceiptModal('${cust.id}', ${nextDueSeq > 1 ? nextDueSeq - 1 : 1})" style="background: #f8fafc; color: #334155; border-color: #cbd5e1; font-weight: 600;">
+        🖨️ Thermal Slip
       </button>
       <button type="button" class="btn btn-outline btn-sm" onclick="openKycViewerModal('${cust.id}')">
         🪪 KYC Docs
@@ -9365,6 +9385,14 @@ function renderCustomerDetailModalContent(loanId) {
     </div>
   `;
 }
+
+// Safe Global Aliases for Direct In-Modal Invocation
+window.openPassbookModal = function(customerId) {
+  openCustomerPassbook(customerId);
+};
+window.openThermalSlipModal = function(customerId, instNumber) {
+  openThermalReceiptModal(customerId, instNumber || 1);
+};
 
 function handleDetailInstalmentClick(loanId, sq, event) {
   if (event) event.stopPropagation();
@@ -9416,15 +9444,44 @@ function applyRoleBasedPermissions() {
   }
 }
 
-// Helper to accurately aggregate today's collections across audit ledger transactions AND customer instalments
-function getTodayCollectorTransactions() {
-  const todayStr = getISTDateString();
+// Helper to accurately aggregate operator collections across audit ledger transactions AND customer instalments by date
+function getCollectorTransactionsByDate(datePreset, customDate) {
+  const now = new Date();
+  const todayStr = getISTDateString(now);
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const yesterdayStr = getISTDateString(yesterday);
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const weekAgoStr = getISTDateString(weekAgo);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthStartStr = getISTDateString(monthStart);
+
+  const preset = datePreset || 'today';
+
+  function isDateMatch(d) {
+    if (!d) return preset === 'all';
+    const dateStr = d.split('T')[0];
+    if (preset === 'today') {
+      return dateStr === todayStr || dateStr === 'Today';
+    } else if (preset === 'yesterday') {
+      return dateStr === yesterdayStr || dateStr === 'Yesterday';
+    } else if (preset === 'this-week') {
+      return dateStr >= weekAgoStr && dateStr <= todayStr;
+    } else if (preset === 'this-month') {
+      return dateStr >= monthStartStr && dateStr <= todayStr;
+    } else if (preset === 'custom') {
+      return customDate ? dateStr === customDate : true;
+    } else if (preset === 'all') {
+      return true;
+    }
+    return dateStr === todayStr || dateStr === 'Today';
+  }
+
   const recordedKeys = new Set();
   const items = [];
 
   if (state.transactions && Array.isArray(state.transactions)) {
     state.transactions.forEach(t => {
-      if ((t.date === todayStr || t.date === 'Today') && t.type !== 'undo') {
+      if (isDateMatch(t.date) && t.type !== 'undo') {
         const cust = (state.customers || []).find(c => 
           (c.id && c.id === t.customerId) || 
           (c.customerNumber && c.customerNumber.toString() === (t.customerNumber || '').toString())
@@ -9438,7 +9495,8 @@ function getTodayCollectorTransactions() {
           receiptNumber: t.receiptNumber || '',
           amount: Number(t.amount) || 0,
           collector: t.collector || 'Admin',
-          collectorId: t.collectorId || null
+          collectorId: t.collectorId || null,
+          date: t.date || todayStr
         });
         if (t.customerId && t.instalmentNumber) {
           recordedKeys.add(`${t.customerId}_${t.instalmentNumber}`);
@@ -9447,12 +9505,12 @@ function getTodayCollectorTransactions() {
     });
   }
 
-  // Fallback: also scan active customer instalments paid today not yet logged as transaction rows
+  // Fallback: also scan active customer instalments paid on matching date not yet logged as transaction rows
   (state.customers || []).forEach((c) => {
     const cLoanNum = Number(c.loanNumber) || 1;
     const cInstAmt = Number(c.instalmentAmount) || 200;
     (c.instalments || []).forEach((inst) => {
-      if (inst && (inst.status === 'Received' || inst.status === 'Partial') && (inst.paidDate === todayStr || inst.paidDate === 'Today')) {
+      if (inst && (inst.status === 'Received' || inst.status === 'Partial') && isDateMatch(inst.paidDate)) {
         const key = `${c.id}_${inst.number}`;
         if (!recordedKeys.has(key)) {
           const instPaid = (inst.status === 'Received') ? (Number(inst.paidAmount) || cInstAmt) : (Number(inst.paidAmount) || 0);
@@ -9465,7 +9523,8 @@ function getTodayCollectorTransactions() {
             receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
             amount: instPaid,
             collector: inst.paidBy || 'Admin',
-            collectorId: null
+            collectorId: null,
+            date: inst.paidDate || todayStr
           });
         }
       }
@@ -9473,6 +9532,27 @@ function getTodayCollectorTransactions() {
   });
 
   return items;
+}
+
+function getTodayCollectorTransactions() {
+  return getCollectorTransactionsByDate('today');
+}
+
+function handleCollectorDateFilterChange(val) {
+  const filterSelect = document.getElementById('collector-date-preset-filter');
+  if (filterSelect && val && filterSelect.value !== val) {
+    filterSelect.value = val;
+  }
+  const customInput = document.getElementById('collector-custom-date');
+  if (customInput) {
+    if (val === 'custom') {
+      customInput.style.display = 'inline-block';
+      if (!customInput.value) customInput.value = getISTDateString();
+    } else {
+      customInput.style.display = 'none';
+    }
+  }
+  renderCollectorBreakdownWidget();
 }
 
 function renderCollectorBreakdownWidget() {
@@ -9489,7 +9569,21 @@ function renderCollectorBreakdownWidget() {
   }
   breakdownCard.style.display = 'block';
 
-  const todayTxns = getTodayCollectorTransactions();
+  const datePreset = document.getElementById('collector-date-preset-filter')?.value || 'today';
+  const customDate = document.getElementById('collector-custom-date')?.value || '';
+  const periodTxns = getCollectorTransactionsByDate(datePreset, customDate);
+
+  let periodLabel = 'today';
+  if (datePreset === 'yesterday') periodLabel = 'yesterday';
+  else if (datePreset === 'this-week') periodLabel = 'this week';
+  else if (datePreset === 'this-month') periodLabel = 'this month';
+  else if (datePreset === 'custom' && customDate) periodLabel = `on ${customDate}`;
+  else if (datePreset === 'all') periodLabel = 'all dates';
+
+  const subEl = document.getElementById('collector-breakdown-sub');
+  if (subEl) {
+    subEl.textContent = `Collections, receipts, and audit slips for ${periodLabel}`;
+  }
 
   const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
   const rosterCollectorKeys = new Set();
@@ -9500,7 +9594,7 @@ function renderCollectorBreakdownWidget() {
   });
 
   // 1. Admin Personal Collections (All collections attributed to admin or not claimed by roster field collectors)
-  const adminTxns = todayTxns.filter(t => {
+  const adminTxns = periodTxns.filter(t => {
     const colStr = (t.collector || '').trim().toLowerCase();
     if (!colStr || colStr === 'admin' || colStr.includes('admin')) return true;
     if (currentUser && currentUser.user && colStr === currentUser.user.trim().toLowerCase()) return true;
@@ -9521,7 +9615,7 @@ function renderCollectorBreakdownWidget() {
       </div>
       <div class="collector-card-amount">₹ ${adminTotal.toLocaleString('en-IN')}</div>
       <div class="collector-card-meta">
-        <span>🧾 ${adminCount} receipts issued today</span>
+        <span>🧾 ${adminCount} receipts (${periodLabel})</span>
       </div>
       <div class="collector-card-actions">
         <button type="button" class="btn btn-outline btn-sm" onclick="openCollectorHandoverModal('Admin')" style="width: 100%; font-size: 11.5px; padding: 4px 10px; background: #ffffff; color: #7c3aed; border-color: #d8b4fe; font-weight: 700;">
@@ -9533,7 +9627,7 @@ function renderCollectorBreakdownWidget() {
 
   // 2. Field Collectors from Roster
   roster.forEach(col => {
-    const colTxns = todayTxns.filter(t => 
+    const colTxns = periodTxns.filter(t => 
       t.collector === col.name || t.collector === col.email || (t.collectorId && t.collectorId === col.id)
     );
     const colTotal = colTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -9552,7 +9646,7 @@ function renderCollectorBreakdownWidget() {
         </div>
         <div class="collector-card-amount">₹ ${colTotal.toLocaleString('en-IN')}</div>
         <div class="collector-card-meta">
-          <span>📍 ${col.route || 'Field Route'} • 🧾 ${colCount} receipts today</span>
+          <span>📍 ${col.route || 'Field Route'} • 🧾 ${colCount} receipts (${periodLabel})</span>
         </div>
         <div class="collector-card-actions">
           <button type="button" class="btn btn-outline btn-sm" onclick="openCollectorHandoverModal('${col.name}')" style="width: 100%; font-size: 11.5px; padding: 4px 10px; background: #ffffff; color: #2563eb; border-color: #bfdbfe; font-weight: 700;">
@@ -9572,7 +9666,8 @@ function openCollectorHandoverModal(operatorName) {
   const title = document.getElementById('collector-handover-title');
   if (!modal || !content) return;
 
-  const todayStr = getISTDateString();
+  const datePreset = document.getElementById('collector-date-preset-filter')?.value || 'today';
+  const customDate = document.getElementById('collector-custom-date')?.value || '';
   const isAdm = operatorName === 'Admin';
   if (title) {
     title.innerHTML = isAdm 
@@ -9580,11 +9675,11 @@ function openCollectorHandoverModal(operatorName) {
       : `<span>🛵</span> Field Collector Handover Slip: ${operatorName}`;
   }
 
-  const allTodayTxns = getTodayCollectorTransactions();
+  const allPeriodTxns = getCollectorTransactionsByDate(datePreset, customDate);
   const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
   const rosterCol = roster.find(c => c.name === operatorName || c.email === operatorName);
 
-  const txns = allTodayTxns.filter(t => {
+  const txns = allPeriodTxns.filter(t => {
     if (isAdm) {
       return !t.collector || t.collector === 'Admin' || t.collector.toLowerCase().includes('admin');
     }
@@ -9592,6 +9687,7 @@ function openCollectorHandoverModal(operatorName) {
   });
 
   const totalAmount = txns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  let dateHeaderStr = datePreset === 'custom' && customDate ? customDate : (datePreset === 'today' ? getISTDateString() : datePreset.toUpperCase());
 
   let rowsHtml = '';
   txns.forEach((t, idx) => {
