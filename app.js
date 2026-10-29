@@ -1274,9 +1274,35 @@ function handleLogin(event) {
   if (role) {
     if (errorAlert) errorAlert.style.display = 'none';
     const rememberMe = document.getElementById('login-remember')?.checked !== false;
+
+    let assignedName = user || 'Operator';
+    let assignedCollectorId = null;
+    let assignedRoute = '';
+
+    if (role === 'Collector') {
+      const roster = (state && state.settings && Array.isArray(state.settings.collectors)) ? state.settings.collectors : [];
+      const userNorm = user.trim().toLowerCase();
+      const matched = roster.find(c => 
+        c && (
+          (c.name && c.name.trim().toLowerCase() === userNorm) ||
+          (c.email && c.email.trim().toLowerCase() === userNorm) ||
+          (c.id && c.id.toLowerCase() === userNorm) ||
+          (c.phone && c.phone.replace(/[^0-9]/g, '') === user.replace(/[^0-9]/g, '')) ||
+          (userNorm.length >= 3 && c.name && c.name.toLowerCase().includes(userNorm))
+        )
+      );
+      if (matched) {
+        assignedName = matched.name;
+        assignedCollectorId = matched.id;
+        assignedRoute = matched.route || '';
+      }
+    }
+
     const sessionData = {
-      user: user || 'Operator',
+      user: assignedName,
       role: role,
+      collectorId: assignedCollectorId,
+      route: assignedRoute,
       loginTime: new Date().toISOString()
     };
     if (rememberMe) {
@@ -1285,7 +1311,7 @@ function handleLogin(event) {
       sessionStorage.setItem(AUTH_KEY, JSON.stringify(sessionData));
     }
     playCashChime();
-    showToast(`Welcome back, ${user}! Signed in as ${role}.`);
+    showToast(`Welcome back, ${assignedName}! Signed in as ${role}.`);
     if (loginOverlay) {
       loginOverlay.style.opacity = '0';
       loginOverlay.style.transition = 'opacity 0.25s ease';
@@ -2773,45 +2799,82 @@ function getPortfolioStats(loanFilter = 'all') {
 
   });
 
-  // Check today's collections: accurately credit partial vs full payments
-  // 1. Transaction audit ledger provides 100% exact split accounting across multi-day partial payments
-  let hasTodayTransactions = false;
+  // Check today's collections: accurately credit partial vs full payments across ledger and customer schedules
+  const recordedReceipts = new Set();
+  const recordedInstalmentKeys = new Set();
   let txnTodayCollected = 0;
+
   if (state.transactions && Array.isArray(state.transactions) && state.transactions.length > 0) {
     state.transactions.forEach(t => {
       if (t && t.date === todayStr) {
         if (targetLoan !== null && (Number(t.loanNumber) || 1) !== targetLoan) {
           return;
         }
-        hasTodayTransactions = true;
         const amt = Number(t.amount) || 0;
         if (t.type === 'undo') {
           txnTodayCollected -= amt;
         } else {
           txnTodayCollected += amt;
         }
+        if (t.receiptNumber) recordedReceipts.add(String(t.receiptNumber).trim().toLowerCase());
+        const tCId = t.customerId ? String(t.customerId).toLowerCase() : '';
+        const tCNum = t.customerNumber ? String(t.customerNumber).replace(/^0+/, '') : '';
+        const tLNum = Number(t.loanNumber) || 1;
+        const tINum = Number(t.instalmentNumber) || 0;
+        if (tCId && tINum) {
+          recordedInstalmentKeys.add(`${tCId}_W${tINum}`);
+          recordedInstalmentKeys.add(`${tCId}_L${tLNum}_W${tINum}`);
+        }
+        if (tCNum && tINum) {
+          recordedInstalmentKeys.add(`CUS_${tCNum}_W${tINum}`);
+          recordedInstalmentKeys.add(`CUS_${tCNum}_L${tLNum}_W${tINum}`);
+        }
       }
     });
   }
 
-  if (hasTodayTransactions) {
-    todayCollected = Math.max(0, txnTodayCollected);
-  } else {
-    // 2. Direct instalment fallback for legacy data or sessions without transaction records
-    targetCustomers.forEach((cust) => {
-      if (cust.instalments) {
-        cust.instalments.forEach((inst) => {
-          if (inst && inst.paidDate === todayStr) {
-            if (inst.status === 'Partial') {
-              todayCollected += (Number(inst.paidAmount) || 0);
-            } else if (inst.status === 'Received') {
-              todayCollected += (Number(inst.paidAmount) || cust.instalmentAmount || 0);
+  // Also include active customer instalments paid today that were not yet in state.transactions
+  let customerTodayCollected = 0;
+  targetCustomers.forEach((cust) => {
+    const cLoanNum = Number(cust.loanNumber) || 1;
+    const cInstAmt = Number(cust.instalmentAmount) || 200;
+    const cIdLower = String(cust.id || '').toLowerCase();
+    const normCNum = String(cust.customerNumber || '').replace(/^0+/, '');
+
+    if (cust.instalments) {
+      cust.instalments.forEach((inst) => {
+        if (inst && inst.paidDate === todayStr) {
+          const instNum = Number(inst.number) || 0;
+          const keyId1 = `${cIdLower}_W${instNum}`;
+          const keyId2 = `${cIdLower}_L${cLoanNum}_W${instNum}`;
+          const keyNum1 = `CUS_${normCNum}_W${instNum}`;
+          const keyNum2 = `CUS_${normCNum}_L${cLoanNum}_W${instNum}`;
+          const rLower = inst.receiptNumber ? String(inst.receiptNumber).trim().toLowerCase() : '';
+          const hasReceipt = rLower && recordedReceipts.has(rLower);
+
+          const isAlreadyRecorded = hasReceipt ||
+            (cIdLower && (recordedInstalmentKeys.has(keyId1) || recordedInstalmentKeys.has(keyId2))) ||
+            (normCNum && (recordedInstalmentKeys.has(keyNum1) || recordedInstalmentKeys.has(keyNum2)));
+
+          if (!isAlreadyRecorded) {
+            const instPaid = (inst.status === 'Partial') ? (Number(inst.paidAmount) || 0) : (Number(inst.paidAmount) || cInstAmt);
+            customerTodayCollected += instPaid;
+            if (rLower) recordedReceipts.add(rLower);
+            if (cIdLower && instNum) {
+              recordedInstalmentKeys.add(keyId1);
+              recordedInstalmentKeys.add(keyId2);
+            }
+            if (normCNum && instNum) {
+              recordedInstalmentKeys.add(keyNum1);
+              recordedInstalmentKeys.add(keyNum2);
             }
           }
-        });
-      }
-    });
-  }
+        }
+      });
+    }
+  });
+
+  todayCollected = Math.max(0, txnTodayCollected + customerTodayCollected);
 
   const recoveryPercent = totalPayable > 0 ? Math.round((totalCollected / totalPayable) * 100) : 0;
   const todayProfit = todayCollected > 0 && totalPayable > 0 ? Math.round(todayCollected * (totalExpectedProfit / totalPayable)) : 0;
@@ -9607,15 +9670,47 @@ function getCollectorTransactionsByDate(datePreset, customDate) {
     });
   }
 
-  // Fallback: only scan customer instalments if no ledger transactions were found for this date/period
-  if (items.length === 0) {
-    (state.customers || []).forEach((c) => {
-      const cLoanNum = Number(c.loanNumber) || 1;
-      const cInstAmt = Number(c.instalmentAmount) || 200;
-      (c.instalments || []).forEach((inst) => {
-        if (inst && (inst.status === 'Received' || inst.status === 'Partial') && isDateMatch(inst.paidDate)) {
-          const instNum = Number(inst.number) || 0;
+  // 2. Also scan active customer instalments not yet recorded in state.transactions
+  const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
+  (state.customers || []).forEach((c) => {
+    const cLoanNum = Number(c.loanNumber) || 1;
+    const cInstAmt = Number(c.instalmentAmount) || 200;
+    const cIdLower = String(c.id || '').toLowerCase();
+    const normCNum = String(c.customerNumber || '').replace(/^0+/, '');
+    const cRoute = (c.areaRoute || c.route || '').trim().toLowerCase();
+
+    (c.instalments || []).forEach((inst) => {
+      if (inst && (inst.status === 'Received' || inst.status === 'Partial') && isDateMatch(inst.paidDate)) {
+        const instNum = Number(inst.number) || 0;
+        const keyId1 = `${cIdLower}_W${instNum}`;
+        const keyId2 = `${cIdLower}_L${cLoanNum}_W${instNum}`;
+        const keyNum1 = `CUS_${normCNum}_W${instNum}`;
+        const keyNum2 = `CUS_${normCNum}_L${cLoanNum}_W${instNum}`;
+        const rLower = inst.receiptNumber ? String(inst.receiptNumber).trim().toLowerCase() : '';
+        const hasReceipt = rLower && recordedReceipts.has(rLower);
+
+        const isAlreadyRecorded = hasReceipt ||
+          (cIdLower && (recordedInstalmentKeys.has(keyId1) || recordedInstalmentKeys.has(keyId2))) ||
+          (normCNum && (recordedInstalmentKeys.has(keyNum1) || recordedInstalmentKeys.has(keyNum2)));
+
+        if (!isAlreadyRecorded) {
           const instPaid = (inst.status === 'Received') ? (Number(inst.paidAmount) || cInstAmt) : (Number(inst.paidAmount) || 0);
+
+          // Determine collector
+          let itemCollector = inst.paidBy || null;
+          let itemCollectorId = inst.collectorId || null;
+
+          // If inst.paidBy is not explicitly set or generic, check if the customer route belongs to a roster field collector
+          if (!itemCollector || itemCollector === 'Operator' || itemCollector === 'Collector') {
+            const routeCol = roster.find(col => col.route && cRoute && col.route.toLowerCase() === cRoute && col.active !== false);
+            if (routeCol) {
+              itemCollector = routeCol.name;
+              itemCollectorId = routeCol.id;
+            } else {
+              itemCollector = itemCollector || 'Admin';
+            }
+          }
+
           items.push({
             customerId: c.id,
             customerNumber: c.customerNumber,
@@ -9624,14 +9719,24 @@ function getCollectorTransactionsByDate(datePreset, customDate) {
             instalmentNumber: instNum,
             receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
             amount: instPaid,
-            collector: inst.paidBy || 'Admin',
-            collectorId: inst.collectorId || null,
+            collector: itemCollector || 'Admin',
+            collectorId: itemCollectorId,
             date: inst.paidDate || todayStr
           });
+
+          if (rLower) recordedReceipts.add(rLower);
+          if (cIdLower && instNum) {
+            recordedInstalmentKeys.add(keyId1);
+            recordedInstalmentKeys.add(keyId2);
+          }
+          if (normCNum && instNum) {
+            recordedInstalmentKeys.add(keyNum1);
+            recordedInstalmentKeys.add(keyNum2);
+          }
         }
-      });
+      }
     });
-  }
+  });
 
   return items;
 }
