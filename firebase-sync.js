@@ -179,8 +179,10 @@ function setupFirestoreRealtimeListeners() {
   });
 
   // 3. Listen to Transactions collection in real-time (preserves all payments & undos)
-  const attachTxnListener = (queryRef) => {
+  let txnListenerAttached = false;
+  const attachTxnListener = (queryRef, isFallback = false) => {
     return queryRef.onSnapshot((snapshot) => {
+      txnListenerAttached = true;
       const isRemoteTxn = !snapshot.metadata.hasPendingWrites;
 
       if (!isInitialTxnSnapshot && isRemoteTxn && typeof showToast === 'function') {
@@ -223,13 +225,17 @@ function setupFirestoreRealtimeListeners() {
       if (state.activeTab === 'summary') renderDashboard();
     }, (err) => {
       console.warn('Firestore transactions listener:', err);
+      if (!txnListenerAttached && !isFallback && firestoreDb) {
+        console.log('Falling back to transactions query without orderBy...');
+        attachTxnListener(firestoreDb.collection('transactions').limit(500), true);
+      }
     });
   };
 
   try {
     attachTxnListener(firestoreDb.collection('transactions').orderBy('createdAt', 'desc').limit(500));
   } catch (e) {
-    attachTxnListener(firestoreDb.collection('transactions').limit(500));
+    attachTxnListener(firestoreDb.collection('transactions').limit(500), true);
   }
 
   // 4. Listen to Editing Locks in real-time (Collaborative edit locks)
