@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=65">
+  <link rel="stylesheet" href="styles.css?v=66">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -130,11 +130,11 @@
       </button>
       <button type="button" class="stat-pill offline-sync-pill online" id="offline-sync-badge" onclick="triggerManualOfflineSync()" title="Local-First Offline Storage & Background Sync Engine" style="cursor: pointer;">
         <span id="offline-sync-icon">☁️</span>
-        <strong id="offline-sync-text" style="color: #4ade80;">All Synced</strong>
+        <strong id="offline-sync-text" style="color: #15803d;">All Synced</strong>
       </button>
       <button type="button" class="stat-pill pwa-install-pill" id="btn-install-pwa" onclick="handlePwaInstallClick()" style="display: none; cursor: pointer;" title="Install JSR Finance Mobile App on your phone or desktop">
         <span>📲</span>
-        <strong style="color: #93c5fd;">Install App</strong>
+        <strong style="color: #1d4ed8;">Install App</strong>
       </button>
     </div>
 
@@ -258,16 +258,25 @@
           </div>
         </div>
 
-        <!-- Admin-Only Today's Operator Collections Breakdown (Personal & Field Collectors) -->
+        <!-- Admin-Only Operator Collections Breakdown by Date (Personal & Field Collectors) -->
         <div id="dashboard-collector-breakdown" class="card" style="margin-bottom: 24px; display: none;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
             <div>
               <div style="font-size: 15px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 6px;">
-                <span>👥</span> Today's Operator Collections Breakdown
+                <span>👥</span> Operator Collections by Date
               </div>
-              <div style="font-size: 12px; color: #64748b;">Daily collected totals, receipt counts, and handover slips by operator</div>
+              <div style="font-size: 12px; color: #64748b;" id="collector-breakdown-sub">Collected totals, receipt counts, and handover slips by operator</div>
             </div>
-            <div style="display: flex; gap: 8px; align-items: center;">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <select id="collector-date-preset-filter" class="form-control" style="font-size: 12px; padding: 5px 10px; border-radius: 6px; font-weight: 600;" onchange="handleCollectorDateFilterChange(this.value)">
+                <option value="today" selected>📅 Today</option>
+                <option value="yesterday">📅 Yesterday</option>
+                <option value="this-week">📅 This Week</option>
+                <option value="this-month">📅 This Month</option>
+                <option value="custom">📅 Specific Date</option>
+                <option value="all">📅 All Dates</option>
+              </select>
+              <input type="date" id="collector-custom-date" class="form-control" style="display: none; font-size: 12px; padding: 4px 8px; border-radius: 6px;" onchange="renderCollectorBreakdownWidget()">
               <span class="badge" style="background: #eff6ff; color: #1d4ed8; font-weight: 700; font-size: 11px; padding: 4px 10px; border: 1px solid #bfdbfe;">
                 👑 Admin Master View
               </span>
@@ -417,9 +426,6 @@
           </button>
           <button type="button" class="coll-btn-action" onclick="exportCollectionSheetCSV()" title="Export CSV">
             <span style="color: #ea580c;">📄</span> Export CSV
-          </button>
-          <button type="button" class="coll-btn-action" onclick="window.print()" title="Print Sheet">
-            <span>🖨️</span> Print
           </button>
           <button type="button" class="coll-btn-add" onclick="openAddCustomerModal()" title="Add New Customer">
             <span>👤+</span> Add
@@ -1391,7 +1397,7 @@
         <div class="modal-body">
           <div class="form-grid">
             <!-- Multi-Loan Account Selector -->
-            <div class="form-full" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
+            <div class="form-full" id="cust-form-loan-type-wrap" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
               <div style="font-weight: 700; font-size: 12px; color: #334155; margin-bottom: 8px;">Loan Account Type:</div>
               <div style="display: flex; gap: 18px; align-items: center; flex-wrap: wrap;">
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; color: #1e293b;">
@@ -2382,8 +2388,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=65"></script>
-  <script src="firebase-sync.js?v=65"></script>
-  <script src="app.js?v=65"></script>
+  <script src="firebase-config.js?v=66"></script>
+  <script src="firebase-sync.js?v=66"></script>
+  <script src="app.js?v=66"></script>
 </body>
 </html>
