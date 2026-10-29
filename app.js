@@ -1793,6 +1793,7 @@ function recordTransaction(txnData) {
     date: txnData.date || getISTDateString(),
     timestamp: txnData.timestamp || getNowTimestamp(),
     collector: txnData.collector || (currentUser ? currentUser.user : 'Admin'),
+    collectorId: txnData.collectorId || (currentUser && currentUser.collectorId) || null,
     collectorRole: (currentUser && currentUser.role) ? currentUser.role : 'Admin',
     createdAt: new Date().toISOString()
   };
@@ -9469,10 +9470,32 @@ function applyRoleBasedPermissions() {
   }
 }
 
-// Robust Multi-Field Collector Attribution Matcher
-// Checks collectorId, normalized name, email, name token/fuzzy containment, and route fallback
+// Check if a collector string belongs to Admin (Surendra Singari)
+function isCollectorAdmin(collectorStr) {
+  if (!collectorStr) return true;
+  const s = String(collectorStr).trim().toLowerCase();
+  if (s === 'admin' || s.includes('admin') || s === 'owner' || s === 'hq') return true;
+  if (state.settings.adminEmail && s === state.settings.adminEmail.trim().toLowerCase()) return true;
+  if (state.settings.adminName && s === state.settings.adminName.trim().toLowerCase()) return true;
+  if (s.includes('surendra') || s === 'surendra singari' || s === 'singari surendra') return true;
+  const currentUser = getCurrentUser();
+  if (currentUser && currentUser.role === 'Admin') {
+    if (currentUser.user && s === currentUser.user.trim().toLowerCase()) return true;
+    if (currentUser.email && s === currentUser.email.trim().toLowerCase()) return true;
+  }
+  return false;
+}
+
+// Robust Collector Attribution Matcher
+// Ensures Admin (Surendra Singari) and Field Collector (Singari Suri) never collide
 function isTransactionForCollector(t, col) {
   if (!t || !col) return false;
+
+  const tCol = (t.collector || '').trim();
+  // Any transaction explicitly collected by Admin belongs strictly to Admin!
+  if (isCollectorAdmin(tCol)) {
+    return false;
+  }
 
   // 1. Direct collectorId match
   if (t.collectorId && col.id && String(t.collectorId).trim().toLowerCase() === String(col.id).trim().toLowerCase()) {
@@ -9481,34 +9504,24 @@ function isTransactionForCollector(t, col) {
 
   const colName = (col.name || '').trim().toLowerCase();
   const colEmail = (col.email || '').trim().toLowerCase();
-  const tCol = (t.collector || '').trim().toLowerCase();
+  const tColLower = tCol.toLowerCase();
 
   // 2. Exact name or email match
-  if (colName && tCol === colName) return true;
-  if (colEmail && tCol === colEmail) return true;
+  if (colName && tColLower === colName) return true;
+  if (colEmail && tColLower === colEmail) return true;
 
-  // 3. Substring / name token overlap (e.g. "Singari Suri" matches "Suri" or "Singari")
-  if (colName && tCol && tCol !== 'admin' && !tCol.includes('admin')) {
-    if (colName.includes(tCol) || tCol.includes(colName)) {
-      return true;
+  // 3. Name token match (e.g. "Singari Suri" vs "Suri", but NEVER matching Admin "Surendra Singari")
+  if (colName && tColLower && !isCollectorAdmin(tColLower)) {
+    if (colName === tColLower) return true;
+    const adminTokens = new Set(['surendra', 'singari', 'admin', 'owner', 'hq']);
+    if (state.settings.adminName) {
+      state.settings.adminName.toLowerCase().split(/\s+/).forEach(tok => adminTokens.add(tok));
     }
-    const colParts = colName.split(/\s+/).filter(p => p.length >= 3);
-    const tParts = tCol.split(/\s+/).filter(p => p.length >= 3);
-    if (colParts.some(cp => tParts.includes(cp))) {
+    // Only tokens unique to this field collector (e.g. "suri")
+    const colUniqueTokens = colName.split(/\s+/).filter(tok => tok.length >= 3 && !adminTokens.has(tok));
+    const tTokens = tColLower.split(/\s+/).filter(tok => tok.length >= 3);
+    if (colUniqueTokens.length > 0 && colUniqueTokens.some(ut => tTokens.includes(ut))) {
       return true;
-    }
-  }
-
-  // 4. Customer areaRoute fallback: If borrower's route matches collector's assigned route
-  if (col.route && col.active !== false) {
-    const cust = (state.customers || []).find(c =>
-      (c.id && c.id === t.customerId) ||
-      (c.customerNumber && String(c.customerNumber) === String(t.customerNumber))
-    );
-    if (cust && cust.areaRoute && cust.areaRoute.trim().toLowerCase() === col.route.trim().toLowerCase()) {
-      if (!t.collector || t.collector === 'Admin' || tCol === colName || tCol.includes(colName)) {
-        return true;
-      }
     }
   }
 
@@ -9547,79 +9560,78 @@ function getCollectorTransactionsByDate(datePreset, customDate) {
     return dateStr === todayStr || dateStr === 'Today';
   }
 
-  const recordedKeys = new Set();
+  const recordedReceipts = new Set();
+  const recordedInstalmentKeys = new Set();
   const items = [];
-  const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
 
-  if (state.transactions && Array.isArray(state.transactions)) {
+  if (state.transactions && Array.isArray(state.transactions) && state.transactions.length > 0) {
     state.transactions.forEach(t => {
       if (isDateMatch(t.date) && t.type !== 'undo') {
-        const cust = (state.customers || []).find(c => 
-          (c.id && c.id === t.customerId) || 
-          (c.customerNumber && c.customerNumber.toString() === (t.customerNumber || '').toString())
-        );
-        let col = t.collector || null;
-        let colId = t.collectorId || null;
-        if ((!col || col === 'Admin') && cust && cust.areaRoute) {
-          const routeCol = roster.find(rc => rc.route && rc.route.trim().toLowerCase() === cust.areaRoute.trim().toLowerCase() && rc.active !== false);
-          if (routeCol) {
-            col = routeCol.name;
-            colId = routeCol.id;
-          }
-        }
+        const cust = (t.customerId ? (state.customers || []).find(c => c.id === t.customerId) : null) ||
+                     (state.customers || []).find(c => 
+                       c.customerNumber && t.customerNumber && String(c.customerNumber) === String(t.customerNumber) &&
+                       (Number(c.loanNumber) || 1) === (Number(t.loanNumber) || 1)
+                     ) ||
+                     (state.customers || []).find(c => c.customerNumber && t.customerNumber && String(c.customerNumber) === String(t.customerNumber));
+
+        const loanNum = Number(t.loanNumber) || (cust ? Number(cust.loanNumber) : 1) || 1;
+        const cNum = t.customerNumber || (cust ? cust.customerNumber : '');
+        const cId = t.customerId || (cust ? cust.id : '');
+        const instNum = Number(t.instalmentNumber) || 0;
+
         items.push({
-          customerId: t.customerId || (cust ? cust.id : ''),
-          customerNumber: t.customerNumber || (cust ? cust.customerNumber : ''),
-          loanNumber: Number(t.loanNumber) || (cust ? Number(cust.loanNumber) : 1) || 1,
+          customerId: cId,
+          customerNumber: cNum,
+          loanNumber: loanNum,
           customerName: t.customerName || (cust ? cust.fullName : 'Customer'),
-          instalmentNumber: t.instalmentNumber,
+          instalmentNumber: instNum,
           receiptNumber: t.receiptNumber || '',
           amount: Number(t.amount) || 0,
-          collector: col || 'Admin',
-          collectorId: colId,
+          collector: t.collector || 'Admin',
+          collectorId: t.collectorId || null,
           date: t.date || todayStr
         });
-        if (t.customerId && t.instalmentNumber) {
-          recordedKeys.add(`${t.customerId}_${t.instalmentNumber}`);
+
+        if (t.receiptNumber) recordedReceipts.add(String(t.receiptNumber).trim().toLowerCase());
+        if (cId && instNum) {
+          const lowerCId = String(cId).toLowerCase();
+          recordedInstalmentKeys.add(`${lowerCId}_W${instNum}`);
+          recordedInstalmentKeys.add(`${lowerCId}_L${loanNum}_W${instNum}`);
+        }
+        if (cNum && instNum) {
+          const normCNum = String(cNum).replace(/^0+/, '');
+          recordedInstalmentKeys.add(`CUS_${normCNum}_W${instNum}`);
+          recordedInstalmentKeys.add(`CUS_${normCNum}_L${loanNum}_W${instNum}`);
         }
       }
     });
   }
 
-  // Fallback: also scan active customer instalments paid on matching date not yet logged as transaction rows
-  (state.customers || []).forEach((c) => {
-    const cLoanNum = Number(c.loanNumber) || 1;
-    const cInstAmt = Number(c.instalmentAmount) || 200;
-    (c.instalments || []).forEach((inst) => {
-      if (inst && (inst.status === 'Received' || inst.status === 'Partial') && isDateMatch(inst.paidDate)) {
-        const key = `${c.id}_${inst.number}`;
-        if (!recordedKeys.has(key)) {
+  // Fallback: only scan customer instalments if no ledger transactions were found for this date/period
+  if (items.length === 0) {
+    (state.customers || []).forEach((c) => {
+      const cLoanNum = Number(c.loanNumber) || 1;
+      const cInstAmt = Number(c.instalmentAmount) || 200;
+      (c.instalments || []).forEach((inst) => {
+        if (inst && (inst.status === 'Received' || inst.status === 'Partial') && isDateMatch(inst.paidDate)) {
+          const instNum = Number(inst.number) || 0;
           const instPaid = (inst.status === 'Received') ? (Number(inst.paidAmount) || cInstAmt) : (Number(inst.paidAmount) || 0);
-          let col = inst.paidBy || null;
-          let colId = inst.collectorId || null;
-          if (!col && c.areaRoute) {
-            const routeCol = roster.find(rc => rc.route && rc.route.trim().toLowerCase() === c.areaRoute.trim().toLowerCase() && rc.active !== false);
-            if (routeCol) {
-              col = routeCol.name;
-              colId = routeCol.id;
-            }
-          }
           items.push({
             customerId: c.id,
             customerNumber: c.customerNumber,
             loanNumber: cLoanNum,
             customerName: c.fullName,
-            instalmentNumber: inst.number,
+            instalmentNumber: instNum,
             receiptNumber: inst.receiptNumber || `REC-${inst.number}`,
             amount: instPaid,
-            collector: col || 'Admin',
-            collectorId: colId,
+            collector: inst.paidBy || 'Admin',
+            collectorId: inst.collectorId || null,
             date: inst.paidDate || todayStr
           });
         }
-      }
+      });
     });
-  });
+  }
 
   return items;
 }
@@ -9677,7 +9689,7 @@ function renderCollectorBreakdownWidget() {
 
   const roster = Array.isArray(state.settings.collectors) ? state.settings.collectors : [];
 
-  // 1. Field Collectors from Roster (Claim transactions first via isTransactionForCollector)
+  // 1. Field Collectors from Roster (Claim transactions strictly belonging to this field collector)
   let fieldCardsHtml = '';
   roster.forEach(col => {
     const colTxns = periodTxns.filter(t => isTransactionForCollector(t, col));
@@ -9708,8 +9720,8 @@ function renderCollectorBreakdownWidget() {
     `;
   });
 
-  // 2. Admin Personal Collections (All collections NOT claimed by any roster field collector)
-  const adminTxns = periodTxns.filter(t => !roster.some(col => isTransactionForCollector(t, col)));
+  // 2. Admin Personal Collections (All transactions collected by Admin or not claimed by any roster collector)
+  const adminTxns = periodTxns.filter(t => isCollectorAdmin(t.collector) || !roster.some(col => isTransactionForCollector(t, col)));
   const adminTotal = adminTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   const adminCount = adminTxns.length;
 
@@ -9757,7 +9769,7 @@ function openCollectorHandoverModal(operatorName) {
 
   const txns = allPeriodTxns.filter(t => {
     if (isAdm) {
-      return !roster.some(col => isTransactionForCollector(t, col));
+      return isCollectorAdmin(t.collector) || !roster.some(col => isTransactionForCollector(t, col));
     }
     return isTransactionForCollector(t, rosterCol);
   });
