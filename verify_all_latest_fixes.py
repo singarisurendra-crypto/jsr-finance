@@ -306,45 +306,68 @@ def main():
         print("Setup Result:", json.dumps(setup_res))
         time.sleep(0.5)
 
-        # 2. Verify Top Header (User badge removed) & Left Sidebar (Lite background #E8F2FF & user card down)
+        # 2. Verify Top Header & Left Sidebar (Pure white #ffffff, user badge removed, user card down)
         header_sidebar_check = client.eval_js("""
             (() => {
                 const badge = document.getElementById('header-user-badge');
                 const syncPill = document.getElementById('cloud-status-pill');
+                const header = document.querySelector('.app-header');
                 const sidebar = document.getElementById('app-sidebar');
                 const sidebarUserCard = document.getElementById('sidebar-user-card');
                 const sidebarUserAvatar = document.getElementById('sidebar-user-avatar');
                 const sidebarUserName = document.getElementById('sidebar-user-name');
                 const sidebarUserRole = document.getElementById('sidebar-user-role');
                 const sidebarLogout = document.querySelector('.sidebar-logout-btn');
+                const activePill = document.querySelector('.stat-pill-active');
 
+                const headerStyle = header ? window.getComputedStyle(header) : null;
                 const sidebarStyle = sidebar ? window.getComputedStyle(sidebar) : null;
+                const activePillStyle = activePill ? window.getComputedStyle(activePill) : null;
 
                 return {
                     headerBadgeExists: !!badge,
                     syncPillExistsInDom: !!syncPill,
+                    headerBg: headerStyle ? headerStyle.backgroundColor : '',
                     sidebarBg: sidebarStyle ? sidebarStyle.backgroundColor : '',
                     sidebarUserCardExists: !!sidebarUserCard,
                     sidebarAvatar: sidebarUserAvatar ? sidebarUserAvatar.innerText.trim() : '',
                     sidebarName: sidebarUserName ? sidebarUserName.innerText.trim() : '',
                     sidebarRole: sidebarUserRole ? sidebarUserRole.innerText.trim() : '',
-                    sidebarLogoutExists: !!sidebarLogout
+                    sidebarLogoutExists: !!sidebarLogout,
+                    activePillMinWidth: activePillStyle ? activePillStyle.minWidth : ''
                 };
             })()
         """)
         print("Header & Sidebar Check:", json.dumps(header_sidebar_check, indent=2))
         assert not header_sidebar_check["headerBadgeExists"], "Top menu must NOT have Full access / user badge (removed duplicate)"
         assert not header_sidebar_check["syncPillExistsInDom"], "Sync: Live pill must be removed from top header"
-        assert header_sidebar_check["sidebarBg"] == "rgb(232, 242, 255)", f"Sidebar background must be #E8F2FF, got: {header_sidebar_check['sidebarBg']}"
+        assert header_sidebar_check["headerBg"] == "rgb(255, 255, 255)", f"Header background must be pure white #ffffff, got: {header_sidebar_check['headerBg']}"
+        assert header_sidebar_check["sidebarBg"] == "rgb(255, 255, 255)", f"Sidebar background must be pure white #ffffff, got: {header_sidebar_check['sidebarBg']}"
         assert header_sidebar_check["sidebarUserCardExists"], "Left menu down must have user card"
         assert header_sidebar_check["sidebarAvatar"] == "S", f"Sidebar avatar 'S', got: {header_sidebar_check['sidebarAvatar']}"
         assert "Surendra" in header_sidebar_check["sidebarName"] or "surendra" in header_sidebar_check["sidebarName"], f"Expected surendra, got: {header_sidebar_check['sidebarName']}"
         assert "FULL ACCESS" in header_sidebar_check["sidebarRole"].upper() or "ADMIN" in header_sidebar_check["sidebarRole"].upper(), f"Expected FULL ACCESS, got: {header_sidebar_check['sidebarRole']}"
         assert header_sidebar_check["sidebarLogoutExists"], "Left menu down must have logout button"
 
-        # 3. Test Collections View & Compact Badges & Balance Placement
+        # 3. Test Collections View & Compact Badges & Removed Print Option
         client.eval_js("switchTab('collections');")
         time.sleep(0.5)
+
+        toolbar_check = client.eval_js("""
+            (() => {
+                const toolbar = document.querySelector('.coll-action-toolbar');
+                const printBtn = toolbar ? toolbar.querySelector('button[onclick*="print"]') : null;
+                const buttons = toolbar ? Array.from(toolbar.querySelectorAll('button')).map(b => b.innerText.trim()) : [];
+                return {
+                    toolbarExists: !!toolbar,
+                    printBtnExists: !!printBtn,
+                    buttons: buttons
+                };
+            })()
+        """)
+        print("Instalment Toolbar Check:", json.dumps(toolbar_check, indent=2))
+        assert toolbar_check["toolbarExists"], "Toolbar must exist"
+        assert not toolbar_check["printBtnExists"], "Print option must be removed from instalment screen toolbar"
 
         coll_check = client.eval_js("""
             (() => {
@@ -418,7 +441,7 @@ def main():
         assert expand_check["isExpanded"], "Customer card must be expanded"
         assert "Bal:" in expand_check["balPillText"], f"Loan balance must be displayed inside expanded area, got: {expand_check['balPillText']}"
 
-        # 5. Open Customer Detail Modal & Verify Compact Toolbar
+        # 5. Open Customer Detail Modal & Verify Compact Toolbar, Passbook, Thermal Slip, and Loan Type Lock in Edit Mode
         modal_check = client.eval_js(f"""
             (() => {{
                 openCustomerDetailModal('{coll_check["customerId"]}');
@@ -426,12 +449,17 @@ def main():
                 const toolbar = modal ? modal.querySelector('.sched-quick-toolbar') : null;
                 const partialBtn = toolbar ? toolbar.querySelector('button[onclick*="openPartialPayModal"]') : null;
                 const partialBtnStyle = partialBtn ? window.getComputedStyle(partialBtn) : null;
+                const passbookBtn = modal ? modal.querySelector('button[onclick*="openCustomerPassbook"]') : null;
+                const thermalBtn = modal ? modal.querySelector('button[onclick*="openThermalReceiptModal"]') : null;
+                const editBtn = modal ? modal.querySelector('button[onclick*="openEditCustomerModal"]') : null;
 
                 return {{
                     modalDisplayed: modal && modal.style.display !== 'none',
                     toolbarText: toolbar ? toolbar.innerText : '',
                     partialBtnBg: partialBtnStyle ? partialBtnStyle.backgroundColor : '',
-                    partialBtnColor: partialBtnStyle ? partialBtnStyle.color : ''
+                    passbookBtnExists: !!passbookBtn,
+                    thermalBtnExists: !!thermalBtn,
+                    editBtnExists: !!editBtn
                 }};
             }})()
         """)
@@ -439,6 +467,81 @@ def main():
         assert modal_check["modalDisplayed"], "Customer detail modal must be visible"
         assert "Bal:" in modal_check["toolbarText"], f"Detail modal must have compact 'Bal:', got: {modal_check['toolbarText']}"
         assert modal_check["partialBtnBg"] == "rgb(254, 243, 199)", f"Partial pay button background must be amber #fef3c7, got: {modal_check['partialBtnBg']}"
+        assert modal_check["passbookBtnExists"], "Passbook button must exist in customer detail modal"
+        assert modal_check["thermalBtnExists"], "Thermal Slip button must exist in customer detail modal"
+        assert modal_check["editBtnExists"], "Edit Terms button must exist in customer detail modal"
+
+        # Test Passbook trigger from detail modal
+        passbook_trigger_check = client.eval_js(f"""
+            (() => {{
+                openCustomerPassbook('{coll_check["customerId"]}');
+                const pbModal = document.getElementById('modal-passbook');
+                const isOpen = pbModal && pbModal.style.display !== 'none';
+                if (isOpen) closeModal('modal-passbook');
+                return {{ isOpen }};
+            }})()
+        """)
+        print("Passbook Trigger Check:", json.dumps(passbook_trigger_check, indent=2))
+        assert passbook_trigger_check["isOpen"], "Passbook modal must open from detail modal trigger"
+
+        # Test Thermal Slip trigger from detail modal
+        thermal_trigger_check = client.eval_js(f"""
+            (() => {{
+                openThermalReceiptModal('{coll_check["customerId"]}', 1);
+                const tsModal = document.getElementById('modal-thermal-slip');
+                const isOpen = tsModal && tsModal.style.display !== 'none';
+                if (isOpen) closeModal('modal-thermal-slip');
+                return {{ isOpen }};
+            }})()
+        """)
+        print("Thermal Slip Trigger Check:", json.dumps(thermal_trigger_check, indent=2))
+        assert thermal_trigger_check["isOpen"], "Thermal slip modal must open from detail modal trigger"
+
+        # Test Edit Customer: Loan account type option must be DISABLED
+        edit_cust_check = client.eval_js(f"""
+            (() => {{
+                openEditCustomerModal('{coll_check["customerId"]}');
+                const custModal = document.getElementById('modal-customer');
+                const radioNew = document.getElementById('loan-type-new');
+                const radioExisting = document.getElementById('loan-type-existing');
+                const wrap = document.getElementById('cust-form-loan-type-wrap');
+
+                const isCustModalOpen = custModal && custModal.style.display !== 'none';
+                const isNewDisabled = radioNew ? radioNew.disabled : false;
+                const isExistingDisabled = radioExisting ? radioExisting.disabled : false;
+                const isWrapDisabled = wrap ? (wrap.style.pointerEvents === 'none') : false;
+
+                closeModal('modal-customer');
+
+                // Now test openAddCustomerModal re-enables them
+                openAddCustomerModal();
+                const addModalOpen = custModal && custModal.style.display !== 'none';
+                const isNewEnabledInAdd = radioNew ? !radioNew.disabled : false;
+                const isExistingEnabledInAdd = radioExisting ? !radioExisting.disabled : false;
+                const isWrapEnabledInAdd = wrap ? (wrap.style.pointerEvents === 'auto') : false;
+
+                closeModal('modal-customer');
+
+                return {{
+                    isCustModalOpen,
+                    isNewDisabled,
+                    isExistingDisabled,
+                    isWrapDisabled,
+                    addModalOpen,
+                    isNewEnabledInAdd,
+                    isExistingEnabledInAdd,
+                    isWrapEnabledInAdd
+                }};
+            }})()
+        """)
+        print("Edit Customer Loan Type Lock Check:", json.dumps(edit_cust_check, indent=2))
+        assert edit_cust_check["isCustModalOpen"], "Customer modal must open when editing customer"
+        assert edit_cust_check["isNewDisabled"], "loan-type-new must be disabled in edit mode"
+        assert edit_cust_check["isExistingDisabled"], "loan-type-existing must be disabled in edit mode"
+        assert edit_cust_check["isWrapDisabled"], "cust-form-loan-type-wrap pointerEvents must be 'none' in edit mode"
+        assert edit_cust_check["isNewEnabledInAdd"], "loan-type-new must be enabled in add customer mode"
+        assert edit_cust_check["isExistingEnabledInAdd"], "loan-type-existing must be enabled in add customer mode"
+        assert edit_cust_check["isWrapEnabledInAdd"], "cust-form-loan-type-wrap pointerEvents must be 'auto' in add customer mode"
 
         # Close detail modal
         client.eval_js("closeCustomerDetailModal();")
@@ -541,7 +644,7 @@ def main():
         assert settings_check["rosterDesktopExists"], "Desktop roster view must exist"
         assert settings_check["rosterMobileExists"], "Mobile roster view must exist"
 
-        # 9. Dashboard Screen: Verify Admin Personal Collection
+        # 9. Dashboard Screen: Verify Admin Personal Collection & Operator Collections by Date Filter
         client.eval_js("switchTab('summary');")
         time.sleep(0.5)
 
@@ -550,15 +653,44 @@ def main():
                 const kpiToday = document.getElementById('kpi-today')?.innerText || '₹ 0';
                 const adminCard = document.querySelector('.collector-card.admin-collector');
                 const adminAmt = adminCard ? adminCard.querySelector('.collector-card-amount')?.innerText : '₹ 0';
+                const filterSelect = document.getElementById('collector-date-preset-filter');
+                const customDateInput = document.getElementById('collector-custom-date');
+                const breakdownSub = document.getElementById('collector-breakdown-sub');
+
+                const filterOptions = filterSelect ? Array.from(filterSelect.options).map(o => o.value) : [];
+
+                // Test date filter switching to 'all'
+                handleCollectorDateFilterChange('all');
+                const subAfterAll = breakdownSub ? breakdownSub.innerText : '';
+
+                // Switch to 'custom'
+                handleCollectorDateFilterChange('custom');
+                const customInputDisplay = customDateInput ? customDateInput.style.display : 'none';
+
+                // Switch back to 'today'
+                handleCollectorDateFilterChange('today');
 
                 return {
                     kpiToday,
-                    adminAmt
+                    adminAmt,
+                    filterExists: !!filterSelect,
+                    filterOptions,
+                    subAfterAll,
+                    customInputDisplay
                 };
             })()
         """)
         print("Dashboard Check:", json.dumps(dashboard_check, indent=2))
         assert dashboard_check["kpiToday"] == dashboard_check["adminAmt"], f"Admin personal collection ({dashboard_check['adminAmt']}) must match today's collection ({dashboard_check['kpiToday']})"
+        assert dashboard_check["filterExists"], "collector-date-preset-filter must exist in dashboard"
+        assert "today" in dashboard_check["filterOptions"], "today option must exist"
+        assert "yesterday" in dashboard_check["filterOptions"], "yesterday option must exist"
+        assert "this-week" in dashboard_check["filterOptions"], "this-week option must exist"
+        assert "this-month" in dashboard_check["filterOptions"], "this-month option must exist"
+        assert "custom" in dashboard_check["filterOptions"], "custom option must exist"
+        assert "all" in dashboard_check["filterOptions"], "all option must exist"
+        assert "all dates" in dashboard_check["subAfterAll"], f"Subtitle should reflect all dates, got: {dashboard_check['subAfterAll']}"
+        assert dashboard_check["customInputDisplay"] == "inline-block", "Custom date input should be visible for 'custom' filter"
 
         # 10. Completed Loan Schedule Direct Open Fix
         completed_loan_check = client.eval_js("""
