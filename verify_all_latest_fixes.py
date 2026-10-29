@@ -773,7 +773,7 @@ def main():
         assert field_slip_check["isOpen"], "Field Collector Handover Slip modal must open"
         assert field_slip_check["colName"] in field_slip_check["titleText"], f"Expected {field_slip_check['colName']} in title, got: {field_slip_check['titleText']}"
 
-        # 9.5 Singari Suri ₹ 2,600 Field Collector Attribution Test
+        # 9.5 Singari Suri ₹ 2,600 and Admin ₹ 12,700 Field Collector Attribution Test
         suri_attribution_check = client.eval_js("""
             (() => {
                 // Register 'Singari Suri' on the roster
@@ -784,20 +784,88 @@ def main():
                     state.settings.collectors.push(suriCol);
                 }
 
-                // Add collection transaction of ₹ 2,600 under Singari Suri
                 const todayStr = getISTDateString();
                 const nowTs = getNowTimestamp();
                 const testCust = state.customers[0];
-                
-                state.transactions.unshift({
-                    id: 'TXN-TEST-SURI-2600',
-                    receiptNumber: 'REC-TEST-SURI-2600',
+
+                // Clear today's test transactions to set up exact user scenario:
+                // Admin: ₹ 12,700 across 3 receipts
+                // Singari Suri: ₹ 2,600 across 2 receipts
+                state.transactions = (state.transactions || []).filter(t => t.date !== todayStr);
+
+                // Admin collections totaling ₹ 12,700
+                state.transactions.push({
+                    id: 'TXN-ADMIN-1',
+                    receiptNumber: 'REC-ADM-1',
                     customerId: testCust ? testCust.id : 'cus_1',
                     customerNumber: testCust ? testCust.customerNumber : '1',
                     loanNumber: 1,
                     customerName: testCust ? testCust.fullName : 'Test Borrower',
                     instalmentNumber: 1,
-                    amount: 2600,
+                    amount: 5000,
+                    type: 'payment',
+                    collector: 'Surendra Singari',
+                    date: todayStr,
+                    timestamp: nowTs,
+                    createdAt: new Date().toISOString()
+                });
+                state.transactions.push({
+                    id: 'TXN-ADMIN-2',
+                    receiptNumber: 'REC-ADM-2',
+                    customerId: testCust ? testCust.id : 'cus_1',
+                    customerNumber: testCust ? testCust.customerNumber : '1',
+                    loanNumber: 1,
+                    customerName: testCust ? testCust.fullName : 'Test Borrower',
+                    instalmentNumber: 2,
+                    amount: 5000,
+                    type: 'payment',
+                    collector: 'Admin',
+                    date: todayStr,
+                    timestamp: nowTs,
+                    createdAt: new Date().toISOString()
+                });
+                state.transactions.push({
+                    id: 'TXN-ADMIN-3',
+                    receiptNumber: 'REC-ADM-3',
+                    customerId: testCust ? testCust.id : 'cus_1',
+                    customerNumber: testCust ? testCust.customerNumber : '1',
+                    loanNumber: 1,
+                    customerName: testCust ? testCust.fullName : 'Test Borrower',
+                    instalmentNumber: 3,
+                    amount: 2700,
+                    type: 'payment',
+                    collector: 'Surendra Singari',
+                    date: todayStr,
+                    timestamp: nowTs,
+                    createdAt: new Date().toISOString()
+                });
+
+                // Singari Suri collections totaling ₹ 2,600
+                state.transactions.push({
+                    id: 'TXN-SURI-1',
+                    receiptNumber: 'REC-SURI-1',
+                    customerId: testCust ? testCust.id : 'cus_1',
+                    customerNumber: testCust ? testCust.customerNumber : '1',
+                    loanNumber: 1,
+                    customerName: testCust ? testCust.fullName : 'Test Borrower',
+                    instalmentNumber: 4,
+                    amount: 1600,
+                    type: 'payment',
+                    collector: 'Singari Suri',
+                    collectorId: 'col_suri',
+                    date: todayStr,
+                    timestamp: nowTs,
+                    createdAt: new Date().toISOString()
+                });
+                state.transactions.push({
+                    id: 'TXN-SURI-2',
+                    receiptNumber: 'REC-SURI-2',
+                    customerId: testCust ? testCust.id : 'cus_1',
+                    customerNumber: testCust ? testCust.customerNumber : '1',
+                    loanNumber: 1,
+                    customerName: testCust ? testCust.fullName : 'Test Borrower',
+                    instalmentNumber: 5,
+                    amount: 1000,
                     type: 'payment',
                     collector: 'Singari Suri',
                     collectorId: 'col_suri',
@@ -806,7 +874,8 @@ def main():
                     createdAt: new Date().toISOString()
                 });
 
-                // Re-render dashboard breakdown
+                // Re-render dashboard and breakdown
+                renderDashboard();
                 renderCollectorBreakdownWidget();
 
                 const suriCard = Array.from(document.querySelectorAll('.collector-card.field-collector')).find(card => 
@@ -817,27 +886,36 @@ def main():
                 const adminCard = document.querySelector('.collector-card.admin-collector');
                 const adminAmount = adminCard ? adminCard.querySelector('.collector-card-amount')?.innerText : '';
 
-                // Also test opening handover modal for Singari Suri
+                // Test opening handover modal for Singari Suri
                 openCollectorHandoverModal('Singari Suri');
-                const modal = document.getElementById('modal-collector-handover');
-                const slipTitle = document.getElementById('collector-handover-title')?.innerText || '';
-                const slipContent = document.getElementById('collector-handover-slip-content')?.innerText || '';
+                const suriSlipTitle = document.getElementById('collector-handover-title')?.innerText || '';
+                const suriSlipContent = document.getElementById('collector-handover-slip-content')?.innerText || '';
+                closeModal('modal-collector-handover');
+
+                // Test opening personal audit slip modal for Admin
+                openCollectorHandoverModal('Admin');
+                const adminSlipTitle = document.getElementById('collector-handover-title')?.innerText || '';
+                const adminSlipContent = document.getElementById('collector-handover-slip-content')?.innerText || '';
                 closeModal('modal-collector-handover');
 
                 return {
                     suriCardFound: !!suriCard,
                     suriAmount,
                     adminAmount,
-                    slipTitle,
-                    has2600InSlip: slipContent.includes('2,600')
+                    suriSlipTitle,
+                    has2600InSuriSlip: suriSlipContent.includes('2,600'),
+                    adminSlipTitle,
+                    has12700InAdminSlip: adminSlipContent.includes('12,700')
                 };
             })()
         """)
-        print("Singari Suri Attribution Check:", json.dumps(suri_attribution_check, indent=2))
+        print("Singari Suri & Admin Attribution Check:", json.dumps(suri_attribution_check, indent=2))
         assert suri_attribution_check["suriCardFound"], "Singari Suri collector card must be rendered in dashboard"
         assert "2,600" in suri_attribution_check["suriAmount"], f"Singari Suri card must show ₹ 2,600, got: {suri_attribution_check['suriAmount']}"
-        assert "Singari Suri" in suri_attribution_check["slipTitle"], f"Handover slip title must mention Singari Suri, got: {suri_attribution_check['slipTitle']}"
-        assert suri_attribution_check["has2600InSlip"], "Handover slip content must include ₹ 2,600"
+        assert "12,700" in suri_attribution_check["adminAmount"], f"Admin card must show ₹ 12,700, got: {suri_attribution_check['adminAmount']}"
+        assert "Singari Suri" in suri_attribution_check["suriSlipTitle"], f"Handover slip title must mention Singari Suri, got: {suri_attribution_check['suriSlipTitle']}"
+        assert suri_attribution_check["has2600InSuriSlip"], "Singari Suri handover slip content must include ₹ 2,600"
+        assert suri_attribution_check["has12700InAdminSlip"], "Admin audit slip content must include ₹ 12,700"
 
         # 10. Completed Loan Schedule Direct Open Fix
         completed_loan_check = client.eval_js("""
