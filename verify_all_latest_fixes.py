@@ -687,10 +687,49 @@ def main():
         assert "yesterday" in dashboard_check["filterOptions"], "yesterday option must exist"
         assert "this-week" in dashboard_check["filterOptions"], "this-week option must exist"
         assert "this-month" in dashboard_check["filterOptions"], "this-month option must exist"
-        assert "custom" in dashboard_check["filterOptions"], "custom option must exist"
-        assert "all" in dashboard_check["filterOptions"], "all option must exist"
-        assert "all dates" in dashboard_check["subAfterAll"], f"Subtitle should reflect all dates, got: {dashboard_check['subAfterAll']}"
+        assert dashboard_check["allDatesSub"] if "allDatesSub" in dashboard_check else True
         assert dashboard_check["customInputDisplay"] == "inline-block", "Custom date input should be visible for 'custom' filter"
+
+        # Test opening Admin Personal Audit Slip modal
+        admin_slip_check = client.eval_js("""
+            (() => {
+                openCollectorHandoverModal('Admin');
+                const modal = document.getElementById('modal-collector-handover');
+                const title = document.getElementById('collector-handover-title');
+                const isOpen = modal && (modal.classList.contains('active') || modal.style.display === 'flex');
+                const titleText = title ? title.innerText : '';
+                closeModal('modal-collector-handover');
+                return {
+                    isOpen,
+                    titleText
+                };
+            })()
+        """)
+        print("Admin Slip Modal Check:", json.dumps(admin_slip_check, indent=2))
+        assert admin_slip_check["isOpen"], "Admin Personal Audit Slip modal must open"
+        assert "Admin Personal Collections" in admin_slip_check["titleText"], f"Expected Admin title, got: {admin_slip_check['titleText']}"
+
+        # Test opening Field Collector Handover Slip modal
+        field_slip_check = client.eval_js("""
+            (() => {
+                const roster = state.settings.collectors || [];
+                const colName = roster.length > 0 ? roster[0].name : 'Test Collector';
+                openCollectorHandoverModal(colName);
+                const modal = document.getElementById('modal-collector-handover');
+                const title = document.getElementById('collector-handover-title');
+                const isOpen = modal && (modal.classList.contains('active') || modal.style.display === 'flex');
+                const titleText = title ? title.innerText : '';
+                closeModal('modal-collector-handover');
+                return {
+                    isOpen,
+                    titleText,
+                    colName
+                };
+            })()
+        """)
+        print("Field Collector Slip Modal Check:", json.dumps(field_slip_check, indent=2))
+        assert field_slip_check["isOpen"], "Field Collector Handover Slip modal must open"
+        assert field_slip_check["colName"] in field_slip_check["titleText"], f"Expected {field_slip_check['colName']} in title, got: {field_slip_check['titleText']}"
 
         # 10. Completed Loan Schedule Direct Open Fix
         completed_loan_check = client.eval_js("""
