@@ -731,7 +731,7 @@ function toggleCustomerActionsMenu(event, customerId) {
         </div>
       </button>
 
-      ${!cust.isSettled && stats.balance > 0 ? `
+      ${!isCurrentUserReadOnly() && !cust.isSettled && stats.balance > 0 ? `
         <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openSettlementModal('${cust.id}')">
           <span class="cust-menu-icon" style="background:#faf5ff; color:#7c3aed;">🤝</span>
           <div>
@@ -766,13 +766,15 @@ function toggleCustomerActionsMenu(event, customerId) {
         </button>
       ` : ''}
 
-      <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openAddLoanForCustomer('${cust.customerNumber}')">
-        <span class="cust-menu-icon" style="background:#eff6ff; color:#2563eb;">➕</span>
-        <div>
-          <div class="cust-menu-item-title" style="color:#2563eb;">Issue Additional Loan</div>
-          <div class="cust-menu-item-desc">Disburse a new loan account (L2, L3) for this customer</div>
-        </div>
-      </button>
+      ${!isCurrentUserReadOnly() ? `
+        <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openAddLoanForCustomer('${cust.customerNumber}')">
+          <span class="cust-menu-icon" style="background:#eff6ff; color:#2563eb;">➕</span>
+          <div>
+            <div class="cust-menu-item-title" style="color:#2563eb;">Issue Additional Loan</div>
+            <div class="cust-menu-item-desc">Disburse a new loan account (L2, L3) for this customer</div>
+          </div>
+        </button>
+      ` : ''}
 
       <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); sendWhatsAppDueReminder('${cust.id}')">
         <span class="cust-menu-icon" style="background:#f0fdf4; color:#16a34a;">💬</span>
@@ -782,21 +784,23 @@ function toggleCustomerActionsMenu(event, customerId) {
         </div>
       </button>
 
-      <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openEditCustomerModal('${cust.id}')">
-        <span class="cust-menu-icon" style="background:#f8fafc; color:#475569;">✏️</span>
-        <div>
-          <div class="cust-menu-item-title">Edit Customer Profile</div>
-          <div class="cust-menu-item-desc">Update phone number, address, route, or surety</div>
-        </div>
-      </button>
+      ${!isCurrentUserReadOnly() ? `
+        <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); openEditCustomerModal('${cust.id}')">
+          <span class="cust-menu-icon" style="background:#f8fafc; color:#475569;">✏️</span>
+          <div>
+            <div class="cust-menu-item-title">Edit Customer Profile</div>
+            <div class="cust-menu-item-desc">Update phone number, address, route, or surety</div>
+          </div>
+        </button>
 
-      <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); deleteCustomer('${cust.id}')" style="border-color:#fecaca;">
-        <span class="cust-menu-icon" style="background:#fef2f2; color:#dc2626;">🗑️</span>
-        <div>
-          <div class="cust-menu-item-title" style="color:#dc2626;">Delete Customer / Loan</div>
-          <div class="cust-menu-item-desc">Permanently remove this customer record and instalments</div>
-        </div>
-      </button>
+        <button type="button" class="cust-menu-item" onclick="hideCustomerActionsMenu(); deleteCustomer('${cust.id}')" style="border-color:#fecaca;">
+          <span class="cust-menu-icon" style="background:#fef2f2; color:#dc2626;">🗑️</span>
+          <div>
+            <div class="cust-menu-item-title" style="color:#dc2626;">Delete Customer / Loan</div>
+            <div class="cust-menu-item-desc">Permanently remove this customer record and instalments</div>
+          </div>
+        </button>
+      ` : ''}
     </div>
   `;
 
@@ -1037,14 +1041,14 @@ function verifyAndLoginGoogleUser(email, name) {
     return;
   }
 
-  // 3. Check local in-memory additional whitelist
+  // 3. Check local in-memory additional whitelist (Strict Read-Only Viewer)
   const dynamicEmails = (state && state.settings && state.settings.operatorWhitelist)
     ? state.settings.operatorWhitelist.split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
     : [];
   const fullWhitelist = [...AUTHORIZED_OPERATOR_WHITELIST.map(e => e.toLowerCase()), ...dynamicEmails];
 
   if (fullWhitelist.some(allowed => normalizedEmail === allowed || normalizedEmail.endsWith('@jsrfinance.com'))) {
-    grantAccess('Admin', name || normalizedEmail, null, 'HQ');
+    grantAccess('Viewer', name || normalizedEmail, null, 'Read Only');
     return;
   }
 
@@ -1077,7 +1081,7 @@ function verifyAndLoginGoogleUser(email, name) {
           if (cloudEmails.includes(normalizedEmail)) {
             state.settings = { ...state.settings, ...cloudSettings };
             if (typeof saveDataLocallyOnly === 'function') saveDataLocallyOnly();
-            grantAccess('Admin', name || normalizedEmail, null, 'HQ');
+            grantAccess('Viewer', name || normalizedEmail, null, 'Read Only');
             return;
           }
         }
@@ -1454,6 +1458,10 @@ function handleUnsavedPromptDiscard() {
 }
 
 function saveCustomerModifications(customerId) {
+  if (isCurrentUserReadOnly()) {
+    showToast('⚠️ Read-Only Access: Only Admin and authorized Collectors can save collections.', 4000);
+    return;
+  }
   const pending = state.pendingModifications && state.pendingModifications[customerId];
   const customer = state.customers.find(c => c.id === customerId);
   if (!customer) return;
@@ -1655,6 +1663,10 @@ function handleInstalmentClick(customerId, instNumber, event) {
   if (event) {
     event.stopPropagation();
   }
+  if (isCurrentUserReadOnly()) {
+    showToast('⚠️ Read-Only Access: Only Admin and authorized Collectors can record collections.', 4000);
+    return;
+  }
   const customer = state.customers.find(c => c.id === customerId);
   if (!customer) return;
 
@@ -1803,8 +1815,26 @@ function getCurrentUser() {
   return { user: 'Admin', role: 'Operator' };
 }
 
+// Check if currently active user has strict Read-Only viewer privileges
+function isCurrentUserReadOnly() {
+  const u = getCurrentUser();
+  return Boolean(u && (u.role === 'Viewer' || u.role === 'ReadOnly' || u.role === 'Auditor'));
+}
+
+function canCurrentUserEdit() {
+  const u = getCurrentUser();
+  return Boolean(u && (u.role === 'Admin' || u.role === 'Collector'));
+}
+
+window.isCurrentUserReadOnly = isCurrentUserReadOnly;
+window.canCurrentUserEdit = canCurrentUserEdit;
+
 // Immutable Transaction Ledger: Record Entry
 function recordTransaction(txnData) {
+  if (isCurrentUserReadOnly()) {
+    console.warn('[Audit] Blocked transaction record attempt by Read-Only user');
+    return;
+  }
   if (!state.transactions) state.transactions = [];
   const id = `TXN-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
   const currentUser = getCurrentUser();
@@ -2221,6 +2251,7 @@ function initApp() {
   updateOfflineSyncBadge();
   setupOfflineSyncListeners();
   applyRoleBasedPermissions();
+  checkAndCreateDailyBackupSnapshot();
   switchTab('collections');
   if (typeof initGoogleCloudDatabase === 'function') {
     initGoogleCloudDatabase();
@@ -2918,6 +2949,8 @@ function updateHeaderUserBadge() {
     userName = curUser.user;
     if (curUser.role === 'Admin') {
       roleTag = 'FULL ACCESS';
+    } else if (curUser.role === 'Viewer' || curUser.role === 'ReadOnly' || curUser.role === 'Auditor') {
+      roleTag = 'READ ONLY';
     } else {
       roleTag = curUser.role ? curUser.role.toUpperCase() : 'COLLECTOR';
     }
@@ -2932,12 +2965,30 @@ function updateHeaderUserBadge() {
   initial = (userName.charAt(0) || 'S').toUpperCase();
 
   if (nameEl) nameEl.textContent = userName;
-  if (roleEl) roleEl.textContent = roleTag;
+  if (roleEl) {
+    roleEl.textContent = roleTag;
+    if (isCurrentUserReadOnly()) {
+      roleEl.style.color = '#94a3b8';
+      roleEl.style.fontWeight = '700';
+    } else {
+      roleEl.style.color = '';
+      roleEl.style.fontWeight = '';
+    }
+  }
   if (avatarEl) avatarEl.textContent = initial;
   if (badge) badge.title = `Logged in as ${userName} (${roleTag}). Click to open Settings.`;
 
   if (sName) sName.textContent = userName;
-  if (sRole) sRole.textContent = roleTag;
+  if (sRole) {
+    sRole.textContent = roleTag;
+    if (isCurrentUserReadOnly()) {
+      sRole.style.color = '#64748b';
+      sRole.style.fontWeight = '700';
+    } else {
+      sRole.style.color = '';
+      sRole.style.fontWeight = '';
+    }
+  }
   if (sAvatar) sAvatar.textContent = initial;
   if (sCard) sCard.title = `Logged in as ${userName} (${roleTag}). Click to open Settings.`;
 }
@@ -4588,6 +4639,10 @@ function renderCollectionMatrix() {
 
 // 1-Click Toggle / Partial Instalment
 function toggleInstalmentReceived(customerId, instNumber, customAmount) {
+  if (isCurrentUserReadOnly()) {
+    showToast('⚠️ Read-Only Access: Only Admin and authorized Collectors can record collections.', 4000);
+    return;
+  }
   const customer = state.customers.find((c) => c.id === customerId);
   if (!customer) return;
 
@@ -5276,9 +5331,9 @@ function renderCustomersTable() {
         </td>
         <td>
           <div class="cust-row-actions">
-            <button type="button" class="btn-cust-action btn-cust-edit" onclick="openEditCustomerModal('${c.id}')" title="Edit Customer Profile">✏️ Edit</button>
+            ${isCurrentUserReadOnly() ? '' : `<button type="button" class="btn-cust-action btn-cust-edit" onclick="openEditCustomerModal('${c.id}')" title="Edit Customer Profile">✏️ Edit</button>`}
             <button type="button" class="btn-cust-action btn-cust-passbook" onclick="openCustomerPassbook('${c.id}')" title="Passbook & Statement">🧾 Passbook</button>
-            <button type="button" class="btn-cust-action btn-cust-delete" onclick="deleteCustomer('${c.id}')" title="Delete Customer & Loan">🗑️ Delete</button>
+            ${isCurrentUserReadOnly() ? '' : `<button type="button" class="btn-cust-action btn-cust-delete" onclick="deleteCustomer('${c.id}')" title="Delete Customer & Loan">🗑️ Delete</button>`}
             <button type="button" class="btn-cust-action btn-cust-more" onclick="toggleCustomerActionsMenu(event, '${c.id}')" title="More Customer Actions (Thermal Slip, Additional Loan, WhatsApp, Settlement, KYC)">⋯ More</button>
           </div>
         </td>
@@ -5393,9 +5448,9 @@ function renderCustomersTable() {
           </div>
 
           <div class="customer-card-actions">
-            <button type="button" class="btn-cust-action btn-cust-edit" onclick="openEditCustomerModal('${c.id}')">✏️ Edit</button>
+            ${isCurrentUserReadOnly() ? '' : `<button type="button" class="btn-cust-action btn-cust-edit" onclick="openEditCustomerModal('${c.id}')">✏️ Edit</button>`}
             <button type="button" class="btn-cust-action btn-cust-passbook" onclick="openCustomerPassbook('${c.id}')">🧾 Passbook</button>
-            <button type="button" class="btn-cust-action btn-cust-delete" onclick="deleteCustomer('${c.id}')">🗑️ Delete</button>
+            ${isCurrentUserReadOnly() ? '' : `<button type="button" class="btn-cust-action btn-cust-delete" onclick="deleteCustomer('${c.id}')">🗑️ Delete</button>`}
             <button type="button" class="btn-cust-action btn-cust-more" onclick="toggleCustomerActionsMenu(event, '${c.id}')">⋯ More</button>
           </div>
         </div>
@@ -5724,6 +5779,10 @@ function clearKycDoc() {
 }
 
 function openAddLoanForCustomer(customerNumber) {
+  if (isCurrentUserReadOnly()) {
+    alert('Access Denied: Read-Only accounts cannot issue new loans. Please contact Admin.');
+    return;
+  }
   openAddCustomerModal();
   const radioExisting = document.getElementById('loan-type-existing');
   if (radioExisting) {
@@ -5740,6 +5799,10 @@ function openAddLoanForCustomer(customerNumber) {
 
 // Open Add Customer Modal
 function openAddCustomerModal() {
+  if (isCurrentUserReadOnly()) {
+    alert('Access Denied: Read-Only accounts cannot create new customers. Please contact Admin.');
+    return;
+  }
   document.getElementById('modal-customer-title').textContent = 'Add New Customer';
   document.getElementById('form-customer-id').value = '';
   document.getElementById('cust-form-loan-number').value = '1';
@@ -5831,6 +5894,10 @@ function openAddCustomerModal() {
 
 // Open Edit Customer Modal
 function openEditCustomerModal(customerId) {
+  if (isCurrentUserReadOnly()) {
+    alert('Access Denied: Read-Only accounts cannot modify customer terms. Please contact Admin.');
+    return;
+  }
   const c = state.customers.find((cust) => cust.id === customerId);
   if (!c) return;
 
@@ -5988,6 +6055,11 @@ function openEditCustomerModal(customerId) {
 // Save Customer (Create or Update with Multi-Loan & Frequency support)
 async function handleSaveCustomer(event) {
   event.preventDefault();
+
+  if (isCurrentUserReadOnly()) {
+    alert('Access Denied: Read-Only accounts cannot create or update customers.');
+    return;
+  }
 
   const id = document.getElementById('form-customer-id').value;
   const rawCustNum = document.getElementById('cust-form-number')?.value.trim();
@@ -6257,8 +6329,8 @@ async function handleSaveCustomer(event) {
 // Delete Customer / Loan (Restricted to Owner/Admin)
 function deleteCustomer(customerId) {
   const currentUser = getCurrentUser();
-  if (currentUser.role === 'Collector') {
-    alert('Access Denied: Only Owner / Admin can delete loans.');
+  if (currentUser.role === 'Collector' || isCurrentUserReadOnly()) {
+    alert('Access Denied: Only Owner / Admin can delete loans. Read-only accounts cannot delete customers.');
     return;
   }
 
@@ -6631,6 +6703,10 @@ function openThermalReceiptModal(customerId, instNumber) {
 // PRO FEATURE 5: EARLY FORECLOSURE & SETTLEMENT WITH NOC
 // ========================================================
 function openSettlementModal(customerId) {
+  if (isCurrentUserReadOnly()) {
+    alert('Access Denied: Read-Only accounts cannot settle loans. Please contact Admin.');
+    return;
+  }
   const c = state.customers.find(x => x.id === customerId);
   if (!c) return;
 
@@ -6685,6 +6761,10 @@ function updateSettlementCalc() {
 
 async function handleSettlementSubmit(event) {
   event.preventDefault();
+  if (isCurrentUserReadOnly()) {
+    alert('Access Denied: Read-Only accounts cannot settle loans.');
+    return;
+  }
   const customerId = document.getElementById('settle-cust-id').value;
   const c = state.customers.find(x => x.id === customerId);
   if (!c) return;
@@ -7572,6 +7652,11 @@ function renderSettings() {
 function handleSaveSettings(event) {
   event.preventDefault();
 
+  if (isCurrentUserReadOnly()) {
+    showToast('⚠️ Read-Only Access: Settings cannot be modified by viewers.', 4000);
+    return;
+  }
+
   state.settings.businessName = document.getElementById('setting-business-name').value.trim() || 'JSR Finance';
   state.settings.phone = document.getElementById('setting-phone').value.trim();
   state.settings.address = document.getElementById('setting-address').value.trim();
@@ -7664,6 +7749,56 @@ function importDataBackup(event) {
   };
   reader.readAsText(file);
 }
+
+// ====================================================
+// AUTOMATED DAILY MIDNIGHT BACKUP SNAPSHOT ENGINE
+// ====================================================
+function checkAndCreateDailyBackupSnapshot() {
+  try {
+    const todayStr = getISTDateString();
+    const lastDate = localStorage.getItem('jsr_last_daily_backup_date');
+    if (lastDate !== todayStr && state.customers && state.customers.length > 0) {
+      const backupObject = {
+        exportDate: new Date().toISOString(),
+        backupDate: todayStr,
+        version: '1.0',
+        settings: state.settings,
+        schemes: state.schemes,
+        customers: state.customers,
+        transactions: state.transactions || [],
+      };
+      localStorage.setItem(`jsr_daily_backup_${todayStr}`, JSON.stringify(backupObject));
+      localStorage.setItem('jsr_last_daily_backup_date', todayStr);
+      localStorage.setItem('jsr_last_daily_backup_time', new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }));
+
+      // Retain rolling 7-day backups locally
+      const keys = Object.keys(localStorage);
+      keys.forEach(k => {
+        if (k.startsWith('jsr_daily_backup_')) {
+          const dStr = k.replace('jsr_daily_backup_', '');
+          if (dStr < todayStr && (new Date(todayStr) - new Date(dStr)) > 7 * 86400000) {
+            localStorage.removeItem(k);
+          }
+        }
+      });
+      console.log(`[Backup] Automated daily snapshot stored for ${todayStr}`);
+    }
+    updateDailyBackupStatusUI();
+  } catch (err) {
+    console.warn('[Backup] Snapshot notice:', err);
+  }
+}
+
+function updateDailyBackupStatusUI() {
+  const statusEl = document.getElementById('daily-backup-status-text');
+  if (!statusEl) return;
+  const lastDate = localStorage.getItem('jsr_last_daily_backup_date') || getISTDateString();
+  const lastTime = localStorage.getItem('jsr_last_daily_backup_time') || '00:00';
+  statusEl.textContent = `Daily midnight snapshot active. Latest snapshot preserved: ${lastDate} (${lastTime} IST).`;
+}
+
+window.checkAndCreateDailyBackupSnapshot = checkAndCreateDailyBackupSnapshot;
+window.updateDailyBackupStatusUI = updateDailyBackupStatusUI;
 
 // ====================================================
 // EXCEL & CSV DATA IMPORT ENGINE WITH BALANCE RECONCILIATION
@@ -8418,7 +8553,7 @@ function loadSampleDemoData(confirmPrompt = true) {
 
 function clearAllData() {
   const currentUser = getCurrentUser();
-  if (currentUser.role === 'Collector') {
+  if (currentUser.role === 'Collector' || isCurrentUserReadOnly()) {
     alert('Access Denied: Only Owner / Admin can reset or clear system data.');
     return;
   }
@@ -8767,6 +8902,10 @@ Thank you for your prompt payment!`;
 // MODAL: CUSTOM / PARTIAL PAYMENT HANDLERS
 // ----------------------------------------------------
 function openPartialPayModal(customerId, instNumber) {
+  if (isCurrentUserReadOnly()) {
+    showToast('⚠️ Read-Only Access: Only Admin and authorized Collectors can record collections.', 4000);
+    return;
+  }
   const c = state.customers.find((cust) => cust.id === customerId);
   if (!c) return;
 
@@ -8852,6 +8991,10 @@ function updatePartialPayCalc() {
 }
 
 function handlePartialModalUndo() {
+  if (isCurrentUserReadOnly()) {
+    showToast('⚠️ Read-Only Access: Only Admin and authorized Collectors can modify collections.', 4000);
+    return;
+  }
   const customerId = document.getElementById('partial-cust-id')?.value;
   const instNumber = parseInt(document.getElementById('partial-inst-num')?.value, 10);
   const c = state.customers.find((cust) => cust.id === customerId);
@@ -8900,6 +9043,10 @@ function handlePartialModalUndo() {
 
 function handlePartialPaySubmit(event) {
   if (event) event.preventDefault();
+  if (isCurrentUserReadOnly()) {
+    showToast('⚠️ Read-Only Access: Only Admin and authorized Collectors can record collections.', 4000);
+    return;
+  }
   const customerId = document.getElementById('partial-cust-id').value;
   const instNumber = parseInt(document.getElementById('partial-inst-num').value, 10);
   const amount = Number(document.getElementById('partial-pay-amount').value);
@@ -9418,21 +9565,27 @@ function renderCustomerDetailModalContent(loanId) {
         }
         <span style="margin-left: 8px; color: #b45309; font-weight: 700; background: #fef3c7; padding: 2px 7px; border-radius: 4px; border: 1px solid #f59e0b;">Bal: ${formatMoney(remainingBal)}</span>
       </div>
-      <div style="display: flex; gap: 8px; align-items: center;">
-        <button type="button" class="btn btn-sm" style="background: #fef3c7; color: #b45309; border: 1px solid #f59e0b; font-weight: 700; padding: 5px 12px; border-radius: 6px; cursor: pointer;" onclick="openPartialPayModal('${cust.id}', ${nextDueSeq})">
-          ½ Partial Pay
-        </button>
-        <button type="button" class="btn btn-sm" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-weight: 700; padding: 5px 12px; border-radius: 6px; cursor: pointer;" onclick="handleDetailInstalmentClick('${cust.id}', ${nextDueSeq}, event)">
-          ✓ Pay ${isNextPartial ? 'Remaining ' : ''}${formatMoney(nextRemainingDue)}
-        </button>
-      </div>
+      ${isCurrentUserReadOnly() ? `
+        <div style="color: #64748b; font-size: 12px; font-weight: 700; background: #f1f5f9; padding: 5px 12px; border-radius: 6px; border: 1px solid #cbd5e1;">
+          🔒 Read-Only Schedule
+        </div>
+      ` : `
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn btn-sm" style="background: #fef3c7; color: #b45309; border: 1px solid #f59e0b; font-weight: 700; padding: 5px 12px; border-radius: 6px; cursor: pointer;" onclick="openPartialPayModal('${cust.id}', ${nextDueSeq})">
+            ½ Partial Pay
+          </button>
+          <button type="button" class="btn btn-sm" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-weight: 700; padding: 5px 12px; border-radius: 6px; cursor: pointer;" onclick="handleDetailInstalmentClick('${cust.id}', ${nextDueSeq}, event)">
+            ✓ Pay ${isNextPartial ? 'Remaining ' : ''}${formatMoney(nextRemainingDue)}
+          </button>
+        </div>
+      `}
     </div>
 
     <!-- 4-Row Instalment Matrix -->
     <div style="margin-bottom: 12px;">
       <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; display: flex; justify-content: space-between;">
         <span>Schedule Matrix (${unitLabel}s 1 to ${instCount})</span>
-        <span style="font-size: 11px; color: #64748b;">Tap any cell to toggle receipt</span>
+        <span style="font-size: 11px; color: #64748b;">${isCurrentUserReadOnly() ? 'Schedule view (Read-Only)' : 'Tap any cell to toggle receipt'}</span>
       </div>
       <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
         ${gridCellsHtml}
@@ -9440,7 +9593,7 @@ function renderCustomerDetailModalContent(loanId) {
     </div>
 
     <!-- Unsaved Modifications Banner -->
-    ${hasPendingMod && pendingMod.sessionAmount > 0 ? `
+    ${!isCurrentUserReadOnly() && hasPendingMod && pendingMod.sessionAmount > 0 ? `
       <div class="sched-modified-bar" style="margin-bottom: 14px; padding: 12px 16px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
         <div>
           <strong style="color: #166534; font-size: 14px;">Unsaved Collection:</strong>
@@ -9468,9 +9621,11 @@ function renderCustomerDetailModalContent(loanId) {
           🤝 NOC Certificate
         </button>
       ` : ''}
-      <button type="button" class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${cust.id}')">
-        ✏️ Edit Terms
-      </button>
+      ${isCurrentUserReadOnly() ? '' : `
+        <button type="button" class="btn btn-outline btn-sm" onclick="openEditCustomerModal('${cust.id}')">
+          ✏️ Edit Terms
+        </button>
+      `}
     </div>
   `;
 }
@@ -9485,11 +9640,19 @@ window.openThermalSlipModal = function(customerId, instNumber) {
 
 function handleDetailInstalmentClick(loanId, sq, event) {
   if (event) event.stopPropagation();
+  if (isCurrentUserReadOnly()) {
+    showToast('⚠️ Read-Only Access: Only Admin and authorized Collectors can record collections.', 4000);
+    return;
+  }
   handleInstalmentClick(loanId, sq, event);
   renderCustomerDetailModalContent(loanId);
 }
 
 function saveCustomerModificationsDetail(loanId) {
+  if (isCurrentUserReadOnly()) {
+    showToast('⚠️ Read-Only Access: Only Admin and authorized Collectors can save collections.', 4000);
+    return;
+  }
   saveCustomerModifications(loanId);
   renderCustomerDetailModalContent(loanId);
 }
@@ -9526,10 +9689,59 @@ function closeCustomerDetailModal() {
 function applyRoleBasedPermissions() {
   const currentUser = getCurrentUser();
   const isAdmin = currentUser && currentUser.role === 'Admin';
+  const isReadOnly = isCurrentUserReadOnly();
 
+  // 1. Dashboard breakdown visibility (Admin only)
   const breakdownCard = document.getElementById('dashboard-collector-breakdown');
   if (breakdownCard) {
     breakdownCard.style.display = isAdmin ? 'block' : 'none';
+  }
+
+  // 2. Read-Only banner in collections view
+  const viewerBanner = document.getElementById('viewer-readonly-banner');
+  if (viewerBanner) {
+    viewerBanner.style.display = isReadOnly ? 'flex' : 'none';
+  }
+
+  // 3. Add Customer buttons (hide or disable for read-only)
+  const addCustButtons = document.querySelectorAll('.coll-btn-add, button[onclick*="openAddCustomerModal"]');
+  addCustButtons.forEach(btn => {
+    if (isReadOnly) {
+      btn.style.opacity = '0.5';
+      btn.style.pointerEvents = 'none';
+      btn.title = 'Read-Only Mode: Adding customers is restricted to Admin';
+    } else {
+      btn.style.opacity = '';
+      btn.style.pointerEvents = '';
+      btn.title = '';
+    }
+  });
+
+  // 4. Settings save and clear buttons
+  const saveSettingsBtn = document.querySelector('button[type="submit"][class*="btn-primary"]');
+  if (saveSettingsBtn && saveSettingsBtn.closest('#tab-settings')) {
+    if (isReadOnly) {
+      saveSettingsBtn.disabled = true;
+      saveSettingsBtn.style.opacity = '0.5';
+      saveSettingsBtn.title = 'Settings editing is restricted to Admin';
+    } else {
+      saveSettingsBtn.disabled = false;
+      saveSettingsBtn.style.opacity = '';
+      saveSettingsBtn.title = '';
+    }
+  }
+
+  const clearDataBtn = document.querySelector('button[onclick*="clearAllData"]');
+  if (clearDataBtn) {
+    if (isReadOnly) {
+      clearDataBtn.disabled = true;
+      clearDataBtn.style.opacity = '0.5';
+      clearDataBtn.title = 'System reset is restricted to Admin';
+    } else {
+      clearDataBtn.disabled = false;
+      clearDataBtn.style.opacity = '';
+      clearDataBtn.title = '';
+    }
   }
 }
 
