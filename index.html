@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=71">
+  <link rel="stylesheet" href="styles.css?v=72">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -434,6 +434,14 @@
           <select id="collection-loan-filter" class="coll-filter-select" onchange="handleCollectionLoanFilterChange(this.value)" style="min-width: 130px;">
             <option value="all">All Loans</option>
           </select>
+        </div>
+
+        <!-- Read-Only Banner for Whitelist Viewers -->
+        <div id="viewer-readonly-banner" style="display: none; background: #f8fafc; border: 1.5px solid #cbd5e1; color: #334155; padding: 10px 16px; border-radius: 10px; margin-bottom: 14px; font-size: 13px; align-items: center; gap: 10px;">
+          <span style="font-size: 18px;">👁️</span>
+          <div>
+            <strong>Read-Only Mode:</strong> Logged in as authorized viewer. Collection recording, customer edits, and system settings modifications are disabled.
+          </div>
         </div>
 
         <!-- Combined Action Buttons Toolbar -->
@@ -1215,6 +1223,7 @@
                     <label class="form-label">Additional Authorized Google Emails (Optional Whitelist):</label>
                     <input type="text" id="setting-operator-whitelist" class="form-control" placeholder="e.g. partner@jsrfinance.com, auditor@jsrfinance.com" style="width: 100%;">
                     <div class="form-help">Comma-separated additional Google accounts authorized to access the system.</div>
+                    <small style="color: #64748b; font-size: 11.5px; display: block; margin-top: 4px;">ℹ️ Whitelisted Google accounts are granted strict <strong>Read-Only</strong> access (can view passbooks, statements, and reports; cannot record instalments or edit customer profiles).</small>
                   </div>
                 </div>
 
@@ -1257,6 +1266,54 @@
               <button type="button" class="btn btn-outline" onclick="handleLogout()" style="width: 100%; justify-content: flex-start; color: #dc2626; border-color: #fecaca; background: #fff5f5;" title="Sign out of current operator session">
                 🚪 Logout / Switch Operator
               </button>
+            </div>
+          </div>
+
+          <!-- Automated Midnight Scheduled Backup Card -->
+          <div class="card" style="margin-top: 24px; border: 1.5px solid #cbd5e1; background: #ffffff;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px;">
+              <div>
+                <h3 style="font-size: 16px; color: #1e293b; margin: 0; display: flex; align-items: center; gap: 8px;">
+                  <span>⏰</span> Automated Midnight Scheduled Backup
+                </h3>
+                <p style="font-size: 12.5px; color: #64748b; margin: 4px 0 0 0;">
+                  Nightly automated snapshot of all customers, instalment ledgers, and transactions.
+                </p>
+              </div>
+              <span class="badge" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 11px; padding: 3px 8px; font-weight: 700; border-radius: 6px;">
+                ● Daily 00:00 IST
+              </span>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px;">
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+                <div style="font-weight: 700; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                  <span>☁️</span> Google Cloud Firestore Native Scheduled Backups (Recommended)
+                </div>
+                <div style="color: #475569; font-size: 12px; line-height: 1.5; margin-bottom: 8px;">
+                  Takes full database backups automatically every day on Google Cloud infrastructure with 30 days retention. Run this command once in your open <strong>Google Cloud Shell</strong>:
+                </div>
+                <div style="position: relative; background: #0f172a; color: #38bdf8; padding: 10px 12px; border-radius: 6px; font-family: monospace; font-size: 12px; word-break: break-all;">
+                  <code>gcloud firestore backups schedules create --database='(default)' --recurrence=daily --retention=30d</code>
+                  <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText('gcloud firestore backups schedules create --database=\'(default)\' --recurrence=daily --retention=30d'); showToast('✓ Command copied to clipboard!');" style="position: absolute; right: 6px; top: 6px; font-size: 11px; padding: 2px 8px; background: #1e293b; color: #ffffff; border: 1px solid #475569; border-radius: 4px; cursor: pointer;">
+                    📋 Copy
+                  </button>
+                </div>
+              </div>
+
+              <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                  <div>
+                    <div style="font-weight: 700; color: #166534;">📦 In-App Daily Snapshot Status</div>
+                    <div id="daily-backup-status-text" style="color: #15803d; font-size: 12px; margin-top: 2px;">
+                      Automatic daily snapshot is active. Last daily snapshot stored.
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-sm" onclick="exportDataBackup()" style="background: #16a34a; color: #ffffff; border: none; font-weight: 700; padding: 6px 14px; border-radius: 6px; cursor: pointer;">
+                    📥 Download Today's Backup
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2408,8 +2465,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=71"></script>
-  <script src="firebase-sync.js?v=71"></script>
-  <script src="app.js?v=71"></script>
+  <script src="firebase-config.js?v=72"></script>
+  <script src="firebase-sync.js?v=72"></script>
+  <script src="app.js?v=72"></script>
 </body>
 </html>
