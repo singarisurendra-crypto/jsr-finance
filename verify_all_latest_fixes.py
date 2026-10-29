@@ -328,6 +328,17 @@ def main():
                 const mobileSettings = mobileActions ? mobileActions.querySelector('button[data-tab="settings"]') : null;
                 const mobileLogout = mobileActions ? mobileActions.querySelector('.mobile-logout-btn') : null;
                 const mobileActionsStyle = mobileActions ? window.getComputedStyle(mobileActions) : null;
+                const mobileLogoutText = mobileLogout ? mobileLogout.innerText.trim() : '';
+
+                let mobileSettingsRadius = '';
+                let mobileLogoutRadius = '';
+                if (mobileActions && mobileSettings && mobileLogout) {
+                    const prevDisplay = mobileActions.style.display;
+                    mobileActions.style.display = 'flex';
+                    mobileSettingsRadius = window.getComputedStyle(mobileSettings).borderRadius;
+                    mobileLogoutRadius = window.getComputedStyle(mobileLogout).borderRadius;
+                    mobileActions.style.display = prevDisplay;
+                }
 
                 return {
                     headerBadgeExists: !!badge,
@@ -343,6 +354,9 @@ def main():
                     mobileActionsExists: !!mobileActions,
                     mobileSettingsExists: !!mobileSettings,
                     mobileLogoutExists: !!mobileLogout,
+                    mobileLogoutText,
+                    mobileSettingsRadius,
+                    mobileLogoutRadius,
                     mobileActionsDisplayDesktop: mobileActionsStyle ? mobileActionsStyle.display : ''
                 };
             })()
@@ -360,6 +374,9 @@ def main():
         assert header_sidebar_check["mobileActionsExists"], "Mobile header actions container must exist"
         assert header_sidebar_check["mobileSettingsExists"], "Mobile top Settings button must exist"
         assert header_sidebar_check["mobileLogoutExists"], "Mobile top Logout button must exist"
+        assert header_sidebar_check["mobileLogoutText"] == "", f"Logout button must have NO text (icon-only), got: {header_sidebar_check['mobileLogoutText']}"
+        assert header_sidebar_check["mobileSettingsRadius"] == "8px", f"Settings button must have border-radius 8px, got: {header_sidebar_check['mobileSettingsRadius']}"
+        assert header_sidebar_check["mobileLogoutRadius"] == "8px", f"Logout button must have border-radius 8px, got: {header_sidebar_check['mobileLogoutRadius']}"
         assert header_sidebar_check["mobileActionsDisplayDesktop"] == "none", "Mobile header actions must be hidden on desktop view"
 
         # 3. Test Collections View & Compact Badges & Removed Print Option
@@ -683,9 +700,19 @@ def main():
                 // Switch back to 'today'
                 handleCollectorDateFilterChange('today');
 
+                // Calculate sum of all collector cards
+                const allCards = Array.from(document.querySelectorAll('.collector-card'));
+                let totalCardsAmt = 0;
+                allCards.forEach(card => {
+                    const amtStr = card.querySelector('.collector-card-amount')?.innerText || '₹ 0';
+                    const num = Number(amtStr.replace(/[^0-9]/g, '')) || 0;
+                    totalCardsAmt += num;
+                });
+
                 return {
                     kpiToday,
                     adminAmt,
+                    totalCardsAmt,
                     filterExists: !!filterSelect,
                     filterOptions,
                     subAfterAll,
@@ -694,7 +721,9 @@ def main():
             })()
         """)
         print("Dashboard Check:", json.dumps(dashboard_check, indent=2))
-        assert dashboard_check["kpiToday"] == dashboard_check["adminAmt"], f"Admin personal collection ({dashboard_check['adminAmt']}) must match today's collection ({dashboard_check['kpiToday']})"
+        kpi_num = int(dashboard_check["kpiToday"].replace("₹", "").replace(",", "").strip() or 0)
+        assert dashboard_check["totalCardsAmt"] == kpi_num, f"Total of collector breakdown cards ({dashboard_check['totalCardsAmt']}) must match today's portfolio collection ({kpi_num})"
+        assert dashboard_check["adminAmt"] != "₹ 0" or kpi_num == 0, "Admin personal collections must not be zero when collections exist"
         assert dashboard_check["filterExists"], "collector-date-preset-filter must exist in dashboard"
         assert "today" in dashboard_check["filterOptions"], "today option must exist"
         assert "yesterday" in dashboard_check["filterOptions"], "yesterday option must exist"
@@ -743,6 +772,72 @@ def main():
         print("Field Collector Slip Modal Check:", json.dumps(field_slip_check, indent=2))
         assert field_slip_check["isOpen"], "Field Collector Handover Slip modal must open"
         assert field_slip_check["colName"] in field_slip_check["titleText"], f"Expected {field_slip_check['colName']} in title, got: {field_slip_check['titleText']}"
+
+        # 9.5 Singari Suri ₹ 2,600 Field Collector Attribution Test
+        suri_attribution_check = client.eval_js("""
+            (() => {
+                // Register 'Singari Suri' on the roster
+                if (!Array.isArray(state.settings.collectors)) state.settings.collectors = [];
+                let suriCol = state.settings.collectors.find(c => c.name.toLowerCase().includes('suri'));
+                if (!suriCol) {
+                    suriCol = { id: 'col_suri', name: 'Singari Suri', email: 'suri@jsrfinance.com', phone: '+91 9999999999', route: 'Market Ward A', active: true };
+                    state.settings.collectors.push(suriCol);
+                }
+
+                // Add collection transaction of ₹ 2,600 under Singari Suri
+                const todayStr = getISTDateString();
+                const nowTs = getNowTimestamp();
+                const testCust = state.customers[0];
+                
+                state.transactions.unshift({
+                    id: 'TXN-TEST-SURI-2600',
+                    receiptNumber: 'REC-TEST-SURI-2600',
+                    customerId: testCust ? testCust.id : 'cus_1',
+                    customerNumber: testCust ? testCust.customerNumber : '1',
+                    loanNumber: 1,
+                    customerName: testCust ? testCust.fullName : 'Test Borrower',
+                    instalmentNumber: 1,
+                    amount: 2600,
+                    type: 'payment',
+                    collector: 'Singari Suri',
+                    collectorId: 'col_suri',
+                    date: todayStr,
+                    timestamp: nowTs,
+                    createdAt: new Date().toISOString()
+                });
+
+                // Re-render dashboard breakdown
+                renderCollectorBreakdownWidget();
+
+                const suriCard = Array.from(document.querySelectorAll('.collector-card.field-collector')).find(card => 
+                    card.innerText.includes('Singari Suri')
+                );
+                const suriAmount = suriCard ? suriCard.querySelector('.collector-card-amount')?.innerText : '';
+
+                const adminCard = document.querySelector('.collector-card.admin-collector');
+                const adminAmount = adminCard ? adminCard.querySelector('.collector-card-amount')?.innerText : '';
+
+                // Also test opening handover modal for Singari Suri
+                openCollectorHandoverModal('Singari Suri');
+                const modal = document.getElementById('modal-collector-handover');
+                const slipTitle = document.getElementById('collector-handover-title')?.innerText || '';
+                const slipContent = document.getElementById('collector-handover-slip-content')?.innerText || '';
+                closeModal('modal-collector-handover');
+
+                return {
+                    suriCardFound: !!suriCard,
+                    suriAmount,
+                    adminAmount,
+                    slipTitle,
+                    has2600InSlip: slipContent.includes('2,600')
+                };
+            })()
+        """)
+        print("Singari Suri Attribution Check:", json.dumps(suri_attribution_check, indent=2))
+        assert suri_attribution_check["suriCardFound"], "Singari Suri collector card must be rendered in dashboard"
+        assert "2,600" in suri_attribution_check["suriAmount"], f"Singari Suri card must show ₹ 2,600, got: {suri_attribution_check['suriAmount']}"
+        assert "Singari Suri" in suri_attribution_check["slipTitle"], f"Handover slip title must mention Singari Suri, got: {suri_attribution_check['slipTitle']}"
+        assert suri_attribution_check["has2600InSlip"], "Handover slip content must include ₹ 2,600"
 
         # 10. Completed Loan Schedule Direct Open Fix
         completed_loan_check = client.eval_js("""
