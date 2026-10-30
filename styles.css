@@ -257,6 +257,11 @@ body {
   border: 1px solid #cbd5e1 !important;
   padding: 5px 9px !important;
 }
+@media (min-width: 769px) {
+  .stat-pill-settings {
+    display: none !important;
+  }
+}
 .stat-pill-settings:hover {
   background: #eff6ff !important;
   border-color: #93c5fd !important;
@@ -3708,19 +3713,26 @@ body.modal-open .loans-tooltip-popover {
   margin-left: 8px;
 }
 .collection-banner-undo-btn {
-  background: #fee2e2 !important;
-  color: #991b1b !important;
-  border: 1px solid #f87171 !important;
-  padding: 6px 12px !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1.5px solid #cbd5e1 !important;
+  padding: 5px 12px !important;
   border-radius: 6px !important;
   font-weight: 800 !important;
-  font-size: 12.5px !important;
+  font-size: 12px !important;
   cursor: pointer !important;
   transition: all 0.15s ease !important;
   white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12) !important;
 }
 .collection-banner-undo-btn:hover {
-  background: #fecaca !important;
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+  color: #000000 !important;
   transform: translateY(-1px);
 }
 .collection-banner-wa-btn {
@@ -4591,22 +4603,19 @@ select:focus-visible {
 .cust-name {
   font-weight: 750;
   font-size: 14.5px;
-  color: #1d4ed8;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: #93c5fd;
+  color: #0f172a !important;
+  text-decoration: none !important;
   cursor: pointer;
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  max-width: none;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  max-width: none !important;
   flex-shrink: 1;
-  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+  transition: color 0.15s ease;
 }
 .cust-name:hover {
-  color: #1e40af;
-  text-decoration-color: #1d4ed8;
-  text-decoration-thickness: 1.5px;
+  color: #1e293b !important;
+  text-decoration: underline !important;
 }
 .badge-partial-pill {
   display: inline-flex;
@@ -4756,8 +4765,10 @@ select:focus-visible {
   }
   .cust-name {
     font-size: 13.5px;
-    max-width: none;
-    white-space: normal;
+    max-width: none !important;
+    white-space: normal !important;
+    color: #0f172a !important;
+    text-decoration: none !important;
   }
   .cust-name-row {
     flex-wrap: wrap;
@@ -4825,10 +4836,13 @@ select:focus-visible {
 }
 .sched-box-btn.is-partial,
 .sched-box-btn.sched-box-partial {
-  background: #F59E0B !important;
+  background: #f59e0b !important;
   border-color: #d97706 !important;
   color: #ffffff !important;
   padding: 0 1px;
+}
+.sched-box-btn.is-partial:hover {
+  background: #d97706 !important;
 }
 .sched-partial-amt {
   font-size: 10px;
@@ -4859,6 +4873,39 @@ select:focus-visible {
   border-color: #2563eb;
 }
 
+/* Overdue Instalment Box in Schedule Grid */
+.sched-box-btn.is-overdue,
+.sched-box-btn.sched-box-overdue {
+  background: #fef2f2 !important;
+  border: 1.5px solid #ef4444 !important;
+  color: #dc2626 !important;
+  font-weight: 900 !important;
+  font-size: 13px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.sched-box-btn.is-overdue:hover {
+  background: #fee2e2 !important;
+  border-color: #b91c1c !important;
+}
+.sched-box-btn.is-overdue.is-next-due {
+  border: 2px solid #ef4444 !important;
+  box-shadow: 0 0 0 2.5px rgba(239, 68, 68, 0.35) !important;
+  animation: pulseOverdueDue 2s infinite ease-in-out;
+}
+@keyframes pulseOverdueDue {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.35); }
+  50% { box-shadow: 0 0 0 4.5px rgba(239, 68, 68, 0.55); }
+}
+
+.sched-legend-box.overdue {
+  background: #fef2f2;
+  border: 1.5px solid #ef4444;
+  color: #dc2626;
+  font-weight: 900;
+}
+
 /* Feature 2: High-contrast Blue Outline on Next Due Week */
 .sched-box-btn.is-next-due {
   border: 2px solid #2563eb !important;
@@ -4871,10 +4918,10 @@ select:focus-visible {
   border: 2px solid #2563eb !important;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25) !important;
 }
-/* When next-due is partial, retain amber partial color; ONLY show blue outer line! */
+/* When next-due is partial, retain system amber partial color; ONLY show blue outer line! */
 .sched-box-btn.is-partial.is-next-due,
 .sched-box-btn.sched-box-partial.is-next-due {
-  background: #F59E0B !important;
+  background: #f59e0b !important;
   color: #ffffff !important;
   border: 2px solid #2563eb !important;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35) !important;
@@ -4898,39 +4945,44 @@ select:focus-visible {
   100% { transform: scale(1); box-shadow: none; }
 }
 
-/* Feature 4: Long-Press Inline Partial Slider Popup */
+/* Feature 4: Long-Press Inline Partial Slider Popup (Clean Fintech Light Theme, Viewport Fitted) */
 .inline-partial-slider-popup {
-  position: absolute;
-  top: -68px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #0f172a;
-  color: #ffffff;
+  position: fixed;
+  background: #ffffff;
+  color: #0f172a;
   padding: 8px 12px;
   border-radius: 10px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  border: 1.5px solid #cbd5e1;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
   gap: 6px;
-  z-index: 1000;
+  z-index: 99999;
   white-space: nowrap;
   font-size: 11.5px;
   font-family: inherit;
   animation: popInSlider 0.15s ease-out;
 }
 @keyframes popInSlider {
-  0% { opacity: 0; transform: translate(-50%, 6px) scale(0.92); }
-  100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  0% { opacity: 0; transform: translateY(4px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 .inline-partial-slider-popup::after {
   content: '';
   position: absolute;
-  bottom: -6px;
-  left: 50%;
+  left: var(--arrow-x, 50%);
   transform: translateX(-50%);
-  border-width: 6px 6px 0;
   border-style: solid;
-  border-color: #0f172a transparent transparent;
+}
+.inline-partial-slider-popup:not(.is-flipped)::after {
+  bottom: -6px;
+  border-width: 6px 6px 0;
+  border-color: #cbd5e1 transparent transparent;
+}
+.inline-partial-slider-popup.is-flipped::after {
+  top: -6px;
+  border-width: 0 6px 6px;
+  border-color: transparent transparent #cbd5e1;
 }
 .inline-partial-slider-popup .slider-row {
   display: flex;
@@ -4938,7 +4990,7 @@ select:focus-visible {
   gap: 8px;
 }
 .inline-partial-slider-popup input[type=range] {
-  width: 90px;
+  width: 95px;
   accent-color: #f59e0b;
   cursor: pointer;
 }
@@ -4960,7 +5012,7 @@ select:focus-visible {
 }
 .inline-partial-slider-popup .btn-slider-cancel {
   background: transparent;
-  color: #94a3b8;
+  color: #64748b;
   border: none;
   font-size: 11px;
   cursor: pointer;
@@ -5009,18 +5061,27 @@ select:focus-visible {
   background: #20ba5a;
 }
 .toast-undo-btn {
-  background: #334155;
-  color: #f1f5f9;
-  border: none;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 4px 8px;
-  border-radius: 6px;
-  cursor: pointer;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 6px !important;
+  font-weight: 800 !important;
+  font-size: 11.5px !important;
+  padding: 5px 11px !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12) !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
 }
 .toast-undo-btn:hover {
-  background: #475569;
-  color: #ffffff;
+  background: #f8fafc !important;
+  border-color: #94a3b8 !important;
+  color: #000000 !important;
+  transform: translateY(-1px);
 }
 
 #app-toast {
