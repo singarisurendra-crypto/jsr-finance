@@ -22,6 +22,8 @@ const DEFAULT_SETTINGS = {
   defaultInstalmentAmount: 250,
   autoCustNumbering: true,
   nextCustNumber: 1,
+  soundStyle: 'chime',
+  soundMuted: false,
   adminEmail: 'singarisurendra@gmail.com',
   collectors: [
     { id: 'col_1', name: 'Raju Sharma', email: 'raju.collector@jsrfinance.com', phone: '+91 9876543211', route: 'Market Ward A', active: true },
@@ -323,26 +325,93 @@ function playCashChime() {
     if (ctx.state === 'suspended') {
       ctx.resume();
     }
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'sine';
+    const style = (state.settings && state.settings.soundStyle) || 'chime';
     const now = ctx.currentTime;
-    // Ascending cash ding tone: 880Hz (A5) -> 1320Hz (E6)
-    osc.frequency.setValueAtTime(880, now);
-    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
 
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+    if (style === 'chime') {
+      // Modern UPI / Soundbox Two-tone Chime: C5 (523Hz) -> G5 (784Hz)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(523.25, now);
+      gain1.gain.setValueAtTime(0.28, now);
+      gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.2);
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(783.99, now + 0.12);
+      gain2.gain.setValueAtTime(0.35, now + 0.12);
+      gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.42);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.12);
+      osc2.stop(now + 0.42);
 
-    osc.start(now);
-    osc.stop(now + 0.35);
+    } else if (style === 'coin') {
+      // Metallic coin cascade
+      [0, 0.08, 0.16].forEach((delay, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        const freqs = [1200, 1500, 1850];
+        osc.frequency.setValueAtTime(freqs[idx], now + delay);
+        gain.gain.setValueAtTime(0.2, now + delay);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.15);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + delay);
+        osc.stop(now + delay + 0.15);
+      });
+
+    } else if (style === 'marimba') {
+      // Warm marimba chord (440 -> 660 -> 880)
+      [440, 659.25, 880].forEach(f => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, now);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.35);
+      });
+
+    } else {
+      // Classic Cash Register Ding: 880Hz -> 1320Hz
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.35);
+    }
   } catch (e) {
     // Graceful fallback if audio is restricted before first gesture
   }
+}
+
+function handleSoundStyleChange(val) {
+  if (!state.settings) state.settings = {};
+  state.settings.soundStyle = val;
+  saveData();
+  if (state.settings.soundMuted) {
+    state.settings.soundMuted = false;
+    updateSoundToggleButton();
+  }
+  playCashChime();
+  showToast(`Sound style updated to: ${val} 🎵`);
 }
 
 function toggleSoundEffect() {
@@ -368,7 +437,11 @@ function updateSoundToggleButton() {
     topBtn.style.color = isMuted ? '#94a3b8' : '#15803d';
   }
 
-  // Settings screen button & status badge
+  // Settings sound style dropdown
+  const styleSelect = document.getElementById('setting-sound-style');
+  if (styleSelect && state.settings && state.settings.soundStyle) {
+    styleSelect.value = state.settings.soundStyle;
+  }
   const settingBtn = document.getElementById('setting-sound-toggle-btn');
   const settingBadge = document.getElementById('setting-sound-status-badge');
   if (settingBtn) {
@@ -1659,9 +1732,103 @@ function toggleQuickReceive() {
   }
 }
 
+// Feature 4: Long-Press Inline Partial Payment Slider
+let instalmentLongPressTimer = null;
+let isLongPressTriggered = false;
+
+function startInstalmentLongPress(event, customerId, sq, scheduledAmount) {
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  isLongPressTriggered = false;
+  clearTimeout(instalmentLongPressTimer);
+  const targetEl = event.currentTarget;
+  instalmentLongPressTimer = setTimeout(() => {
+    isLongPressTriggered = true;
+    if (navigator.vibrate) navigator.vibrate(40);
+    openInlinePartialSlider(customerId, sq, scheduledAmount, targetEl);
+  }, 480);
+}
+
+function endInstalmentLongPress() {
+  clearTimeout(instalmentLongPressTimer);
+}
+
+function handleInstalmentContextMenu(event, customerId, sq, scheduledAmount) {
+  event.preventDefault();
+  event.stopPropagation();
+  openInlinePartialSlider(customerId, sq, scheduledAmount, event.currentTarget);
+}
+
+function openInlinePartialSlider(customerId, instNumber, scheduledAmount, anchorEl) {
+  closeInlinePartialSlider();
+  const customer = state.customers.find(c => c.id === customerId);
+  if (!customer) return;
+
+  const totalInst = customer.totalInstalments || 52;
+  const unitLabel = (customer.frequency === 'Daily' || totalInst === 100) ? 'Day' : 'Week';
+  const inst = (customer.instalments && customer.instalments[instNumber - 1]) || {};
+  const currentPaid = Number(inst.paidAmount) || 0;
+  const schedAmt = Number(scheduledAmount) || Number(customer.instalmentAmount) || 200;
+  const initialVal = currentPaid > 0 ? currentPaid : Math.round(schedAmt / 2);
+
+  const popup = document.createElement('div');
+  popup.id = 'active-inline-partial-slider';
+  popup.className = 'inline-partial-slider-popup';
+  popup.onclick = (e) => e.stopPropagation();
+
+  popup.innerHTML = `
+    <div style="font-weight: 800; font-size: 11.5px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+      <span>${unitLabel} #${instNumber} Partial:</span>
+      <span id="inline-slider-display" style="color: #fbbf24; font-size: 13px; font-weight: 800;">₹${initialVal}</span>
+    </div>
+    <div class="slider-row" style="margin: 4px 0;">
+      <input type="range" id="inline-partial-range" min="10" max="${schedAmt}" step="10" value="${initialVal}" 
+             oninput="document.getElementById('inline-slider-display').textContent = '₹' + this.value">
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 4px;">
+      <button type="button" style="background:#334155; color:#fff; border:none; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.25)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.25)};">25%</button>
+      <button type="button" style="background:#334155; color:#fff; border:none; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.5)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.5)};">50%</button>
+      <button type="button" style="background:#334155; color:#fff; border:none; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.75)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.75)};">75%</button>
+    </div>
+    <div class="slider-actions">
+      <button type="button" class="btn-slider-cancel" onclick="closeInlinePartialSlider()">Cancel</button>
+      <button type="button" class="btn-slider-save" onclick="applyInlinePartialSlider('${customerId}', ${instNumber})">✓ Save</button>
+    </div>
+  `;
+
+  if (anchorEl && anchorEl.parentElement) {
+    anchorEl.parentElement.style.position = 'relative';
+    anchorEl.parentElement.appendChild(popup);
+  }
+}
+
+function closeInlinePartialSlider() {
+  const p = document.getElementById('active-inline-partial-slider');
+  if (p) p.remove();
+}
+
+function applyInlinePartialSlider(customerId, instNumber) {
+  const range = document.getElementById('inline-partial-range');
+  const amt = range ? Number(range.value) : 0;
+  closeInlinePartialSlider();
+  if (amt > 0) {
+    toggleInstalmentReceived(customerId, instNumber, amt);
+  }
+}
+
+// Global click dismiss for slider popup
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#active-inline-partial-slider') && !e.target.closest('.sched-box-btn')) {
+    closeInlinePartialSlider();
+  }
+});
+
 function handleInstalmentClick(customerId, instNumber, event) {
   if (event) {
     event.stopPropagation();
+  }
+  if (isLongPressTriggered) {
+    isLongPressTriggered = false;
+    return;
   }
   if (isCurrentUserReadOnly()) {
     showToast('⚠️ Read-Only Access: Only Admin and authorized Collectors can record collections.', 4000);
@@ -3313,7 +3480,7 @@ function renderRecentTransactions() {
   }
 
   if (filtered.length === 0) {
-    recentList.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:#94a3b8;">No collections or audit records match the selected filters.</td></tr>`;
+    recentList.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:24px; color:#94a3b8;">No collections or audit records match the selected filters.</td></tr>`;
   } else {
     recentList.innerHTML = filtered.slice(0, 50).map((item) => {
       const isUndo = item.type === 'undo';
@@ -3352,6 +3519,16 @@ function renderRecentTransactions() {
             <div style="font-size:11px; color:#2563eb; font-weight:600; margin-top:2px;">👤 ${item.collector || 'Admin'}</div>
           </td>
           <td>${statusHtml}</td>
+          <td style="text-align: center; white-space: nowrap;">
+            ${!isUndo ? `
+              <button type="button" class="btn btn-sm btn-outline" style="padding: 3px 8px; font-size: 11px; font-weight: 700; color: #1e40af; border-color: #bfdbfe; margin-right: 4px; background: #ffffff;" onclick="printSingleReceiptSlip('${item.customerId || ''}', '${item.customerNumber || ''}', ${item.loanNumber || 1}, ${item.instNumber || 0}, ${item.amount || 0}, '${escapeHtml(item.receiptNumber || '')}')" title="Print Thermal Slip">
+                🖨️ Slip
+              </button>
+              <button type="button" class="btn btn-sm" style="padding: 3px 8px; font-size: 11px; font-weight: 700; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;" onclick="sendSingleWhatsAppReceipt('${item.customerId || ''}', '${item.customerNumber || ''}', ${item.loanNumber || 1}, ${item.instNumber || 0}, ${item.amount || 0}, '${escapeHtml(item.receiptNumber || '')}')" title="Share WhatsApp Slip">
+                📲 WhatsApp
+              </button>
+            ` : '<span style="color:#94a3b8; font-size:11px;">-</span>'}
+          </td>
         </tr>
       `;
     }).join('');
@@ -4372,6 +4549,19 @@ function renderCollectionMatrix() {
     const avatarStyle = getCustomerAvatarStyle(cust.fullName, cust.customerNumber);
     const custIdStr = `CUS${String(cust.customerNumber).padStart(3, '0')}`;
 
+    // Determine next due instalment sequence before rendering grid cells
+    let nextDueSeq = 1;
+    for (let i = 1; i <= instCount; i++) {
+      const itm = (cust.instalments || [])[i - 1];
+      if (!itm || itm.status !== 'Received') {
+        nextDueSeq = i;
+        break;
+      }
+    }
+    const nextDueInst = (cust.instalments || [])[nextDueSeq - 1];
+    const isNextPartial = nextDueInst && nextDueInst.status === 'Partial';
+    const nextRemainingDue = isNextPartial ? Math.max(0, (cust.instalmentAmount || 0) - (Number(nextDueInst.paidAmount) || 0)) : (cust.instalmentAmount || 0);
+
     // 4-Row Grid of Checkboxes (13 columns per row for 52 instalments)
     let gridCellsHtml = '';
     if (isExpanded) {
@@ -4379,6 +4569,7 @@ function renderCollectionMatrix() {
         const sqInst = activeInstalments[sq - 1] || { number: sq, status: 'Pending' };
         const isReceived = sqInst.status === 'Received';
         const isPartial = sqInst.status === 'Partial';
+        const isNextDue = (sq === nextDueSeq && !isReceived);
         let btnClass = 'is-pending';
         let btnIcon = '';
         const tsFormatted = formatInstalmentTimestamp(sqInst);
@@ -4393,9 +4584,13 @@ function renderCollectionMatrix() {
           const pAmt = Number(sqInst.paidAmount) || 0;
           const pendingAmt = Math.max(0, (Number(cust.instalmentAmount) || 0) - pAmt);
           btnIcon = `<span class="sched-partial-amt"><span class="sched-partial-currency">₹</span>${pAmt}</span>`;
-          instTitle = `${unitLabel} #${sq}: Amount Received: ${formatMoney(pAmt)} | Pending Instalment Amount: ${formatMoney(pendingAmt)}${tsSuffix}. Tap to pay remaining, pay custom partial, or undo.`;
+          instTitle = `${unitLabel} #${sq}: Amount Received: ${formatMoney(pAmt)} | Pending Instalment Amount: ${formatMoney(pendingAmt)}${tsSuffix}. Tap to pay remaining, or hold for partial slider.`;
         } else {
-          instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)}). Tap to receive.`;
+          instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)}). Tap to receive, or hold for partial slider.`;
+        }
+
+        if (isNextDue) {
+          btnClass += ' is-next-due';
         }
 
         if (isLockedByOther) {
@@ -4409,6 +4604,10 @@ function renderCollectionMatrix() {
                     class="sched-box-btn ${btnClass} ${isLockedByOther ? 'is-locked' : ''}" 
                     ${isLockedByOther ? 'disabled' : ''}
                     onclick="handleInstalmentClick('${cust.id}', ${sq}, event)" 
+                    onpointerdown="startInstalmentLongPress(event, '${cust.id}', ${sq}, ${cust.instalmentAmount || 200})"
+                    onpointerup="endInstalmentLongPress()"
+                    onpointercancel="endInstalmentLongPress()"
+                    oncontextmenu="handleInstalmentContextMenu(event, '${cust.id}', ${sq}, ${cust.instalmentAmount || 200})"
                     title="${instTitle}">
               ${btnIcon}
             </button>
@@ -4424,18 +4623,6 @@ function renderCollectionMatrix() {
       ? `<span class="badge-partial-pill" style="font-size:10px; padding:1px 6px; flex-shrink:0; white-space:nowrap;" title="Partial Payment: ${unitLabel} #${activePartialInst.number} paid ${formatMoney(partialRecd)} (${formatMoney(partialRemaining)} remaining due)">½ ${formatMoney(partialRecd)}</span>`
       : '';
 
-    let nextDueSeq = 1;
-    for (let i = 1; i <= instCount; i++) {
-      const itm = (cust.instalments || [])[i - 1];
-      if (!itm || itm.status !== 'Received') {
-        nextDueSeq = i;
-        break;
-      }
-    }
-    const nextDueInst = (cust.instalments || [])[nextDueSeq - 1];
-    const isNextPartial = nextDueInst && nextDueInst.status === 'Partial';
-    const nextRemainingDue = isNextPartial ? Math.max(0, (cust.instalmentAmount || 0) - (Number(nextDueInst.paidAmount) || 0)) : (cust.instalmentAmount || 0);
-
     const avatarContent = cust.photoUrl 
       ? `<img src="${cust.photoUrl}" alt="Photo" class="cust-avatar-img">` 
       : initials;
@@ -4450,14 +4637,14 @@ function renderCollectionMatrix() {
 
     cardsHtml += `
       <div class="cust-compact-card ${isExpanded ? 'card-expanded' : ''}" data-customer-id="${cust.id}">
-        <!-- Top Compact Card Header (Click to open Customer Detail Pop-up / Bottom Sheet) -->
-        <div class="cust-card-header" onclick="openCustomerDetailModal('${cust.id}', event)" title="Click to open Customer Loan Details pop-up (Desktop Modal / Mobile Bottom Sheet)">
+        <!-- Top Compact Card Header (Click to smoothly expand/collapse inline; Click name or ID for modal) -->
+        <div class="cust-card-header" onclick="toggleCustomerSchedule('${cust.id}', event)" style="cursor: pointer;" title="Tap anywhere to expand/collapse schedule">
           <div class="cust-card-left">
-            <span class="cust-id-prefix">#${cust.customerNumber}</span>
-            <div class="cust-avatar" style="${avatarStyle}; cursor: pointer;" onclick="openCustomerPhotoLightbox('${cust.id}', event)" title="Click to view borrower profile photo">${avatarContent}</div>
+            <span class="cust-id-prefix" onclick="event.stopPropagation(); openCustomerDetailModal('${cust.id}', event)" title="View loan passbook & details" style="cursor: pointer;">#${cust.customerNumber}</span>
+            <div class="cust-avatar" style="${avatarStyle}; cursor: pointer;" onclick="event.stopPropagation(); openCustomerPhotoLightbox('${cust.id}', event)" title="Click to view borrower profile photo">${avatarContent}</div>
             <div class="cust-info-left">
               <div class="cust-name-row">
-                <span class="cust-name" title="${cust.fullName}">${cust.fullName}</span>
+                <span class="cust-name" onclick="event.stopPropagation(); openCustomerDetailModal('${cust.id}', event)" style="cursor: pointer;" title="Click to open full Customer Details Modal">${cust.fullName}</span>
                 <span class="cust-loan-badge">L${cust.loanNumber || 1}</span>
                 ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 6px; flex-shrink:0; white-space:nowrap;" title="Delayed Schedule: Borrower is ${stats.missedCount} instalment${stats.missedCount > 1 ? 's' : ''} behind schedule (Total Overdue: ${formatMoney(stats.missedCount * (cust.instalmentAmount || 0))})">⚠️ Due ${stats.missedCount}</span>` : ''}
                 ${partialBadgeHtml}
@@ -4526,6 +4713,9 @@ function renderCollectionMatrix() {
                 </button>
                 <button type="button" class="btn btn-sm" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="toggleInstalmentReceived('${cust.id}', ${nextDueSeq})">
                   ✓ Pay ${isNextPartial ? 'Remaining ' : ''}${formatMoney(nextRemainingDue)}
+                </button>
+                <button type="button" class="btn btn-sm" style="background: #25D366; color: #ffffff; border: none; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="shareCustomerWhatsAppSlip('${cust.id}', ${nextDueSeq})" title="Send receipt slip via WhatsApp to borrower">
+                  📲 WhatsApp
                 </button>
               </div>
             </div>
@@ -4722,6 +4912,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
     } else {
       showToast(`✓ Received ${formatMoney(totalCollectedThisAction)} for #${customer.customerNumber}`);
     }
+    showRapidCollectionToast(customer, instNumber, totalCollectedThisAction);
     if (remainingSurplus > 0) {
       showToast(`⚠️ All ${totalInst} instalments paid! Remaining surplus: ${formatMoney(remainingSurplus)}`, 4000);
     }
@@ -4783,6 +4974,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
         timestamp: timestampStr
       });
       showToast(`✓ Completed remaining balance for #${instNumber} (${formatMoney(needed)}) for #${customer.customerNumber}`);
+      showRapidCollectionToast(customer, instNumber, needed);
     } else {
       inst.status = 'Received';
       inst.paidDate = todayStr;
@@ -4808,6 +5000,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
         timestamp: timestampStr
       });
       showToast(`✓ Received #${instNumber} (${formatMoney(scheduledAmount)}) for #${customer.customerNumber}`);
+      showRapidCollectionToast(customer, instNumber, scheduledAmount);
     }
   }
 
@@ -4818,6 +5011,144 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
   renderCollectionMatrix();
   if (state.activeTab === 'summary') renderDashboard();
   updateHeaderStats();
+}
+
+// Rapid Floating Undo & WhatsApp Receipt Helpers
+let rapidToastTimer = null;
+let lastCollectionData = null;
+
+function showRapidCollectionToast(customer, instNumber, amount) {
+  if (!customer || !amount) return;
+  lastCollectionData = {
+    customerId: customer.id,
+    customerNumber: customer.customerNumber,
+    customerName: customer.fullName,
+    phone: customer.phone,
+    loanNumber: customer.loanNumber || 1,
+    instNumber: instNumber,
+    amount: amount,
+    date: getISTDateString()
+  };
+
+  const toast = document.getElementById('rapid-collection-toast');
+  const msgEl = document.getElementById('rapid-toast-msg');
+  const waBtn = document.getElementById('rapid-toast-wa-btn');
+  const undoBtn = document.getElementById('rapid-toast-undo-btn');
+
+  if (!toast || !msgEl) return;
+
+  msgEl.innerHTML = `Received <strong>₹${Number(amount).toLocaleString('en-IN')}</strong> from <strong>${customer.fullName}</strong> (#${customer.customerNumber}, Wk #${instNumber})`;
+
+  if (waBtn) {
+    waBtn.onclick = () => shareDirectWhatsAppSlip(lastCollectionData);
+  }
+  if (undoBtn) {
+    undoBtn.onclick = () => handleRapidUndoAction(lastCollectionData);
+  }
+
+  toast.classList.add('show');
+  clearInterval(rapidToastTimer);
+  let countdown = 5;
+  if (undoBtn) undoBtn.textContent = `↩️ Undo (${countdown}s)`;
+
+  rapidToastTimer = setInterval(() => {
+    countdown--;
+    if (countdown > 0) {
+      if (undoBtn) undoBtn.textContent = `↩️ Undo (${countdown}s)`;
+    } else {
+      clearInterval(rapidToastTimer);
+      toast.classList.remove('show');
+    }
+  }, 1000);
+}
+
+function handleRapidUndoAction(data) {
+  const toast = document.getElementById('rapid-collection-toast');
+  if (toast) toast.classList.remove('show');
+  clearInterval(rapidToastTimer);
+  if (!data) return;
+
+  // Perform quick undo
+  handleInstalmentClick(data.customerId, data.instNumber);
+}
+
+function shareDirectWhatsAppSlip(data) {
+  if (!data) return;
+  const customer = state.customers.find(c => c.id === data.customerId) || data;
+  const phone = (customer.phone || '').replace(/[^0-9]/g, '');
+  const cleanPhone = formatWhatsAppPhone(phone);
+  const stats = getCustomerStats(customer);
+  const remainingBal = stats.balance || 0;
+
+  const msg = `*JSR FINANCE - PAYMENT RECEIPT*\n` +
+              `--------------------------------\n` +
+              `Customer: ${customer.fullName} (#${customer.customerNumber})\n` +
+              `Loan: #${customer.loanNumber || 1}\n` +
+              `Instalment: Week #${data.instNumber}\n` +
+              `Amount Received: ₹${Number(data.amount).toLocaleString('en-IN')}\n` +
+              `Date: ${getISTDateString()}\n` +
+              `Remaining Balance: ₹${Number(remainingBal).toLocaleString('en-IN')}\n` +
+              `Status: RECEIVED ✓\n` +
+              `--------------------------------\n` +
+              `Thank you for paying on time!`;
+
+  const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
+}
+
+function shareCustomerWhatsAppSlip(customerId, instNumber) {
+  const customer = state.customers.find(c => c.id === customerId);
+  if (!customer) return;
+  const inst = (customer.instalments && customer.instalments[instNumber - 1]) || {};
+  const amt = Number(inst.paidAmount) || Number(customer.instalmentAmount) || 200;
+  shareDirectWhatsAppSlip({
+    customerId: customer.id,
+    customerNumber: customer.customerNumber,
+    fullName: customer.fullName,
+    phone: customer.phone,
+    loanNumber: customer.loanNumber || 1,
+    instNumber: instNumber,
+    amount: amt
+  });
+}
+
+function sendSingleWhatsAppReceipt(customerId, customerNumber, loanNumber, instNumber, amount, receiptNumber) {
+  let cust = customerId ? state.customers.find(c => c.id === customerId) : null;
+  if (!cust && customerNumber) {
+    cust = state.customers.find(c => String(c.customerNumber) === String(customerNumber) && (Number(c.loanNumber) || 1) === (Number(loanNumber) || 1));
+  }
+  const name = cust ? cust.fullName : `Customer #${customerNumber}`;
+  const phone = cust ? (cust.phone || '') : '';
+  const cleanPhone = formatWhatsAppPhone(phone);
+  const bal = cust ? getCustomerStats(cust).balance : 0;
+
+  const msg = `*JSR FINANCE - PAYMENT RECEIPT*\n` +
+              `--------------------------------\n` +
+              `Receipt #: ${receiptNumber || 'OFFICIAL'}\n` +
+              `Customer: ${name} (#${customerNumber})\n` +
+              `Loan: #${loanNumber || 1}\n` +
+              `Instalment: Week #${instNumber}\n` +
+              `Amount Received: ₹${Number(amount).toLocaleString('en-IN')}\n` +
+              `Date: ${getISTDateString()}\n` +
+              `Remaining Balance: ₹${Number(bal).toLocaleString('en-IN')}\n` +
+              `Status: RECEIVED ✓\n` +
+              `--------------------------------\n` +
+              `Thank you for paying on time!`;
+
+  const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, '_blank');
+}
+
+function printSingleReceiptSlip(customerId, customerNumber, loanNumber, instNumber, amount, receiptNumber) {
+  let cust = customerId ? state.customers.find(c => c.id === customerId) : null;
+  if (!cust && customerNumber) {
+    cust = state.customers.find(c => String(c.customerNumber) === String(customerNumber) && (Number(c.loanNumber) || 1) === (Number(loanNumber) || 1));
+  }
+  if (cust && instNumber) {
+    openThermalReceiptModal(cust.id, instNumber);
+  } else {
+    showToast('Slip details unavailable for this entry.');
+  }
 }
 
 // Auto-populate default due amount or remaining partial balance as user types customer #
@@ -9170,6 +9501,43 @@ function setupEventListeners() {
       state.searchQuery = e.target.value;
       if (state.activeTab === 'collections') renderCollectionMatrix();
       if (state.activeTab === 'customers') renderCustomersTable();
+    });
+
+    // Feature 3: Press Enter to jump directly to customer and expand schedule
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const query = (searchInput.value || '').trim().toLowerCase();
+        if (!query) return;
+
+        // Check exact match on customerNumber (e.g. "4", "#4", "004") or first match in filtered list
+        const cleanQueryNum = query.replace(/^#/, '').replace(/^cus/i, '').replace(/^0+/, '');
+        let targetCust = state.customers.find(c => {
+          const cNum = String(c.customerNumber || '').replace(/^0+/, '');
+          return cNum === cleanQueryNum;
+        });
+
+        if (!targetCust) {
+          targetCust = state.customers.find(c => (c.fullName || '').toLowerCase().includes(query));
+        }
+
+        if (targetCust) {
+          if (!state.expandedCustomerIds) state.expandedCustomerIds = new Set();
+          state.expandedCustomerIds.clear();
+          state.expandedCustomerIds.add(targetCust.id);
+          renderCollectionMatrix();
+
+          setTimeout(() => {
+            const cardEl = document.querySelector(`.cust-compact-card[data-customer-id="${targetCust.id}"]`);
+            if (cardEl) {
+              cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              cardEl.classList.remove('card-jump-flash');
+              void cardEl.offsetWidth; // force reflow
+              cardEl.classList.add('card-jump-flash');
+              showToast(`🎯 Jumped to #${targetCust.customerNumber} ${targetCust.fullName}`);
+            }
+          }, 80);
+        }
+      }
     });
   }
 
