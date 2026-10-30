@@ -4761,7 +4761,7 @@ function renderCollectionMatrix() {
         const sqInst = activeInstalments[sq - 1] || { number: sq, status: 'Pending' };
         const isReceived = sqInst.status === 'Received';
         const isPartial = sqInst.status === 'Partial';
-        const isNextDue = (sq === nextDueSeq && !isReceived);
+        const isNextDue = (sq === nextDueSeq && !isReceived && !isPartial);
         let btnClass = 'is-pending';
         let btnIcon = '';
         const tsFormatted = formatInstalmentTimestamp(sqInst);
