@@ -2830,82 +2830,16 @@ function getPortfolioStats(loanFilter = 'all') {
 
   });
 
-  // Check today's collections: accurately credit partial vs full payments across ledger and customer schedules
-  const recordedReceipts = new Set();
-  const recordedInstalmentKeys = new Set();
-  let txnTodayCollected = 0;
-
-  if (state.transactions && Array.isArray(state.transactions) && state.transactions.length > 0) {
-    state.transactions.forEach(t => {
-      if (t && t.date === todayStr) {
-        if (targetLoan !== null && (Number(t.loanNumber) || 1) !== targetLoan) {
-          return;
-        }
-        const amt = Number(t.amount) || 0;
-        if (t.type === 'undo') {
-          txnTodayCollected -= amt;
-        } else {
-          txnTodayCollected += amt;
-        }
-        if (t.receiptNumber) recordedReceipts.add(String(t.receiptNumber).trim().toLowerCase());
-        const tCId = t.customerId ? String(t.customerId).toLowerCase() : '';
-        const tCNum = t.customerNumber ? String(t.customerNumber).replace(/^0+/, '') : '';
-        const tLNum = Number(t.loanNumber) || 1;
-        const tINum = Number(t.instalmentNumber) || 0;
-        if (tCId && tINum) {
-          recordedInstalmentKeys.add(`${tCId}_W${tINum}`);
-          recordedInstalmentKeys.add(`${tCId}_L${tLNum}_W${tINum}`);
-        }
-        if (tCNum && tINum) {
-          recordedInstalmentKeys.add(`CUS_${tCNum}_W${tINum}`);
-          recordedInstalmentKeys.add(`CUS_${tCNum}_L${tLNum}_W${tINum}`);
-        }
-      }
-    });
+  // Today's collections: use the single deduplicated source (getCollectorTransactionsByDate)
+  // so that the KPI always equals the sum of all collector cards with no double-counting.
+  // loanFilter is applied by filtering the deduplicated items after retrieval.
+  {
+    const todayItems = getCollectorTransactionsByDate('today');
+    const filteredItems = (targetLoan !== null)
+      ? todayItems.filter(it => (Number(it.loanNumber) || 1) === targetLoan)
+      : todayItems;
+    todayCollected = Math.max(0, filteredItems.reduce((sum, it) => sum + (Number(it.amount) || 0), 0));
   }
-
-  // Also include active customer instalments paid today that were not yet in state.transactions
-  let customerTodayCollected = 0;
-  targetCustomers.forEach((cust) => {
-    const cLoanNum = Number(cust.loanNumber) || 1;
-    const cInstAmt = Number(cust.instalmentAmount) || 200;
-    const cIdLower = String(cust.id || '').toLowerCase();
-    const normCNum = String(cust.customerNumber || '').replace(/^0+/, '');
-
-    if (cust.instalments) {
-      cust.instalments.forEach((inst) => {
-        if (inst && inst.paidDate === todayStr) {
-          const instNum = Number(inst.number) || 0;
-          const keyId1 = `${cIdLower}_W${instNum}`;
-          const keyId2 = `${cIdLower}_L${cLoanNum}_W${instNum}`;
-          const keyNum1 = `CUS_${normCNum}_W${instNum}`;
-          const keyNum2 = `CUS_${normCNum}_L${cLoanNum}_W${instNum}`;
-          const rLower = inst.receiptNumber ? String(inst.receiptNumber).trim().toLowerCase() : '';
-          const hasReceipt = rLower && recordedReceipts.has(rLower);
-
-          const isAlreadyRecorded = hasReceipt ||
-            (cIdLower && (recordedInstalmentKeys.has(keyId1) || recordedInstalmentKeys.has(keyId2))) ||
-            (normCNum && (recordedInstalmentKeys.has(keyNum1) || recordedInstalmentKeys.has(keyNum2)));
-
-          if (!isAlreadyRecorded) {
-            const instPaid = (inst.status === 'Partial') ? (Number(inst.paidAmount) || 0) : (Number(inst.paidAmount) || cInstAmt);
-            customerTodayCollected += instPaid;
-            if (rLower) recordedReceipts.add(rLower);
-            if (cIdLower && instNum) {
-              recordedInstalmentKeys.add(keyId1);
-              recordedInstalmentKeys.add(keyId2);
-            }
-            if (normCNum && instNum) {
-              recordedInstalmentKeys.add(keyNum1);
-              recordedInstalmentKeys.add(keyNum2);
-            }
-          }
-        }
-      });
-    }
-  });
-
-  todayCollected = Math.max(0, txnTodayCollected + customerTodayCollected);
 
   const recoveryPercent = totalPayable > 0 ? Math.round((totalCollected / totalPayable) * 100) : 0;
   const todayProfit = todayCollected > 0 && totalPayable > 0 ? Math.round(todayCollected * (totalExpectedProfit / totalPayable)) : 0;
@@ -9878,6 +9812,14 @@ function getCollectorTransactionsByDate(datePreset, customDate) {
           recordedInstalmentKeys.add(`CUS_${normCNum}_W${instNum}`);
           recordedInstalmentKeys.add(`CUS_${normCNum}_L${loanNum}_W${instNum}`);
         }
+        // Fallback: even if instNum=0, mark this customer+date as already covered
+        // so the instalment scan cannot double-count the same payment via route lookup.
+        if (cId) {
+          recordedInstalmentKeys.add(`${String(cId).toLowerCase()}_DATE_${(t.date || '').split('T')[0]}`);
+        }
+        if (cNum) {
+          recordedInstalmentKeys.add(`CUS_${String(cNum).replace(/^0+/, '')}_DATE_${(t.date || '').split('T')[0]}`);
+        }
       }
     });
   }
@@ -9894,16 +9836,20 @@ function getCollectorTransactionsByDate(datePreset, customDate) {
     (c.instalments || []).forEach((inst) => {
       if (inst && (inst.status === 'Received' || inst.status === 'Partial') && isDateMatch(inst.paidDate)) {
         const instNum = Number(inst.number) || 0;
+        const instDateStr = (inst.paidDate || '').split('T')[0];
         const keyId1 = `${cIdLower}_W${instNum}`;
         const keyId2 = `${cIdLower}_L${cLoanNum}_W${instNum}`;
         const keyNum1 = `CUS_${normCNum}_W${instNum}`;
         const keyNum2 = `CUS_${normCNum}_L${cLoanNum}_W${instNum}`;
+        // Fallback date-based dedup keys (catches transactions saved without instalmentNumber)
+        const keyIdDate = `${cIdLower}_DATE_${instDateStr}`;
+        const keyNumDate = `CUS_${normCNum}_DATE_${instDateStr}`;
         const rLower = inst.receiptNumber ? String(inst.receiptNumber).trim().toLowerCase() : '';
         const hasReceipt = rLower && recordedReceipts.has(rLower);
 
         const isAlreadyRecorded = hasReceipt ||
-          (cIdLower && (recordedInstalmentKeys.has(keyId1) || recordedInstalmentKeys.has(keyId2))) ||
-          (normCNum && (recordedInstalmentKeys.has(keyNum1) || recordedInstalmentKeys.has(keyNum2)));
+          (cIdLower && (recordedInstalmentKeys.has(keyId1) || recordedInstalmentKeys.has(keyId2) || recordedInstalmentKeys.has(keyIdDate))) ||
+          (normCNum && (recordedInstalmentKeys.has(keyNum1) || recordedInstalmentKeys.has(keyNum2) || recordedInstalmentKeys.has(keyNumDate)));
 
         if (!isAlreadyRecorded) {
           const instPaid = (inst.status === 'Received') ? (Number(inst.paidAmount) || cInstAmt) : (Number(inst.paidAmount) || 0);
