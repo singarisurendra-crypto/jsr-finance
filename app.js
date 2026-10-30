@@ -1937,18 +1937,18 @@ function openInlinePartialSlider(customerId, instNumber, scheduledAmount, anchor
   popup.onclick = (e) => e.stopPropagation();
 
   popup.innerHTML = `
-    <div style="font-weight: 800; font-size: 11.5px; display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #0f172a;">
+    <div style="font-weight: 800; font-size: 11.5px; display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #ffffff;">
       <span>${unitLabel} #${instNumber} Partial:</span>
-      <span id="inline-slider-display" style="color: #b45309; font-size: 13.5px; font-weight: 800;">₹${initialVal}</span>
+      <span id="inline-slider-display" style="color: #fbbf24; font-size: 13.5px; font-weight: 800;">₹${initialVal}</span>
     </div>
     <div class="slider-row" style="margin: 4px 0;">
       <input type="range" id="inline-partial-range" min="10" max="${schedAmt}" step="10" value="${initialVal}" 
              oninput="document.getElementById('inline-slider-display').textContent = '₹' + this.value">
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px;">
-      <button type="button" style="background:#f1f5f9; color:#1e293b; border:1px solid #cbd5e1; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.25)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.25)};">25%</button>
-      <button type="button" style="background:#f1f5f9; color:#1e293b; border:1px solid #cbd5e1; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.5)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.5)};">50%</button>
-      <button type="button" style="background:#f1f5f9; color:#1e293b; border:1px solid #cbd5e1; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.75)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.75)};">75%</button>
+      <button type="button" style="background:#1e293b; color:#f1f5f9; border:1px solid #475569; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.25)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.25)};">25%</button>
+      <button type="button" style="background:#1e293b; color:#f1f5f9; border:1px solid #475569; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.5)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.5)};">50%</button>
+      <button type="button" style="background:#1e293b; color:#f1f5f9; border:1px solid #475569; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.75)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.75)};">75%</button>
     </div>
     <div class="slider-actions">
       <button type="button" class="btn-slider-cancel" onclick="closeInlinePartialSlider()">Cancel</button>
@@ -5106,12 +5106,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
     const instPending = (targetInst && targetInst.status === 'Partial')
       ? Math.max(0, scheduledAmount - (Number(targetInst.paidAmount) || 0))
       : 0;
-    if (instPending > 0) {
-      showToast(`✓ Received ${formatMoney(totalCollectedThisAction)} for #${customer.customerNumber}. Pending Instalment Amount: ${formatMoney(instPending)}`);
-    } else {
-      showToast(`✓ Received ${formatMoney(totalCollectedThisAction)} for #${customer.customerNumber}`);
-    }
-    showRapidCollectionToast(customer, instNumber, totalCollectedThisAction);
+    showRapidCollectionToast(customer, instNumber, totalCollectedThisAction, instPending, initialInstalmentsSnapshot);
     if (remainingSurplus > 0) {
       showToast(`⚠️ All ${totalInst} instalments paid! Remaining surplus: ${formatMoney(remainingSurplus)}`, 4000);
     }
@@ -5172,8 +5167,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
         date: todayStr,
         timestamp: timestampStr
       });
-      showToast(`✓ Completed remaining balance for #${instNumber} (${formatMoney(needed)}) for #${customer.customerNumber}`);
-      showRapidCollectionToast(customer, instNumber, needed);
+      showRapidCollectionToast(customer, instNumber, needed, 0, initialInstalmentsSnapshot);
     } else {
       inst.status = 'Received';
       inst.paidDate = todayStr;
@@ -5198,8 +5192,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
         date: todayStr,
         timestamp: timestampStr
       });
-      showToast(`✓ Received #${instNumber} (${formatMoney(scheduledAmount)}) for #${customer.customerNumber}`);
-      showRapidCollectionToast(customer, instNumber, scheduledAmount);
+      showRapidCollectionToast(customer, instNumber, scheduledAmount, 0, initialInstalmentsSnapshot);
     }
   }
 
@@ -5208,25 +5201,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
     syncCustomerToFirestore(customer);
   }
 
-  // Unified Collection Success Banner with Instant Undo for All Collection Actions
-  if (typeof initialInstalmentsSnapshot !== 'undefined' && initialInstalmentsSnapshot.length > 0) {
-    const statsNow = getCustomerStats(customer);
-    const amountPaidNow = (typeof totalCollectedThisAction !== 'undefined' && totalCollectedThisAction > 0) 
-      ? totalCollectedThisAction 
-      : ((typeof needed !== 'undefined' && needed > 0) ? needed : scheduledAmount);
-    if (amountPaidNow > 0) {
-      lastSavedCollectionSession = {
-        customerId: customer.id,
-        customerNumber: customer.customerNumber,
-        customerName: customer.fullName,
-        loanNumber: customer.loanNumber || 1,
-        collectedAmount: amountPaidNow,
-        initialInstalments: initialInstalmentsSnapshot,
-        timestamp: Date.now()
-      };
-      showCollectionSuccessBanner(customer, amountPaidNow);
-    }
-  }
+
 
   renderCollectionMatrix();
   if (state.activeTab === 'summary') renderDashboard();
@@ -5237,8 +5212,24 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
 let rapidToastTimer = null;
 let lastCollectionData = null;
 
-function showRapidCollectionToast(customer, instNumber, amount) {
+function showRapidCollectionToast(customer, instNumber, amount, pendingAmt = 0, initialInstalments = null) {
   if (!customer || !amount) return;
+
+  // Ensure only one unified notification is visible by dismissing any other banners or toasts
+  const banner = document.getElementById('collection-success-banner');
+  if (banner) {
+    banner.style.display = 'none';
+    if (typeof bannerUndoCountdownTimer !== 'undefined') clearInterval(bannerUndoCountdownTimer);
+  }
+  const appToast = document.getElementById('app-toast');
+  if (appToast) {
+    appToast.style.display = 'none';
+    if (appToast._timer) clearTimeout(appToast._timer);
+  }
+
+  const totalInst = customer.totalInstalments || 52;
+  const unitLabel = (customer.frequency === 'Daily' || totalInst === 100) ? 'Day' : 'Week';
+
   lastCollectionData = {
     customerId: customer.id,
     customerNumber: customer.customerNumber,
@@ -5247,6 +5238,8 @@ function showRapidCollectionToast(customer, instNumber, amount) {
     loanNumber: customer.loanNumber || 1,
     instNumber: instNumber,
     amount: amount,
+    pendingAmt: pendingAmt || 0,
+    initialInstalments: initialInstalments ? initialInstalments.map(i => ({ ...i })) : null,
     date: getISTDateString()
   };
 
@@ -5257,7 +5250,12 @@ function showRapidCollectionToast(customer, instNumber, amount) {
 
   if (!toast || !msgEl) return;
 
-  msgEl.innerHTML = `Received <strong>₹${Number(amount).toLocaleString('en-IN')}</strong> from <strong>${customer.fullName}</strong> (#${customer.customerNumber}, Wk #${instNumber})`;
+  let pendingHtml = '';
+  if (pendingAmt > 0) {
+    pendingHtml = ` • <span style="color: #fbbf24; font-weight: 700;">Pending: ₹${Number(pendingAmt).toLocaleString('en-IN')}</span>`;
+  }
+
+  msgEl.innerHTML = `Received <strong>₹${Number(amount).toLocaleString('en-IN')}</strong> from <strong>${customer.fullName}</strong> (#${customer.customerNumber}, ${unitLabel} #${instNumber})${pendingHtml}`;
 
   if (waBtn) {
     waBtn.onclick = () => shareDirectWhatsAppSlip(lastCollectionData);
@@ -5288,8 +5286,52 @@ function handleRapidUndoAction(data) {
   clearInterval(rapidToastTimer);
   if (!data) return;
 
-  // Perform quick undo
-  handleInstalmentClick(data.customerId, data.instNumber, null, true);
+  if (isCurrentUserReadOnly()) {
+    showToast('⚠️ Read-Only Access: Only Admin and authorized Collectors can undo collections.', 4000);
+    return;
+  }
+
+  const customer = state.customers.find(c => c.id === data.customerId);
+  if (!customer) return;
+
+  const currentUser = getCurrentUser();
+  const currentCollector = (currentUser && currentUser.user) ? currentUser.user : 'Admin';
+  const currentCollectorId = (currentUser && currentUser.collectorId) ? currentUser.collectorId : null;
+  const todayStr = getISTDateString();
+  const timestampStr = getNowTimestamp();
+
+  if (data.initialInstalments && Array.isArray(data.initialInstalments)) {
+    // 100% reliable state rollback: restore instalments exactly as they were before this action
+    customer.instalments = data.initialInstalments.map(i => ({ ...i }));
+
+    // Record undo transaction in audit ledger
+    recordTransaction({
+      receiptNumber: `UNDO-RAPID-${data.customerNumber}-${Date.now()}`,
+      customerId: customer.id,
+      customerNumber: customer.customerNumber,
+      loanNumber: customer.loanNumber || 1,
+      customerName: customer.fullName,
+      instalmentNumber: data.instNumber,
+      amount: data.amount,
+      type: 'undo',
+      collector: currentCollector,
+      collectorId: currentCollectorId,
+      date: todayStr,
+      timestamp: timestampStr
+    });
+
+    saveData();
+    if (typeof syncCustomerToFirestore === 'function') {
+      syncCustomerToFirestore(customer);
+    }
+    renderCollectionMatrix();
+    if (state.activeTab === 'summary') renderDashboard();
+    updateHeaderStats();
+    showToast(`↩️ Payment of ₹${Number(data.amount).toLocaleString('en-IN')} undone for #${customer.customerNumber}`);
+  } else {
+    // Fallback to standard click handler
+    handleInstalmentClick(data.customerId, data.instNumber, null, true);
+  }
 }
 
 function shareDirectWhatsAppSlip(data) {
