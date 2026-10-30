@@ -4918,14 +4918,24 @@ select:focus-visible {
   border: 2px solid #2563eb !important;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25) !important;
 }
-/* When next-due is partial, retain system amber partial color; ONLY show blue outer line! */
+/* Partial Checkbox: Show pure orange color only - NO blue line, border, or glow! */
+.sched-box-btn.is-partial,
+.sched-box-btn.sched-box-partial,
 .sched-box-btn.is-partial.is-next-due,
 .sched-box-btn.sched-box-partial.is-next-due {
   background: #f59e0b !important;
   color: #ffffff !important;
-  border: 2px solid #2563eb !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35) !important;
+  border: 1.5px solid #d97706 !important;
+  box-shadow: none !important;
+  animation: none !important;
 }
+.sched-box-btn.is-partial:hover,
+.sched-box-btn.is-partial.is-next-due:hover {
+  background: #d97706 !important;
+  border-color: #b45309 !important;
+}
+.sched-box-btn.is-partial .sched-partial-amt,
+.sched-box-btn.is-partial .sched-partial-currency,
 .sched-box-btn.is-partial.is-next-due .sched-partial-amt,
 .sched-box-btn.is-partial.is-next-due .sched-partial-currency {
   color: #ffffff !important;
