@@ -3,15 +3,15 @@
  * Enables 100% Offline Application Loading & Instant Village Launch (0.1s)
  */
 
-const CACHE_NAME = 'jsr-finance-pwa-v1.1.8';
+const CACHE_NAME = 'jsr-finance-pwa-v1.1.9';
 
 const PRECACHE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=73',
-  './app.js?v=73',
-  './firebase-config.js?v=73',
-  './firebase-sync.js?v=73',
+  './styles.css?v=74',
+  './app.js?v=74',
+  './firebase-config.js?v=74',
+  './firebase-sync.js?v=74',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
