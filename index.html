@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="stylesheet" href="styles.css?v=73">
+  <link rel="stylesheet" href="styles.css?v=74">
   <!-- Google Identity Services (GIS) / Google OAuth 2.0 SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Lucide Vector Icons -->
@@ -383,6 +383,7 @@
                   <th>Date</th>
                   <th>Route / Area</th>
                   <th>Status</th>
+                  <th style="text-align: center;">Slip / Action</th>
                 </tr>
               </thead>
               <tbody id="recent-transactions-list">
@@ -1337,11 +1338,23 @@
               Plays an authentic cash register chime whenever an instalment is marked paid or cash is collected.
             </p>
 
+            <div style="margin-bottom: 14px;">
+              <label for="setting-sound-style" style="display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 6px;">
+                Collection Sound Tone:
+              </label>
+              <select id="setting-sound-style" class="form-control" onchange="handleSoundStyleChange(this.value)" style="width: 100%; font-size: 13px; padding: 7px 10px;">
+                <option value="chime" selected>⚡ UPI / Soundbox Chime (Two-tone)</option>
+                <option value="ding">🔔 Cash Register Ding (Classic)</option>
+                <option value="coin">🪙 Metallic Coin Drop</option>
+                <option value="marimba">🎵 Soft Marimba Chime</option>
+              </select>
+            </div>
+
             <div style="display: flex; gap: 12px; margin-bottom: 12px;">
               <button type="button" id="setting-sound-toggle-btn" class="btn btn-primary" onclick="toggleSoundEffect()" style="flex: 1; justify-content: center; gap: 8px;">
                 🔔 Sound: ON (Click to Mute)
               </button>
-              <button type="button" class="btn btn-outline" onclick="playCashChime()" title="Test Cash Register Audio Chime" style="padding: 8px 16px;">
+              <button type="button" class="btn btn-outline" onclick="playCashChime()" title="Test Audio Chime" style="padding: 8px 16px;">
                 🔊 Test Chime
               </button>
             </div>
@@ -2398,6 +2411,22 @@
   <!-- Toast Notification -->
   <div id="app-toast" style="display: none;"></div>
 
+  <!-- Rapid Collection Action & WhatsApp Undo Toast -->
+  <div id="rapid-collection-toast">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="color: #4ade80; font-size: 15px;">✓</span>
+      <span id="rapid-toast-msg">Payment recorded</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px; margin-left: auto;">
+      <button type="button" id="rapid-toast-wa-btn" class="toast-wa-btn" title="Send WhatsApp Slip">
+        📲 WhatsApp Slip
+      </button>
+      <button type="button" id="rapid-toast-undo-btn" class="toast-undo-btn" title="Undo this payment">
+        ↩️ Undo (5s)
+      </button>
+    </div>
+  </div>
+
   <!-- Mobile Bottom Navigation Bar (High-Tech Mobile Experience) -->
   <nav class="mobile-nav" id="mobile-nav">
     <button class="mobile-nav-item active" data-tab="collections">
@@ -2465,8 +2494,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
-  <script src="firebase-config.js?v=73"></script>
-  <script src="firebase-sync.js?v=73"></script>
-  <script src="app.js?v=73"></script>
+  <script src="firebase-config.js?v=74"></script>
+  <script src="firebase-sync.js?v=74"></script>
+  <script src="app.js?v=74"></script>
 </body>
 </html>
