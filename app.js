@@ -4912,9 +4912,7 @@ function renderCollectionMatrix() {
                 <button type="button" class="btn btn-sm" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="toggleInstalmentReceived('${cust.id}', ${nextDueSeq})">
                   ✓ Pay ${isNextPartial ? 'Remaining ' : ''}${formatMoney(nextRemainingDue)}
                 </button>
-                <button type="button" class="btn btn-sm" style="background: #25D366; color: #ffffff; border: none; padding: 5px 9px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;" onclick="shareCustomerWhatsAppSlip('${cust.id}', ${nextDueSeq})" title="Send WhatsApp Receipt">
-                  ${WHATSAPP_ICON_SVG}
-                </button>
+
               </div>
             </div>
 
