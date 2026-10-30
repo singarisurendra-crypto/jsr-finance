@@ -11,6 +11,9 @@ const STORAGE_KEYS = {
 };
 
 // Default Initial State
+// System-wide WhatsApp Icon (No text, clean vector graphic)
+const WHATSAPP_ICON_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="display:inline-block;vertical-align:middle;"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 15 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.53 7.32C9.33 7.32 9.04 7.39 8.79 7.66C8.54 7.93 7.85 8.58 7.85 9.91C7.85 11.24 8.82 12.52 8.96 12.7C9.09 12.89 10.87 15.63 13.59 16.81C14.24 17.09 14.74 17.26 15.14 17.39C15.8 17.59 16.39 17.56 16.87 17.49C17.4 17.41 18.52 16.81 18.75 16.16C18.98 15.5 18.98 14.94 18.91 14.82C18.84 14.7 18.66 14.63 18.39 14.5C18.12 14.36 16.79 13.71 16.54 13.62C16.3 13.53 16.12 13.48 15.94 13.75C15.77 14.02 15.28 14.6 15.13 14.77C14.98 14.94 14.83 14.97 14.56 14.83C14.29 14.7 13.42 14.41 12.39 13.49C11.59 12.78 11.05 11.9 10.9 11.65C10.76 11.39 10.89 11.24 11.02 11.11C11.14 10.99 11.29 10.8 11.43 10.64C11.56 10.47 11.61 10.35 11.7 10.17C11.79 10 11.75 9.85 11.68 9.71C11.61 9.58 11.07 8.25 10.85 7.72C10.63 7.2 10.42 7.27 10.26 7.26C10.11 7.26 9.94 7.25 9.77 7.25C9.6 7.25 9.53 7.32 9.53 7.32Z"/></svg>';
+
 const DEFAULT_SETTINGS = {
   businessName: 'JSR Finance',
   phone: '+91 9876543210',
@@ -24,6 +27,8 @@ const DEFAULT_SETTINGS = {
   nextCustNumber: 1,
   soundStyle: 'chime',
   soundMuted: false,
+  voiceAnnouncement: true,
+  voiceLanguage: 'en-IN',
   adminEmail: 'singarisurendra@gmail.com',
   collectors: [
     { id: 'col_1', name: 'Raju Sharma', email: 'raju.collector@jsrfinance.com', phone: '+91 9876543211', route: 'Market Ward A', active: true },
@@ -316,7 +321,7 @@ window.addEventListener('beforeunload', () => {
 });
 
 // Web Audio API Cash Register Chime & Sound Effects (Zero External Files)
-function playCashChime() {
+function playSynthesizedTone() {
   if (state.settings && state.settings.soundMuted) return;
   try {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -353,7 +358,6 @@ function playCashChime() {
       osc2.stop(now + 0.42);
 
     } else if (style === 'coin') {
-      // Metallic coin cascade
       [0, 0.08, 0.16].forEach((delay, idx) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -369,7 +373,6 @@ function playCashChime() {
       });
 
     } else if (style === 'marimba') {
-      // Warm marimba chord (440 -> 660 -> 880)
       [440, 659.25, 880].forEach(f => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -400,6 +403,87 @@ function playCashChime() {
   } catch (e) {
     // Graceful fallback if audio is restricted before first gesture
   }
+}
+
+// UPI Soundbox Voice Announcement (Web Speech API Text-to-Speech)
+function speakCollectionAmount(amount) {
+  if (state.settings && state.settings.soundMuted) return;
+  if (state.settings && state.settings.voiceAnnouncement === false) return;
+  if (!('speechSynthesis' in window)) return;
+
+  try {
+    window.speechSynthesis.cancel();
+    const cleanAmt = Math.round(Number(amount) || 0);
+    if (cleanAmt <= 0) return;
+
+    const lang = (state.settings && state.settings.voiceLanguage) || 'en-IN';
+    let text = `Received ${cleanAmt} rupees`;
+    if (lang === 'te-IN') {
+      text = `${cleanAmt} రూపాయలు వసూలైంది`;
+    } else if (lang === 'hi-IN') {
+      text = `${cleanAmt} रुपये प्राप्त हुए`;
+    }
+
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 1.0;
+    utter.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    let selectedVoice = null;
+    if (lang === 'te-IN') {
+      selectedVoice = voices.find(v => v.lang.toLowerCase().includes('te') || v.name.toLowerCase().includes('telugu'));
+    } else if (lang === 'hi-IN') {
+      selectedVoice = voices.find(v => v.lang.toLowerCase().includes('hi') || v.name.toLowerCase().includes('hindi'));
+    }
+    if (!selectedVoice) {
+      selectedVoice = voices.find(v => v.lang === 'en-IN' || v.lang === 'en_IN') ||
+                      voices.find(v => v.lang.toLowerCase().includes('en-in') || v.name.toLowerCase().includes('india')) ||
+                      voices.find(v => v.lang.startsWith('en')) ||
+                      voices[0];
+    }
+    if (selectedVoice) {
+      utter.voice = selectedVoice;
+    }
+
+    window.speechSynthesis.speak(utter);
+  } catch (e) {
+    console.warn('Speech synthesis error:', e);
+  }
+}
+
+function playCashChime(amount) {
+  if (state.settings && state.settings.soundMuted) return;
+  playSynthesizedTone();
+  if (amount && Number(amount) > 0) {
+    setTimeout(() => {
+      speakCollectionAmount(amount);
+    }, 240);
+  }
+}
+
+function handleVoiceToggle(checked) {
+  if (!state.settings) state.settings = {};
+  state.settings.voiceAnnouncement = checked;
+  saveData();
+  if (checked) {
+    speakCollectionAmount(500);
+    showToast('Voice soundbox enabled 🗣️');
+  } else {
+    showToast('Voice soundbox disabled');
+  }
+}
+
+function handleVoiceLangChange(val) {
+  if (!state.settings) state.settings = {};
+  state.settings.voiceLanguage = val;
+  saveData();
+  speakCollectionAmount(500);
+  showToast('Voice language updated 🌐');
+}
+
+function testSoundAndVoice() {
+  playCashChime(520);
+  showToast('🔊 Testing Chime & Voice: "Received 520 rupees"');
 }
 
 function handleSoundStyleChange(val) {
@@ -441,6 +525,14 @@ function updateSoundToggleButton() {
   const styleSelect = document.getElementById('setting-sound-style');
   if (styleSelect && state.settings && state.settings.soundStyle) {
     styleSelect.value = state.settings.soundStyle;
+  }
+  const voiceToggle = document.getElementById('setting-voice-toggle');
+  if (voiceToggle && state.settings) {
+    voiceToggle.checked = state.settings.voiceAnnouncement !== false;
+  }
+  const voiceLangSelect = document.getElementById('setting-voice-lang');
+  if (voiceLangSelect && state.settings && state.settings.voiceLanguage) {
+    voiceLangSelect.value = state.settings.voiceLanguage;
   }
   const settingBtn = document.getElementById('setting-sound-toggle-btn');
   const settingBadge = document.getElementById('setting-sound-status-badge');
@@ -1443,10 +1535,15 @@ function togglePasswordVisibility() {
 // EXPANDABLE SCHEDULE DRAWER & SAVE CONTROLLERS
 // ====================================================
 
+let lastSavedCollectionSession = null;
+let bannerUndoCountdownTimer = null;
+
 function showCollectionSuccessBanner(customer, amount) {
   const banner = document.getElementById('collection-success-banner');
   const title = document.getElementById('collection-banner-title');
   const subtitle = document.getElementById('collection-banner-subtitle');
+  const undoBtn = document.getElementById('collection-banner-undo-btn');
+  const waBtn = document.getElementById('collection-banner-wa-btn');
   if (!banner) return;
 
   const stats = getCustomerStats(customer);
@@ -1454,13 +1551,65 @@ function showCollectionSuccessBanner(customer, amount) {
   if (title) title.textContent = `✓ Collected ${formatMoney(amount)} Successfully!`;
   if (subtitle) subtitle.textContent = `Customer #${customer.customerNumber}${loanTag} (${customer.fullName}) • Remaining Balance: ${formatMoney(stats.balance)}`;
 
-  banner.style.display = 'block';
-  playCashChime();
+  if (waBtn) {
+    waBtn.onclick = () => shareCustomerWhatsAppSlip(customer.id);
+  }
 
-  if (window._bannerTimer) clearTimeout(window._bannerTimer);
-  window._bannerTimer = setTimeout(() => {
-    closeCollectionBanner();
-  }, 6000);
+  banner.style.display = 'block';
+  playCashChime(amount);
+
+  clearInterval(bannerUndoCountdownTimer);
+  let countdown = 5;
+  if (undoBtn) {
+    undoBtn.textContent = `↩️ Undo (${countdown}s)`;
+    undoBtn.onclick = () => handleBannerUndoAction();
+  }
+
+  bannerUndoCountdownTimer = setInterval(() => {
+    countdown--;
+    if (countdown > 0) {
+      if (undoBtn) undoBtn.textContent = `↩️ Undo (${countdown}s)`;
+    } else {
+      clearInterval(bannerUndoCountdownTimer);
+      closeCollectionBanner();
+    }
+  }, 1000);
+}
+
+function handleBannerUndoAction() {
+  closeCollectionBanner();
+  clearInterval(bannerUndoCountdownTimer);
+  if (!lastSavedCollectionSession) return;
+  const sess = lastSavedCollectionSession;
+  const customer = state.customers.find(c => c.id === sess.customerId);
+  if (!customer) return;
+
+  // Revert customer.instalments to initialInstalments
+  customer.instalments = sess.initialInstalments.map(i => ({ ...i }));
+
+  // Record undo transaction in audit ledger
+  recordTransaction({
+    receiptNumber: `UNDO-SAVE-${Date.now()}-${customer.customerNumber}`,
+    customerId: customer.id,
+    customerNumber: customer.customerNumber,
+    loanNumber: customer.loanNumber || 1,
+    customerName: customer.fullName,
+    amount: sess.collectedAmount,
+    type: 'undo',
+    collector: (getCurrentUser() && getCurrentUser().user) || 'Admin',
+    date: getISTDateString(),
+    timestamp: getNowTimestamp(),
+    notes: 'Reverted saved collection via banner undo'
+  });
+
+  saveData();
+  if (typeof syncCustomerToFirestore === 'function') syncCustomerToFirestore(customer);
+  playCashChime();
+  showToast(`↩️ Undone saved collection of ${formatMoney(sess.collectedAmount)} for #${customer.customerNumber}`);
+  lastSavedCollectionSession = null;
+  renderCollectionMatrix();
+  if (state.activeTab === 'summary') renderDashboard();
+  updateHeaderStats();
 }
 
 function closeCollectionBanner() {
@@ -1607,6 +1756,16 @@ function saveCustomerModifications(customerId) {
   }
 
   if (collectedAmount > 0) {
+    lastSavedCollectionSession = {
+      customerId: customer.id,
+      customerNumber: customer.customerNumber,
+      customerName: customer.fullName,
+      loanNumber: customer.loanNumber || 1,
+      collectedAmount: collectedAmount,
+      initialInstalments: (pending && pending.initialInstalments) ? pending.initialInstalments.map(i => ({ ...i })) : [],
+      savedInstalments: (pending && pending.modifiedInstalments) ? pending.modifiedInstalments.map(i => ({ ...i })) : [],
+      timestamp: Date.now()
+    };
     showCollectionSuccessBanner(customer, collectedAmount);
   } else {
     showToast(`✓ Changes saved for #${customer.customerNumber}`);
@@ -1822,7 +1981,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-function handleInstalmentClick(customerId, instNumber, event) {
+function handleInstalmentClick(customerId, instNumber, event, skipConfirm = false) {
   if (event) {
     event.stopPropagation();
   }
@@ -1884,7 +2043,7 @@ function handleInstalmentClick(customerId, instNumber, event) {
     // 2. Confirmation prompt
     const scheduledAmount = Number(customer.instalmentAmount) || 200;
     const amtToUndo = (custInst.status === 'Partial') ? (Number(custInst.paidAmount) || 0) : (Number(custInst.paidAmount) || scheduledAmount);
-    if (!confirm(`Are you sure you want to undo payment for ${unitLabel} #${instNumber} (${formatMoney(amtToUndo)})?\n\nThis will remove the received status and be logged in the audit ledger.`)) {
+    if (!skipConfirm && !confirm(`Are you sure you want to undo payment for ${unitLabel} #${instNumber} (${formatMoney(amtToUndo)})?\n\nThis will remove the received status and be logged in the audit ledger.`)) {
       return;
     }
 
@@ -3524,8 +3683,8 @@ function renderRecentTransactions() {
               <button type="button" class="btn btn-sm btn-outline" style="padding: 3px 8px; font-size: 11px; font-weight: 700; color: #1e40af; border-color: #bfdbfe; margin-right: 4px; background: #ffffff;" onclick="printSingleReceiptSlip('${item.customerId || ''}', '${item.customerNumber || ''}', ${item.loanNumber || 1}, ${item.instNumber || 0}, ${item.amount || 0}, '${escapeHtml(item.receiptNumber || '')}')" title="Print Thermal Slip">
                 🖨️ Slip
               </button>
-              <button type="button" class="btn btn-sm" style="padding: 3px 8px; font-size: 11px; font-weight: 700; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0;" onclick="sendSingleWhatsAppReceipt('${item.customerId || ''}', '${item.customerNumber || ''}', ${item.loanNumber || 1}, ${item.instNumber || 0}, ${item.amount || 0}, '${escapeHtml(item.receiptNumber || '')}')" title="Share WhatsApp Slip">
-                📲 WhatsApp
+              <button type="button" class="btn btn-sm" style="padding: 3px 7px; background: #25D366; color: #ffffff; border: none; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center;" onclick="sendSingleWhatsAppReceipt('${item.customerId || ''}', '${item.customerNumber || ''}', ${item.loanNumber || 1}, ${item.instNumber || 0}, ${item.amount || 0}, '${escapeHtml(item.receiptNumber || '')}')" title="Share WhatsApp Slip">
+                ${WHATSAPP_ICON_SVG}
               </button>
             ` : '<span style="color:#94a3b8; font-size:11px;">-</span>'}
           </td>
@@ -4714,8 +4873,8 @@ function renderCollectionMatrix() {
                 <button type="button" class="btn btn-sm" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer;" onclick="toggleInstalmentReceived('${cust.id}', ${nextDueSeq})">
                   ✓ Pay ${isNextPartial ? 'Remaining ' : ''}${formatMoney(nextRemainingDue)}
                 </button>
-                <button type="button" class="btn btn-sm" style="background: #25D366; color: #ffffff; border: none; font-weight: 700; padding: 4px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="shareCustomerWhatsAppSlip('${cust.id}', ${nextDueSeq})" title="Send receipt slip via WhatsApp to borrower">
-                  📲 WhatsApp
+                <button type="button" class="btn btn-sm" style="background: #25D366; color: #ffffff; border: none; padding: 5px 9px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;" onclick="shareCustomerWhatsAppSlip('${cust.id}', ${nextDueSeq})" title="Send WhatsApp Receipt">
+                  ${WHATSAPP_ICON_SVG}
                 </button>
               </div>
             </div>
@@ -4902,7 +5061,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
         break;
       }
     }
-    playCashChime();
+    playCashChime(totalCollectedThisAction);
     const targetInst = customer.instalments[targetInstNum - 1];
     const instPending = (targetInst && targetInst.status === 'Partial')
       ? Math.max(0, scheduledAmount - (Number(targetInst.paidAmount) || 0))
@@ -4957,7 +5116,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       inst.paidBy = inst.paidBy || currentCollector;
       inst.collectorId = inst.collectorId || currentCollectorId;
       inst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, instNumber);
-      playCashChime();
+      playCashChime(needed);
 
       recordTransaction({
         receiptNumber: inst.receiptNumber,
@@ -4983,7 +5142,7 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
       inst.paidBy = currentCollector;
       inst.collectorId = currentCollectorId;
       inst.receiptNumber = generateUniqueReceiptNumber(customer.customerNumber, customer.loanNumber, instNumber);
-      playCashChime();
+      playCashChime(scheduledAmount);
 
       recordTransaction({
         receiptNumber: inst.receiptNumber,
@@ -5069,7 +5228,7 @@ function handleRapidUndoAction(data) {
   if (!data) return;
 
   // Perform quick undo
-  handleInstalmentClick(data.customerId, data.instNumber);
+  handleInstalmentClick(data.customerId, data.instNumber, null, true);
 }
 
 function shareDirectWhatsAppSlip(data) {
