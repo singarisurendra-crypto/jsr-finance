@@ -1538,6 +1538,8 @@ function togglePasswordVisibility() {
 let lastSavedCollectionSession = null;
 let bannerUndoCountdownTimer = null;
 
+const UNDO_ICON_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M3 10h10a5 5 0 0 1 5 5v2"/><path d="M3 10l6-6"/><path d="M3 10l6 6"/></svg>`;
+
 function showCollectionSuccessBanner(customer, amount) {
   const banner = document.getElementById('collection-success-banner');
   const title = document.getElementById('collection-banner-title');
@@ -1561,14 +1563,14 @@ function showCollectionSuccessBanner(customer, amount) {
   clearInterval(bannerUndoCountdownTimer);
   let countdown = 5;
   if (undoBtn) {
-    undoBtn.textContent = `↩️ Undo (${countdown}s)`;
+    undoBtn.innerHTML = `${UNDO_ICON_SVG} Undo (${countdown}s)`;
     undoBtn.onclick = () => handleBannerUndoAction();
   }
 
   bannerUndoCountdownTimer = setInterval(() => {
     countdown--;
     if (countdown > 0) {
-      if (undoBtn) undoBtn.textContent = `↩️ Undo (${countdown}s)`;
+      if (undoBtn) undoBtn.innerHTML = `${UNDO_ICON_SVG} Undo (${countdown}s)`;
     } else {
       clearInterval(bannerUndoCountdownTimer);
       closeCollectionBanner();
@@ -1935,18 +1937,18 @@ function openInlinePartialSlider(customerId, instNumber, scheduledAmount, anchor
   popup.onclick = (e) => e.stopPropagation();
 
   popup.innerHTML = `
-    <div style="font-weight: 800; font-size: 11.5px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+    <div style="font-weight: 800; font-size: 11.5px; display: flex; justify-content: space-between; align-items: center; gap: 8px; color: #0f172a;">
       <span>${unitLabel} #${instNumber} Partial:</span>
-      <span id="inline-slider-display" style="color: #fbbf24; font-size: 13px; font-weight: 800;">₹${initialVal}</span>
+      <span id="inline-slider-display" style="color: #b45309; font-size: 13.5px; font-weight: 800;">₹${initialVal}</span>
     </div>
     <div class="slider-row" style="margin: 4px 0;">
       <input type="range" id="inline-partial-range" min="10" max="${schedAmt}" step="10" value="${initialVal}" 
              oninput="document.getElementById('inline-slider-display').textContent = '₹' + this.value">
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px;">
-      <button type="button" style="background:#334155; color:#fff; border:none; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.25)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.25)};">25%</button>
-      <button type="button" style="background:#334155; color:#fff; border:none; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.5)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.5)};">50%</button>
-      <button type="button" style="background:#334155; color:#fff; border:none; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.75)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.75)};">75%</button>
+      <button type="button" style="background:#f1f5f9; color:#1e293b; border:1px solid #cbd5e1; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.25)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.25)};">25%</button>
+      <button type="button" style="background:#f1f5f9; color:#1e293b; border:1px solid #cbd5e1; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.5)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.5)};">50%</button>
+      <button type="button" style="background:#f1f5f9; color:#1e293b; border:1px solid #cbd5e1; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; cursor:pointer;" onclick="document.getElementById('inline-partial-range').value = ${Math.round(schedAmt*0.75)}; document.getElementById('inline-slider-display').textContent = '₹' + ${Math.round(schedAmt*0.75)};">75%</button>
     </div>
     <div class="slider-actions">
       <button type="button" class="btn-slider-cancel" onclick="closeInlinePartialSlider()">Cancel</button>
@@ -1954,15 +1956,45 @@ function openInlinePartialSlider(customerId, instNumber, scheduledAmount, anchor
     </div>
   `;
 
-  if (anchorEl && anchorEl.parentElement) {
-    anchorEl.parentElement.style.position = 'relative';
-    anchorEl.parentElement.appendChild(popup);
+  if (anchorEl) {
+    document.body.appendChild(popup);
+    const rect = anchorEl.getBoundingClientRect();
+    const popupWidth = 196;
+    const popupHeight = 92;
+
+    // Viewport-aware horizontal clamping so corner buttons never overflow screen edge
+    let left = rect.left + (rect.width / 2) - (popupWidth / 2);
+    const minLeft = 10;
+    const maxLeft = Math.max(10, window.innerWidth - popupWidth - 10);
+    left = Math.max(minLeft, Math.min(maxLeft, left));
+
+    // Prefer displaying above the button; flip below if too close to viewport top
+    let top = rect.top - popupHeight - 8;
+    let isFlipped = false;
+    if (top < 10) {
+      top = rect.bottom + 8;
+      isFlipped = true;
+    }
+
+    popup.style.top = `${top}px`;
+    popup.style.left = `${left}px`;
+    if (isFlipped) popup.classList.add('is-flipped');
+
+    // Align triangle pointer arrow directly with anchorEl center
+    const btnCenterX = rect.left + (rect.width / 2);
+    let arrowX = btnCenterX - left;
+    arrowX = Math.max(14, Math.min(popupWidth - 14, arrowX));
+    popup.style.setProperty('--arrow-x', `${arrowX}px`);
+
+    // Auto-dismiss on scroll to prevent drifting
+    window.addEventListener('scroll', closeInlinePartialSlider, { passive: true, once: true });
   }
 }
 
 function closeInlinePartialSlider() {
   const p = document.getElementById('active-inline-partial-slider');
   if (p) p.remove();
+  window.removeEventListener('scroll', closeInlinePartialSlider);
 }
 
 function applyInlinePartialSlider(customerId, instNumber) {
@@ -3068,6 +3100,7 @@ function getCustomerStats(customer) {
   // Overdue calculation (Behind schedule by 2 or more instalments)
   let isOverdue = false;
   let missedCount = 0;
+  let cappedExpected = 0;
   if (!isCompleted && customer.startDate) {
     try {
       const startMs = new Date(customer.startDate).getTime();
@@ -3075,7 +3108,7 @@ function getCustomerStats(customer) {
       const diffDays = Math.floor((nowMs - startMs) / (1000 * 60 * 60 * 24));
       const isDaily = customer.frequency === 'Daily' || (customer.totalInstalments || 52) === 100;
       const expectedInst = isDaily ? Math.max(0, diffDays) : Math.max(0, Math.floor(diffDays / 7));
-      const cappedExpected = Math.min(totalInst, expectedInst);
+      cappedExpected = Math.min(totalInst, expectedInst);
       if (cappedExpected - paidCount >= 2) {
         isOverdue = true;
         missedCount = cappedExpected - paidCount;
@@ -4734,6 +4767,8 @@ function renderCollectionMatrix() {
         const tsFormatted = formatInstalmentTimestamp(sqInst);
         const tsSuffix = tsFormatted ? ` on ${tsFormatted}` : '';
 
+        const isInstOverdue = (!isReceived && !isPartial && (sq <= stats.dueToDate && (stats.isOverdue || stats.missedCount > 0)));
+
         if (isReceived) {
           btnClass = 'is-paid';
           btnIcon = '✓';
@@ -4743,7 +4778,11 @@ function renderCollectionMatrix() {
           const pAmt = Number(sqInst.paidAmount) || 0;
           const pendingAmt = Math.max(0, (Number(cust.instalmentAmount) || 0) - pAmt);
           btnIcon = `<span class="sched-partial-amt"><span class="sched-partial-currency">₹</span>${pAmt}</span>`;
-          instTitle = `${unitLabel} #${sq}: Amount Received: ${formatMoney(pAmt)} | Pending Instalment Amount: ${formatMoney(pendingAmt)}${tsSuffix}. Tap to pay remaining, or hold for partial slider.`;
+          instTitle = `${unitLabel} #${sq}: Partial Paid: ${formatMoney(pAmt)} | Pending: ${formatMoney(pendingAmt)}${tsSuffix}. Tap to pay remaining, or hold for partial slider.`;
+        } else if (isInstOverdue) {
+          btnClass = 'is-overdue';
+          btnIcon = '!';
+          instTitle = `⚠️ ${unitLabel} #${sq}: Overdue (${formatMoney(cust.instalmentAmount)}). Tap to receive, or hold for partial slider.`;
         } else {
           instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)}). Tap to receive, or hold for partial slider.`;
         }
@@ -4928,6 +4967,9 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
   }
   const customer = state.customers.find((c) => c.id === customerId);
   if (!customer) return;
+
+  // Snapshot initial state before changes for instant 1-click Undo support
+  const initialInstalmentsSnapshot = (customer.instalments || []).map(i => ({ ...i }));
 
   if (!customer.instalments) {
     customer.instalments = [];
@@ -5167,6 +5209,27 @@ function toggleInstalmentReceived(customerId, instNumber, customAmount) {
   if (typeof syncCustomerToFirestore === 'function') {
     syncCustomerToFirestore(customer);
   }
+
+  // Unified Collection Success Banner with Instant Undo for All Collection Actions
+  if (typeof initialInstalmentsSnapshot !== 'undefined' && initialInstalmentsSnapshot.length > 0) {
+    const statsNow = getCustomerStats(customer);
+    const amountPaidNow = (typeof totalCollectedThisAction !== 'undefined' && totalCollectedThisAction > 0) 
+      ? totalCollectedThisAction 
+      : ((typeof needed !== 'undefined' && needed > 0) ? needed : scheduledAmount);
+    if (amountPaidNow > 0) {
+      lastSavedCollectionSession = {
+        customerId: customer.id,
+        customerNumber: customer.customerNumber,
+        customerName: customer.fullName,
+        loanNumber: customer.loanNumber || 1,
+        collectedAmount: amountPaidNow,
+        initialInstalments: initialInstalmentsSnapshot,
+        timestamp: Date.now()
+      };
+      showCollectionSuccessBanner(customer, amountPaidNow);
+    }
+  }
+
   renderCollectionMatrix();
   if (state.activeTab === 'summary') renderDashboard();
   updateHeaderStats();
@@ -5208,12 +5271,12 @@ function showRapidCollectionToast(customer, instNumber, amount) {
   toast.classList.add('show');
   clearInterval(rapidToastTimer);
   let countdown = 5;
-  if (undoBtn) undoBtn.textContent = `↩️ Undo (${countdown}s)`;
+  if (undoBtn) undoBtn.innerHTML = `${typeof UNDO_ICON_SVG !== 'undefined' ? UNDO_ICON_SVG : '↶'} Undo (${countdown}s)`;
 
   rapidToastTimer = setInterval(() => {
     countdown--;
     if (countdown > 0) {
-      if (undoBtn) undoBtn.textContent = `↩️ Undo (${countdown}s)`;
+      if (undoBtn) undoBtn.innerHTML = `${typeof UNDO_ICON_SVG !== 'undefined' ? UNDO_ICON_SVG : '↶'} Undo (${countdown}s)`;
     } else {
       clearInterval(rapidToastTimer);
       toast.classList.remove('show');
@@ -9953,6 +10016,8 @@ function renderCustomerDetailModalContent(loanId) {
     let btnIcon = '';
     let instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)})`;
 
+    const isInstOverdue = (!inst || inst.status !== 'Received') && (!inst || inst.status !== 'Partial') && (sq <= stats.dueToDate && (stats.isOverdue || stats.missedCount > 0));
+
     if (inst && inst.status === 'Received') {
       btnClass = 'is-paid sched-box-paid';
       btnIcon = '✓';
@@ -9962,6 +10027,10 @@ function renderCustomerDetailModalContent(loanId) {
       const pAmt = Number(inst.paidAmount) || 0;
       btnIcon = `<span class="sched-partial-amt"><span class="sched-partial-currency">₹</span>${pAmt}</span>`;
       instTitle = `${unitLabel} #${sq}: Partial (Rec'd: ${formatMoney(pAmt)} • Pending: ${formatMoney((cust.instalmentAmount || 0) - pAmt)}). Tap to complete.`;
+    } else if (isInstOverdue) {
+      btnClass = 'is-overdue sched-box-overdue';
+      btnIcon = '!';
+      instTitle = `⚠️ ${unitLabel} #${sq}: Overdue (${formatMoney(cust.instalmentAmount)}). Tap to receive.`;
     }
 
     gridCellsHtml += `
