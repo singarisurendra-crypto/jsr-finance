@@ -4838,11 +4838,11 @@ function renderCollectionMatrix() {
         <!-- Top Compact Card Header (Click to smoothly expand/collapse inline; Click name or ID for modal) -->
         <div class="cust-card-header" onclick="toggleCustomerSchedule('${cust.id}', event)" style="cursor: pointer;" title="Tap anywhere to expand/collapse schedule">
           <div class="cust-card-left">
-            <span class="cust-id-prefix" onclick="event.stopPropagation(); openCustomerDetailModal('${cust.id}', event)" title="View loan passbook & details" style="cursor: pointer;">#${cust.customerNumber}</span>
+            <span class="cust-id-prefix" onclick="event.stopPropagation(); openCustomerDetailModal('${cust.id}', event)" ontouchend="event.stopPropagation(); event.preventDefault(); openCustomerDetailModal('${cust.id}', event)" title="View loan passbook & details" style="cursor: pointer;">#${cust.customerNumber}</span>
             <div class="cust-avatar" style="${avatarStyle}; cursor: pointer;" onclick="event.stopPropagation(); openCustomerPhotoLightbox('${cust.id}', event)" title="Click to view borrower profile photo">${avatarContent}</div>
             <div class="cust-info-left">
               <div class="cust-name-row">
-                <span class="cust-name" onclick="event.stopPropagation(); openCustomerDetailModal('${cust.id}', event)" style="cursor: pointer;" title="Click to open full Customer Details Modal">${cust.fullName}</span>
+                <span class="cust-name" onclick="event.stopPropagation(); openCustomerDetailModal('${cust.id}', event)" ontouchend="event.stopPropagation(); event.preventDefault(); openCustomerDetailModal('${cust.id}', event)" style="cursor: pointer;" title="Tap to open Customer Details">${cust.fullName}</span>
                 <span class="cust-loan-badge">L${cust.loanNumber || 1}</span>
                 ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 6px; flex-shrink:0; white-space:nowrap;" title="Delayed Schedule: Borrower is ${stats.missedCount} instalment${stats.missedCount > 1 ? 's' : ''} behind schedule (Total Overdue: ${formatMoney(stats.missedCount * (cust.instalmentAmount || 0))})">⚠️ Due ${stats.missedCount}</span>` : ''}
                 ${partialBadgeHtml}
@@ -9994,6 +9994,7 @@ function renderCustomerDetailModalContent(loanId) {
   const instCount = cust.totalInstalments || 52;
   const isDaily = cust.frequency === 'Daily' || instCount === 100;
   const unitLabel = isDaily ? 'Day' : 'Week';
+  const stats = getCustomerStats(cust);
   const effectiveStats = getCustomerEffectiveStats(cust);
   const totalPayable = instCount * (cust.instalmentAmount || 200);
   const totalPaid = effectiveStats.totalPaidAmount;
