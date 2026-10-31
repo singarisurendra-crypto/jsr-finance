@@ -13,10 +13,11 @@
       "*.md",
       "*.py"
     ],
-    "rewrites": [
+    "redirects": [
       {
         "source": "**",
-        "destination": "/index.html"
+        "destination": "https://jsr-finance.pages.dev",
+        "type": 301
       }
     ],
     "headers": [
