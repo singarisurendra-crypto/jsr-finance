@@ -3630,10 +3630,10 @@ body.modal-open .loans-tooltip-popover {
 /* ==================================================== */
 .collection-success-banner {
   position: fixed;
-  top: 75px;
+  top: 20px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 9999;
+  z-index: 100005 !important;
   min-width: 320px;
   max-width: 90vw;
   animation: bannerSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
