@@ -4612,6 +4612,12 @@ select:focus-visible {
   max-width: none !important;
   flex-shrink: 1;
   transition: color 0.15s ease;
+  -webkit-tap-highlight-color: rgba(30, 64, 175, 0.12);
+  touch-action: manipulation;
+  display: inline-block;
+  padding: 2px 0;
+  min-height: 28px;
+  line-height: 1.4;
 }
 .cust-name:hover {
   color: #1e293b !important;
@@ -4769,6 +4775,10 @@ select:focus-visible {
     white-space: normal !important;
     color: #0f172a !important;
     text-decoration: none !important;
+    -webkit-tap-highlight-color: rgba(30, 64, 175, 0.12);
+    touch-action: manipulation;
+    padding: 3px 0;
+    min-height: 30px;
   }
   .cust-name-row {
     flex-wrap: wrap;
