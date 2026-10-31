@@ -1551,6 +1551,24 @@ function showCollectionSuccessBanner(customer, amount) {
   const waBtn = document.getElementById('collection-banner-wa-btn');
   if (!banner) return;
 
+  // Guarantee single notification: dismiss any active app-toast or rapid toast so they never overlap
+  const appToast = document.getElementById('app-toast');
+  if (appToast) {
+    appToast.style.display = 'none';
+    if (appToast._timer) {
+      clearTimeout(appToast._timer);
+      appToast._timer = null;
+    }
+  }
+  const rapidToast = document.getElementById('rapid-collection-toast');
+  if (rapidToast) {
+    rapidToast.classList.remove('show');
+    if (typeof rapidToastTimer !== 'undefined' && rapidToastTimer) {
+      clearTimeout(rapidToastTimer);
+      rapidToastTimer = null;
+    }
+  }
+
   const stats = getCustomerStats(customer);
   const loanTag = (customer.loanNumber && customer.loanNumber > 1) ? ` L${customer.loanNumber}` : '';
   if (title) title.textContent = `✓ Collected ${formatMoney(amount)} Successfully!`;
@@ -1620,6 +1638,10 @@ function handleBannerUndoAction() {
 function closeCollectionBanner() {
   const banner = document.getElementById('collection-success-banner');
   if (banner) banner.style.display = 'none';
+  if (typeof bannerUndoCountdownTimer !== 'undefined' && bannerUndoCountdownTimer) {
+    clearInterval(bannerUndoCountdownTimer);
+    bannerUndoCountdownTimer = null;
+  }
 }
 
 function checkAndPromptUnsaved(targetCustomerId, onProceed) {
@@ -5421,6 +5443,9 @@ function handleQuickCustNumChange() {
   const custNumInput = document.getElementById('quick-cust-num');
   const amountInput = document.getElementById('quick-amount');
   if (!custNumInput || !amountInput) return;
+  if (typeof closeCollectionBanner === 'function') {
+    closeCollectionBanner();
+  }
 
   const hintEl = document.getElementById('quick-receive-hint');
   const rawInput = custNumInput.value.trim();
@@ -5489,6 +5514,9 @@ function handleQuickCustNumChange() {
 // Quick Numpad Entry Handler
 function handleQuickReceive(event) {
   if (event) event.preventDefault();
+  if (typeof closeCollectionBanner === 'function') {
+    closeCollectionBanner();
+  }
 
   const custNumInput = document.getElementById('quick-cust-num');
   const customAmountInput = document.getElementById('quick-amount');
@@ -9127,6 +9155,19 @@ function closeModal(modalId) {
 }
 
 function showToast(message, duration = 3000) {
+  // Guarantee single notification: dismiss any active collection banner or rapid toast
+  if (typeof closeCollectionBanner === 'function') {
+    closeCollectionBanner();
+  }
+  const rapidToast = document.getElementById('rapid-collection-toast');
+  if (rapidToast) {
+    rapidToast.classList.remove('show');
+    if (typeof rapidToastTimer !== 'undefined' && rapidToastTimer) {
+      clearTimeout(rapidToastTimer);
+      rapidToastTimer = null;
+    }
+  }
+
   const toast = document.getElementById('app-toast');
   if (toast) {
     toast.textContent = message;
