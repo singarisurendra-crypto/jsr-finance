@@ -99,8 +99,9 @@ function setupFirestoreRealtimeListeners() {
         if (!c) return;
         const loanTag = (Number(c.loanNumber) || 1) > 1 ? ` (Loan #${c.loanNumber})` : '';
 
-        // If this document was updated by our own local session, do NOT notify as an external user update!
-        if (c.lastModifiedSession === CURRENT_SESSION_ID) {
+        // If this document was updated by our own local session or same user account, do NOT notify as an external user update!
+        const currentUserName = (typeof getCurrentUser === 'function' && getCurrentUser() && getCurrentUser().user) || '';
+        if (c.lastModifiedSession === CURRENT_SESSION_ID || (currentUserName && c.lastModifiedBy === currentUserName)) {
           return;
         }
 
@@ -190,6 +191,10 @@ function setupFirestoreRealtimeListeners() {
           if (change.type === 'added') {
             const t = change.doc.data();
             if (!t) return;
+            const currentUserName = (typeof getCurrentUser === 'function' && getCurrentUser() && getCurrentUser().user) || '';
+            if (t.collector && currentUserName && t.collector === currentUserName) {
+              return;
+            }
             const amtStr = typeof formatMoney === 'function' ? formatMoney(t.amount) : `₹${t.amount}`;
             if (t.type === 'undo') {
               showToast(`↩️ Live Undo: Instalment #${t.instalmentNumber} for #${t.customerNumber} undone remotely.`, 3500);
@@ -351,7 +356,7 @@ window.addEventListener('storage', (e) => {
         if (state.activeTab === 'collections') renderCollectionMatrix();
         if (state.activeTab === 'customers') renderCustomersTable();
         if (state.activeTab === 'analytics' && typeof renderAnalytics === 'function') renderAnalytics();
-        if (typeof showToast === 'function') showToast('🔄 Session synced from another open window.');
+        // Silent sync: no toast is shown to avoid interrupting or overlapping the user's active session
       }
     } catch (err) {}
   } else if (e.key === txnKey) {
