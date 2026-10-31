@@ -1,0 +1,39 @@
+# Cloudflare Pages Caching & Security Headers for JSR Finance PWA
+
+# 1. PWA Service Worker & Manifest: Never cache so updates are immediate
+/service-worker.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Content-Type: application/javascript; charset=utf-8
+
+/manifest.json
+  Cache-Control: no-cache, no-store, must-revalidate
+  Content-Type: application/manifest+json; charset=utf-8
+
+# 2. Main HTML entry: Revalidate always so users receive latest released version
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# 3. Static Assets with Version Query Parameters (?v=...): Cache efficiently
+/*.css
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.png
+  Cache-Control: public, max-age=2592000
+
+/*.svg
+  Cache-Control: public, max-age=2592000
+
+/*.jpg
+  Cache-Control: public, max-age=2592000
+
+# 4. Global Security Headers
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
