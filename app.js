@@ -1164,6 +1164,9 @@ function verifyAndLoginGoogleUser(email, name) {
     if (typeof initGoogleCloudDatabase === 'function' && (!firestoreDb || !isCloudSyncActive)) {
       initGoogleCloudDatabase();
     }
+    if (typeof refreshSessionData === 'function') {
+      refreshSessionData(false);
+    }
     applyRoleBasedPermissions();
   }
 
