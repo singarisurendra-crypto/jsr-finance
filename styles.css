@@ -7270,10 +7270,10 @@ input.form-control:disabled.locked-field {
   }
 }
 .sched-cell-with-date {
-  background: #f8fafc;
-  border: 1.5px solid #e2e8f0;
-  border-radius: 7px;
-  padding: 3px 2px 3px 2px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 3px 3px 3px 3px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -7281,32 +7281,53 @@ input.form-control:disabled.locked-field {
   box-sizing: border-box;
 }
 .sched-cell-with-date:hover {
-  background: #f1f5f9;
-  border-color: #93c5fd;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+.sched-cell-with-date.is-next-due-cell {
+  background: #eff6ff;
+  border: 1.5px solid #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+.sched-cell-with-date.is-overdue-cell {
+  background: #fffbeb;
+  border: 1.5px solid #f59e0b;
 }
 .sched-date-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   width: 100%;
-  padding: 0 2px 2px 2px;
-  line-height: 1;
+  padding: 1px 3px 3px 3px;
+  line-height: 1.1;
 }
 .sched-num-left {
-  font-size: 9.5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #475569;
+  letter-spacing: -0.2px;
+}
+.sched-cell-with-date.is-next-due-cell .sched-num-left {
+  color: #1e40af;
   font-weight: 800;
-  color: #334155;
 }
 .sched-date-right {
-  font-size: 8.5px;
-  font-weight: 700;
-  color: #1e40af;
-  background: #eff6ff;
-  padding: 1px 3px;
-  border-radius: 3px;
-  border: 1px solid #dbeafe;
-  font-family: monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  padding: 0;
+  border: none;
+  font-family: inherit;
   white-space: nowrap;
+}
+.sched-cell-with-date.is-next-due-cell .sched-date-right {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.sched-cell-with-date.is-overdue-cell .sched-date-right {
+  color: #b45309;
+  font-weight: 700;
 }
 
 /* Date Passbook Table */
