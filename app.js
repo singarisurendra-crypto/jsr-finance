@@ -5011,7 +5011,7 @@ function renderCollectionMatrix() {
         `;
 
         gridWithDatesCellsHtml += `
-          <div class="sched-cell-with-date">
+          <div class="sched-cell-with-date ${isNextDue ? 'is-next-due-cell' : ''} ${isInstOverdue ? 'is-overdue-cell' : ''}">
             <div class="sched-date-header">
               <span class="sched-num-left">#${sq}</span>
               <span class="sched-date-right">${schedDate.short}</span>
@@ -10354,7 +10354,7 @@ function renderCustomerDetailModalContent(loanId) {
     `;
 
     modalGridWithDatesCellsHtml += `
-      <div class="sched-cell-with-date">
+      <div class="sched-cell-with-date ${isNextDue ? 'is-next-due-cell' : ''} ${isInstOverdue ? 'is-overdue-cell' : ''}">
         <div class="sched-date-header">
           <span class="sched-num-left">#${sq}</span>
           <span class="sched-date-right">${schedDate.short}</span>
