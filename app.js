@@ -4630,6 +4630,164 @@ function getCustomerAvatarStyle(fullName, customerNumber) {
 }
 
 // ----------------------------------------------------
+
+// ====================================================
+// INSTALMENT SCHEDULED DATES & INLINE VIEW MODES
+// ====================================================
+function getInstalmentScheduledDate(cust, sq) {
+  const startStr = cust.startDate || cust.createdAt || getISTDateString();
+  let baseDate = new Date(startStr);
+  if (isNaN(baseDate.getTime())) baseDate = new Date();
+
+  const target = new Date(baseDate.getTime());
+  const isDaily = cust.frequency === 'Daily' || (cust.totalInstalments || 52) === 100;
+  if (isDaily) {
+    target.setDate(target.getDate() + (sq - 1));
+  } else {
+    // Weekly (7 days per instalment)
+    target.setDate(target.getDate() + (sq - 1) * 7);
+  }
+
+  const day = target.getDate().toString().padStart(2, '0');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[target.getMonth()];
+  const year = target.getFullYear();
+
+  return {
+    dayNum: day,
+    monthName: month,
+    short: `${day} ${month}`,
+    full: `${day} ${month} ${year}`,
+    iso: target.toISOString().split('T')[0],
+    timestamp: target.getTime()
+  };
+}
+
+function setCustomerInstalmentViewMode(customerId, mode, event) {
+  if (event) event.stopPropagation();
+  if (!state.customerInstalmentViewModes) state.customerInstalmentViewModes = {};
+  state.customerInstalmentViewModes[customerId] = mode;
+  renderCollectionMatrix();
+}
+
+function setModalCustomerInstalmentViewMode(customerId, mode, event) {
+  if (event) event.stopPropagation();
+  if (!state.customerInstalmentViewModes) state.customerInstalmentViewModes = {};
+  state.customerInstalmentViewModes[customerId] = mode;
+  renderCustomerDetailModalContent(customerId);
+  renderCollectionMatrix();
+}
+
+function handleCollectionDueDateFilterChange(val) {
+  state.collectionDueDateFilter = val || 'all';
+  renderCollectionMatrix();
+}
+
+function customerMatchesDueDateFilter(cust, filterVal) {
+  if (!filterVal || filterVal === 'all') return true;
+  const stats = getCustomerStats(cust);
+  if (stats.isCompleted) return false;
+
+  const instCount = cust.totalInstalments || 52;
+  let nextDueSeq = 1;
+  for (let i = 1; i <= instCount; i++) {
+    const itm = (cust.instalments || [])[i - 1];
+    if (!itm || itm.status !== 'Received') {
+      nextDueSeq = i;
+      break;
+    }
+  }
+
+  const schedDate = getInstalmentScheduledDate(cust, nextDueSeq);
+  const schedIso = schedDate.iso;
+  const todayIso = getISTDateString();
+
+  const today = new Date(todayIso + 'T00:00:00');
+  const target = new Date(schedIso + 'T00:00:00');
+  const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (filterVal === 'today') {
+    return diffDays === 0;
+  } else if (filterVal === 'overdue') {
+    return diffDays < 0 || stats.isOverdue;
+  } else if (filterVal === 'this-week') {
+    return diffDays >= 0 && diffDays <= 7;
+  } else if (filterVal === 'next-week') {
+    return diffDays > 7 && diffDays <= 14;
+  } else if (filterVal === 'this-month') {
+    return target.getFullYear() === today.getFullYear() && target.getMonth() === today.getMonth();
+  }
+  return true;
+}
+
+function renderCustomerDatePassbookTable(cust, activeInstalments, nextDueSeq, isModal) {
+  const instCount = cust.totalInstalments || 52;
+  const isDaily = cust.frequency === 'Daily' || instCount === 100;
+  const unitLabel = isDaily ? 'Day' : 'Week';
+
+  let rowsHtml = '';
+  for (let sq = 1; sq <= instCount; sq++) {
+    const sqInst = activeInstalments[sq - 1] || { number: sq, status: 'Pending' };
+    const isReceived = sqInst.status === 'Received';
+    const isPartial = sqInst.status === 'Partial';
+    const isNextDue = (sq === nextDueSeq && !isReceived && !isPartial);
+    const schedDate = getInstalmentScheduledDate(cust, sq);
+    const paidDate = sqInst.paidDate || formatInstalmentTimestamp(sqInst) || '—';
+
+    let statusBadge = '';
+    if (isReceived) {
+      statusBadge = `<span style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 800; background: #dcfce7; color: #15803d; border: 1px solid #86efac;">✓ Received (${formatMoney(sqInst.paidAmount || cust.instalmentAmount)})</span>`;
+    } else if (isPartial) {
+      const pAmt = Number(sqInst.paidAmount) || 0;
+      const rem = Math.max(0, (cust.instalmentAmount || 0) - pAmt);
+      statusBadge = `<span style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 800; background: #fef3c7; color: #92400e; border: 1px solid #fde68a;">½ Partial (Rec'd: ${formatMoney(pAmt)} • Due: ${formatMoney(rem)})</span>`;
+    } else if (isNextDue) {
+      statusBadge = `<span style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 800; background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd;">⚡ Next Due</span>`;
+    } else {
+      statusBadge = `<span style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0;">Pending</span>`;
+    }
+
+    const clickAction = isModal
+      ? `handleDetailInstalmentClick('${cust.id}', ${sq}, event)`
+      : `handleInstalmentClick('${cust.id}', ${sq}, event)`;
+
+    const actionBtn = isReceived
+      ? `<button type="button" class="btn btn-sm" style="background: #f1f5f9; color: #475569; font-size: 11px; padding: 3px 8px; border-radius: 6px; cursor: pointer; border: 1px solid #cbd5e1;" onclick="${clickAction}">Undo</button>`
+      : `<button type="button" class="btn btn-sm" style="background: #16a34a; color: #ffffff; font-size: 11px; padding: 3px 8px; border-radius: 6px; cursor: pointer; font-weight: 700;" onclick="${clickAction}">✓ Pay</button>`;
+
+    rowsHtml += `
+      <tr style="border-bottom: 1px solid #f1f5f9; ${isNextDue ? 'background: #eff6ff;' : ''}">
+        <td style="padding: 7px 10px; font-family: monospace; font-weight: 700; color: #334155;">${unitLabel} #${sq}</td>
+        <td style="padding: 7px 10px; font-weight: 700; color: #1e40af;">🗓️ ${schedDate.full}</td>
+        <td style="padding: 7px 10px; font-weight: 700; color: #0f172a;">${formatMoney(cust.instalmentAmount)}</td>
+        <td style="padding: 7px 10px;">${statusBadge}</td>
+        <td style="padding: 7px 10px; font-family: monospace; font-size: 11px; color: #64748b;">${paidDate}</td>
+        <td style="padding: 7px 10px; text-align: right;">${actionBtn}</td>
+      </tr>
+    `;
+  }
+
+  return `
+    <div class="sched-passbook-wrap" style="margin-top: 6px;">
+      <table class="sched-passbook-table">
+        <thead>
+          <tr>
+            <th>Sequence</th>
+            <th>Scheduled Due Date</th>
+            <th>Instalment Due</th>
+            <th>Status</th>
+            <th>Date Collected</th>
+            <th style="text-align: right;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 // SCREEN 2: INSTALMENT COLLECTION SHEET (COMPACT CARDS MATCH)
 // ----------------------------------------------------
 function renderCollectionMatrix() {
@@ -4695,6 +4853,12 @@ function renderCollectionMatrix() {
     state.collectionLoanFilter = currentVal;
   }
 
+  // Synchronize collection-duedate-filter if present
+  const dueDateFilterEl = document.getElementById('collection-duedate-filter');
+  if (dueDateFilterEl) {
+    dueDateFilterEl.value = state.collectionDueDateFilter || 'all';
+  }
+
   // Filter Customers across all loans
   const query = state.searchQuery.toLowerCase().trim();
   const hasExplicitSearch = query.length > 0;
@@ -4705,6 +4869,9 @@ function renderCollectionMatrix() {
     if (state.collectionLoanFilter && state.collectionLoanFilter !== 'all') {
       if ((Number(c.loanNumber) || 1) !== Number(state.collectionLoanFilter)) return false;
     }
+
+    // Filter by Scheduled Due Date
+    if (!customerMatchesDueDateFilter(c, state.collectionDueDateFilter)) return false;
 
     const stats = getCustomerStats(c);
     if (state.filterStatus === 'active') {
@@ -4779,8 +4946,12 @@ function renderCollectionMatrix() {
     const isNextPartial = nextDueInst && nextDueInst.status === 'Partial';
     const nextRemainingDue = isNextPartial ? Math.max(0, (cust.instalmentAmount || 0) - (Number(nextDueInst.paidAmount) || 0)) : (cust.instalmentAmount || 0);
 
-    // 4-Row Grid of Checkboxes (13 columns per row for 52 instalments)
+    // Inline View Mode: 'standard' (default), 'dates', or 'passbook'
+    const viewMode = (state.customerInstalmentViewModes && state.customerInstalmentViewModes[cust.id]) || 'standard';
+
+    // 4-Row Grid of Checkboxes (Standard & Grid with Dates)
     let gridCellsHtml = '';
+    let gridWithDatesCellsHtml = '';
     if (isExpanded) {
       for (let sq = 1; sq <= instCount; sq++) {
         const sqInst = activeInstalments[sq - 1] || { number: sq, status: 'Pending' };
@@ -4820,9 +4991,31 @@ function renderCollectionMatrix() {
           instTitle = `🔒 Locked: Currently being updated by ${activeLock.lockedBy}`;
         }
 
+        const schedDate = getInstalmentScheduledDate(cust, sq);
+
         gridCellsHtml += `
           <div class="sched-cell">
             <span class="sched-num-label">${sq}</span>
+            <button type="button" 
+                    class="sched-box-btn ${btnClass} ${isLockedByOther ? 'is-locked' : ''}" 
+                    ${isLockedByOther ? 'disabled' : ''}
+                    onclick="handleInstalmentClick('${cust.id}', ${sq}, event)" 
+                    onpointerdown="startInstalmentLongPress(event, '${cust.id}', ${sq}, ${cust.instalmentAmount || 200})"
+                    onpointerup="endInstalmentLongPress()"
+                    onpointercancel="endInstalmentLongPress()"
+                    oncontextmenu="handleInstalmentContextMenu(event, '${cust.id}', ${sq}, ${cust.instalmentAmount || 200})"
+                    title="${instTitle}">
+              ${btnIcon}
+            </button>
+          </div>
+        `;
+
+        gridWithDatesCellsHtml += `
+          <div class="sched-cell-with-date">
+            <div class="sched-date-header">
+              <span class="sched-num-left">#${sq}</span>
+              <span class="sched-date-right">${schedDate.short}</span>
+            </div>
             <button type="button" 
                     class="sched-box-btn ${btnClass} ${isLockedByOther ? 'is-locked' : ''}" 
                     ${isLockedByOther ? 'disabled' : ''}
@@ -4957,9 +5150,33 @@ function renderCollectionMatrix() {
               </button>
             </div>
 
-            <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
-              ${gridCellsHtml}
+            <!-- Direct Inline View Selector Bar (Standard Grid | Grid with Dates | Date Passbook) -->
+            <div class="sched-view-selector-bar">
+              <span class="sched-view-selector-label">VIEW FORMAT:</span>
+              <div class="sched-view-pills">
+                <button type="button" class="btn-sched-view ${viewMode === 'standard' ? 'is-active' : ''}" onclick="setCustomerInstalmentViewMode('${cust.id}', 'standard', event)">
+                  <span class="view-icon">⊞</span> Standard Grid
+                </button>
+                <button type="button" class="btn-sched-view ${viewMode === 'dates' ? 'is-active' : ''}" onclick="setCustomerInstalmentViewMode('${cust.id}', 'dates', event)">
+                  <span class="view-icon">📅</span> Grid with Dates
+                </button>
+                <button type="button" class="btn-sched-view ${viewMode === 'passbook' ? 'is-active' : ''}" onclick="setCustomerInstalmentViewMode('${cust.id}', 'passbook', event)">
+                  <span class="view-icon">🗓️</span> Date Passbook
+                </button>
+              </div>
             </div>
+
+            ${viewMode === 'dates' ? `
+              <div class="sched-4row-grid grid-with-dates" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
+                ${gridWithDatesCellsHtml}
+              </div>
+            ` : viewMode === 'passbook' ? `
+              ${renderCustomerDatePassbookTable(cust, activeInstalments, nextDueSeq, false)}
+            ` : `
+              <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
+                ${gridCellsHtml}
+              </div>
+            ` }
 
             ${!isLockedByOther && hasPendingMod && pendingMod.sessionAmount > 0 ? `
               <div class="sched-modified-bar" style="margin-top: 14px; padding: 10px 14px; border-radius: 8px;">
@@ -10093,8 +10310,12 @@ function renderCustomerDetailModalContent(loanId) {
   const isNextPartial = nextDueInst && nextDueInst.status === 'Partial';
   const nextRemainingDue = isNextPartial ? Math.max(0, (cust.instalmentAmount || 0) - (Number(nextDueInst.paidAmount) || 0)) : (cust.instalmentAmount || 0);
 
+  // Inline View Mode: 'standard' (default), 'dates', or 'passbook'
+  const modalViewMode = (state.customerInstalmentViewModes && state.customerInstalmentViewModes[cust.id]) || 'standard';
+
   // Checkbox Grid (With vibrant green checkmarks for paid and orange for partial)
   let gridCellsHtml = '';
+  let modalGridWithDatesCellsHtml = '';
   for (let sq = 1; sq <= instCount; sq++) {
     const inst = insts[sq - 1];
     let btnClass = 'is-pending sched-box-pending';
@@ -10118,9 +10339,26 @@ function renderCustomerDetailModalContent(loanId) {
       instTitle = `⚠️ ${unitLabel} #${sq}: Overdue (${formatMoney(cust.instalmentAmount)}). Tap to receive.`;
     }
 
+    const schedDate = getInstalmentScheduledDate(cust, sq);
+
     gridCellsHtml += `
       <div class="sched-cell">
         <span class="sched-num-label">${sq}</span>
+        <button type="button" 
+                class="sched-box-btn ${btnClass}" 
+                onclick="handleDetailInstalmentClick('${cust.id}', ${sq}, event)" 
+                title="${instTitle}">
+          ${btnIcon}
+        </button>
+      </div>
+    `;
+
+    modalGridWithDatesCellsHtml += `
+      <div class="sched-cell-with-date">
+        <div class="sched-date-header">
+          <span class="sched-num-left">#${sq}</span>
+          <span class="sched-date-right">${schedDate.short}</span>
+        </div>
         <button type="button" 
                 class="sched-box-btn ${btnClass}" 
                 onclick="handleDetailInstalmentClick('${cust.id}', ${sq}, event)" 
@@ -10196,15 +10434,35 @@ function renderCustomerDetailModalContent(loanId) {
       `}
     </div>
 
-    <!-- 4-Row Instalment Matrix -->
+    <!-- Direct Inline View Selector Bar (Standard Grid | Grid with Dates | Date Passbook) -->
+    <div class="sched-view-selector-bar" style="margin-bottom: 8px;">
+      <span class="sched-view-selector-label" style="font-size: 11px; font-weight: 700; color: #64748b;">VIEW FORMAT:</span>
+      <div class="sched-view-pills">
+        <button type="button" class="btn-sched-view ${modalViewMode === 'standard' ? 'is-active' : ''}" onclick="setModalCustomerInstalmentViewMode('${cust.id}', 'standard', event)">
+          <span class="view-icon">⊞</span> Standard Grid
+        </button>
+        <button type="button" class="btn-sched-view ${modalViewMode === 'dates' ? 'is-active' : ''}" onclick="setModalCustomerInstalmentViewMode('${cust.id}', 'dates', event)">
+          <span class="view-icon">📅</span> Grid with Dates
+        </button>
+        <button type="button" class="btn-sched-view ${modalViewMode === 'passbook' ? 'is-active' : ''}" onclick="setModalCustomerInstalmentViewMode('${cust.id}', 'passbook', event)">
+          <span class="view-icon">🗓️</span> Date Passbook
+        </button>
+      </div>
+    </div>
+
+    <!-- Instalment Schedule Display -->
     <div style="margin-bottom: 12px;">
-      <div style="font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 6px; display: flex; justify-content: space-between;">
-        <span>Schedule Matrix (${unitLabel}s 1 to ${instCount})</span>
-        <span style="font-size: 11px; color: #64748b;">${isCurrentUserReadOnly() ? 'Schedule view (Read-Only)' : 'Tap any cell to toggle receipt'}</span>
-      </div>
-      <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
-        ${gridCellsHtml}
-      </div>
+      ${modalViewMode === 'dates' ? `
+        <div class="sched-4row-grid grid-with-dates" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
+          ${modalGridWithDatesCellsHtml}
+        </div>
+      ` : modalViewMode === 'passbook' ? `
+        ${renderCustomerDatePassbookTable(cust, insts, nextDueSeq, true)}
+      ` : `
+        <div class="sched-4row-grid" style="${instCount === 100 ? 'grid-template-columns: repeat(10, 1fr);' : ''}">
+          ${gridCellsHtml}
+        </div>
+      `}
     </div>
 
     <!-- Unsaved Modifications Banner -->
