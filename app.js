@@ -5152,7 +5152,7 @@ function renderCollectionMatrix() {
 
             <!-- Direct Inline View Selector Bar (Standard Grid | Grid with Dates | Date Passbook) -->
             <div class="sched-view-selector-bar">
-              <span class="sched-view-selector-label">VIEW FORMAT:</span>
+              <span style="font-size: 12px; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 4px;">Schedule Matrix (${unitLabel}s 1 to ${instCount})</span>
               <div class="sched-view-pills">
                 <button type="button" class="btn-sched-view ${viewMode === 'standard' ? 'is-active' : ''}" onclick="setCustomerInstalmentViewMode('${cust.id}', 'standard', event)">
                   <span class="view-icon">⊞</span> Standard Grid
@@ -10436,7 +10436,7 @@ function renderCustomerDetailModalContent(loanId) {
 
     <!-- Direct Inline View Selector Bar (Standard Grid | Grid with Dates | Date Passbook) -->
     <div class="sched-view-selector-bar" style="margin-bottom: 8px;">
-      <span class="sched-view-selector-label" style="font-size: 11px; font-weight: 700; color: #64748b;">VIEW FORMAT:</span>
+      <span style="font-size: 12px; font-weight: 700; color: #475569;">Schedule Matrix (${unitLabel}s 1 to ${instCount})</span>
       <div class="sched-view-pills">
         <button type="button" class="btn-sched-view ${modalViewMode === 'standard' ? 'is-active' : ''}" onclick="setModalCustomerInstalmentViewMode('${cust.id}', 'standard', event)">
           <span class="view-icon">⊞</span> Standard Grid
