@@ -5056,11 +5056,11 @@ function renderCollectionMatrix() {
         <!-- Top Compact Card Header (Click to smoothly expand/collapse inline; Click name or ID for modal) -->
         <div class="cust-card-header" onclick="toggleCustomerSchedule('${cust.id}', event)" style="cursor: pointer;" title="Tap anywhere to expand/collapse schedule">
           <div class="cust-card-left">
-            <span class="cust-id-prefix" onclick="event.stopPropagation(); openCustomerDetailModal('${cust.id}', event)" ontouchend="event.stopPropagation(); event.preventDefault(); openCustomerDetailModal('${cust.id}', event)" title="View loan passbook & details" style="cursor: pointer;">#${cust.customerNumber}</span>
+            <span class="cust-id-prefix" onclick="event.stopPropagation(); openCustomerDetailModal('${cust.id}', event)" title="View loan passbook & details" style="cursor: pointer;">#${cust.customerNumber}</span>
             <div class="cust-avatar" style="${avatarStyle}; cursor: pointer;" onclick="event.stopPropagation(); openCustomerPhotoLightbox('${cust.id}', event)" title="Click to view borrower profile photo">${avatarContent}</div>
             <div class="cust-info-left">
               <div class="cust-name-row">
-                <span class="cust-name" onclick="event.stopPropagation(); openCustomerDetailModal('${cust.id}', event)" ontouchend="event.stopPropagation(); event.preventDefault(); openCustomerDetailModal('${cust.id}', event)" style="cursor: pointer;" title="Tap to open Customer Details">${cust.fullName}</span>
+                <span class="cust-name" onclick="event.stopPropagation(); openCustomerDetailModal('${cust.id}', event)" style="cursor: pointer;" title="Tap to open Customer Details">${cust.fullName}</span>
                 <span class="cust-loan-badge">L${cust.loanNumber || 1}</span>
                 ${stats.isOverdue ? `<span class="badge-overdue" style="font-size:10px; padding:1px 6px; flex-shrink:0; white-space:nowrap;" title="Delayed Schedule: Borrower is ${stats.missedCount} instalment${stats.missedCount > 1 ? 's' : ''} behind schedule (Total Overdue: ${formatMoney(stats.missedCount * (cust.instalmentAmount || 0))})">⚠️ Due ${stats.missedCount}</span>` : ''}
                 ${partialBadgeHtml}
@@ -10190,18 +10190,23 @@ function closeCustomerPhotoLightbox() {
 // 2. CUSTOMER DETAIL MODAL & MOBILE BOTTOM SHEET
 // ========================================================
 function openCustomerDetailModal(customerId, event) {
-  if (event) {
+  if (event && typeof event.stopPropagation === 'function') {
     event.stopPropagation();
-    event.preventDefault();
   }
-  const customer = state.customers.find(c => c.id === customerId);
-  if (!customer) return;
+  const customer = (state.customers || []).find(c => String(c.id) === String(customerId) || String(c.customerNumber) === String(customerId));
+  if (!customer) {
+    console.warn('Customer not found for detail modal:', customerId);
+    return;
+  }
 
-  state.activeDetailCustomerId = customerId;
+  state.activeDetailCustomerId = customer.id;
 
   const modal = document.getElementById('modal-customer-detail');
   const backdrop = document.getElementById('customer-detail-backdrop');
-  if (!modal || !backdrop) return;
+  if (!modal || !backdrop) {
+    console.error('Modal or backdrop element missing from DOM');
+    return;
+  }
 
   // Clear any previous in-modal alert
   const alertBox = document.getElementById('cust-detail-alert-box');
@@ -10210,11 +10215,25 @@ function openCustomerDetailModal(customerId, event) {
     alertBox.textContent = '';
   }
 
-  renderCustomerDetailModalContent(customerId);
-
+  // Make modal and backdrop visible immediately so UI responds without delay
   backdrop.style.display = 'block';
   modal.style.display = 'flex';
   document.body.classList.add('modal-open');
+
+  try {
+    renderCustomerDetailModalContent(customer.id);
+  } catch (err) {
+    console.error('Error rendering customer detail modal:', err);
+    const bodyContainer = document.getElementById('cust-detail-loan-content');
+    if (bodyContainer) {
+      bodyContainer.innerHTML = `
+        <div style="padding: 24px; text-align: center; color: #dc2626;">
+          <p style="font-weight: 700; font-size: 16px;">Unable to display details</p>
+          <p style="font-size: 13px; color: #64748b; margin-top: 6px;">${err.message || 'An unexpected error occurred.'}</p>
+        </div>
+      `;
+    }
+  }
 
   const bodyContainer = document.getElementById('cust-detail-loan-content');
   if (bodyContainer) bodyContainer.scrollTop = 0;
@@ -10241,7 +10260,7 @@ function switchCustomerDetailLoan(targetLoanId) {
 }
 
 function renderCustomerDetailModalContent(loanId) {
-  const cust = state.customers.find(c => c.id === loanId);
+  const cust = (state.customers || []).find(c => String(c.id) === String(loanId) || String(c.customerNumber) === String(loanId));
   if (!cust) return;
 
   // Header info
@@ -10256,9 +10275,9 @@ function renderCustomerDetailModalContent(loanId) {
   const isDaily = cust.frequency === 'Daily' || instCount === 100;
   const unitLabel = isDaily ? 'Day' : 'Week';
   const stats = getCustomerStats(cust);
-  const effectiveStats = getCustomerEffectiveStats(cust);
+  const effectiveStats = getCustomerEffectiveStats(cust) || stats;
   const totalPayable = instCount * (cust.instalmentAmount || 200);
-  const totalPaid = effectiveStats.totalPaidAmount;
+  const totalPaid = effectiveStats.totalPaidAmount || 0;
   const remainingBal = Math.max(0, totalPayable - totalPaid);
   const completionPct = totalPayable > 0 ? Math.min(100, Math.round((totalPaid / totalPayable) * 100)) : 0;
 
@@ -10276,14 +10295,14 @@ function renderCustomerDetailModalContent(loanId) {
   }
 
   // Multi-Loan Tabs
-  const allLoans = state.customers
-    .filter(c => c.customerNumber.toString() === cust.customerNumber.toString())
+  const allLoans = (state.customers || [])
+    .filter(c => c && c.customerNumber != null && String(c.customerNumber) === String(cust.customerNumber))
     .sort((a, b) => (Number(a.loanNumber) || 1) - (Number(b.loanNumber) || 1));
 
   const tabsContainer = document.getElementById('cust-detail-loan-tabs');
   if (tabsContainer) {
     tabsContainer.innerHTML = allLoans.map(l => {
-      const isCurrent = l.id === loanId;
+      const isCurrent = String(l.id) === String(loanId);
       const lNum = l.loanNumber || 1;
       const lStats = getCustomerEffectiveStats(l);
       let statusTag = l.isSettled ? '🤝 Settled' : (lStats.isOverdue ? '⚠️ Due' : 'Active');
@@ -10298,7 +10317,7 @@ function renderCustomerDetailModalContent(loanId) {
 
   // Next Due Instalment
   let nextDueSeq = 1;
-  const insts = effectiveStats.insts;
+  const insts = (effectiveStats && effectiveStats.insts) ? effectiveStats.insts : (cust.instalments || []);
   for (let i = 1; i <= instCount; i++) {
     const itm = insts[i - 1];
     if (!itm || itm.status !== 'Received') {
@@ -10318,17 +10337,20 @@ function renderCustomerDetailModalContent(loanId) {
   let modalGridWithDatesCellsHtml = '';
   for (let sq = 1; sq <= instCount; sq++) {
     const inst = insts[sq - 1];
+    const isReceived = inst && inst.status === 'Received';
+    const isPartial = inst && inst.status === 'Partial';
+    const isNextDue = (sq === nextDueSeq && !isReceived && !isPartial);
     let btnClass = 'is-pending sched-box-pending';
     let btnIcon = '';
     let instTitle = `${unitLabel} #${sq}: Pending (${formatMoney(cust.instalmentAmount)})`;
 
-    const isInstOverdue = (!inst || inst.status !== 'Received') && (!inst || inst.status !== 'Partial') && (sq <= stats.dueToDate && (stats.isOverdue || stats.missedCount > 0));
+    const isInstOverdue = (!isReceived && !isPartial && (sq <= stats.dueToDate && (stats.isOverdue || stats.missedCount > 0)));
 
-    if (inst && inst.status === 'Received') {
+    if (isReceived) {
       btnClass = 'is-paid sched-box-paid';
       btnIcon = '✓';
       instTitle = `${unitLabel} #${sq}: Paid (${formatMoney(inst.paidAmount || cust.instalmentAmount)}) on ${inst.paidDate || '-'}. Tap to undo.`;
-    } else if (inst && inst.status === 'Partial') {
+    } else if (isPartial) {
       btnClass = 'is-partial sched-box-partial';
       const pAmt = Number(inst.paidAmount) || 0;
       btnIcon = `<span class="sched-partial-amt"><span class="sched-partial-currency">₹</span>${pAmt}</span>`;
@@ -10337,6 +10359,10 @@ function renderCustomerDetailModalContent(loanId) {
       btnClass = 'is-overdue sched-box-overdue';
       btnIcon = '!';
       instTitle = `⚠️ ${unitLabel} #${sq}: Overdue (${formatMoney(cust.instalmentAmount)}). Tap to receive.`;
+    }
+
+    if (isNextDue) {
+      btnClass += ' is-next-due';
     }
 
     const schedDate = getInstalmentScheduledDate(cust, sq);
@@ -10374,7 +10400,7 @@ function renderCustomerDetailModalContent(loanId) {
   const hasPendingMod = hasActualPendingChanges(cust.id);
 
   if (footerStatus) {
-    footerStatus.innerHTML = hasPendingMod && pendingMod.sessionAmount > 0
+    footerStatus.innerHTML = hasPendingMod && pendingMod && Number(pendingMod.sessionAmount) > 0
       ? `<strong style="color: #15803d;">Unsaved collection: + ${formatMoney(pendingMod.sessionAmount)}</strong>`
       : `<span>Loan #${cust.loanNumber || 1} • ${effectiveStats.paidCount}/${instCount} Paid (${completionPct}%)</span>`;
   }
@@ -10466,7 +10492,7 @@ function renderCustomerDetailModalContent(loanId) {
     </div>
 
     <!-- Unsaved Modifications Banner -->
-    ${!isCurrentUserReadOnly() && hasPendingMod && pendingMod.sessionAmount > 0 ? `
+    ${!isCurrentUserReadOnly() && hasPendingMod && pendingMod && Number(pendingMod.sessionAmount) > 0 ? `
       <div class="sched-modified-bar" style="margin-bottom: 14px; padding: 12px 16px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
         <div>
           <strong style="color: #166534; font-size: 14px;">Unsaved Collection:</strong>
